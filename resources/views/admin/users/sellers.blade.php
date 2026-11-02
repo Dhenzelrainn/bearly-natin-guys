@@ -53,7 +53,7 @@
             >
                 <option value="">All categories</option>
 
-                @foreach (collect($users)->pluck('category')->filter()->unique()->sort()->values() as $category)
+                @foreach ($categoryOptions ?? [] as $category)
                     <option value="{{ $category }}">
                         {{ $category }}
                     </option>

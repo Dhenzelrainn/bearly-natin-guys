@@ -31,6 +31,10 @@ const themeCssEntries = await Promise.all([
     'buyer.css', 'seller.css', 'admin.css', 'logistics.css', 'bearly-auth.css',
     'landing.css', 'about.css', 'contact.css', 'announcement.css', 'notification-center.css',
 ].map((file) => readFile(new URL(`../../resources/css/${file}`, import.meta.url), 'utf8')));
+const registrationApplicationHeader = await readFile(
+    new URL('../../resources/views/partials/registration-application-header.blade.php', import.meta.url),
+    'utf8',
+);
 const themeHeaders = await Promise.all([
     'resources/views/buyer/partials/buyer-header.blade.php',
     'resources/views/buyer/Dashboard/home.blade.php',
@@ -49,6 +53,7 @@ const themeHeaders = await Promise.all([
     'resources/views/rider/landing/index.blade.php',
     'resources/views/rider/applications/create.blade.php',
 ].map((file) => readFile(new URL(`../../${file}`, import.meta.url), 'utf8')));
+const adminLayout = themeHeaders[3];
 
 test('the shared toggle is a keyboard-operable accessible switch', () => {
     assert.match(toggleView, /type="button"/);
@@ -243,6 +248,8 @@ test('dark Seller styling covers the full workspace and preserves status and ima
     assert.match(sellerDarkModeCss, /input\[type="search"\]::-webkit-search-cancel-button/);
     assert.match(sellerDarkModeCss, /\.product-media-gallery-stage:has\(img:not\(\[hidden\]\)\)/);
     assert.match(sellerDarkModeCss, /\.product-media-gallery-stage:not\(:has\(img:not\(\[hidden\]\)\)\)[\s\S]*?background-color:\s*#30241d/);
+    assert.match(sellerDarkModeCss, /\.store-document-status > span:first-child[\s\S]*?background-color:\s*#45331d !important/);
+    assert.match(sellerDarkModeCss, /\.store-document-status > span:first-child svg[\s\S]*?stroke:\s*currentColor/);
     assert.match(sellerDarkModeCss, /\.product-status-tab[\s\S]*?box-shadow:\s*none !important/);
     assert.match(sellerDarkModeCss, /\[class\*="-card"\][\s\S]*?box-shadow:\s*none !important/);
     assert.match(sellerDarkModeCss, /\.order-tab\s*>\s*span[\s\S]*?background:\s*transparent[\s\S]*?box-shadow:\s*none/);
@@ -372,6 +379,7 @@ test('Buyer Store page uses warm dark surfaces in dark mode while preserving lig
 test('Finance and Rider navigation use a wallet icon instead of the card-shaped variant', () => {
     assert.match(sellerLayout, /\['key'\s*=>\s*'finance',[^\]]*'icon'\s*=>\s*'wallet'/s);
     assert.match(riderLayout, /data-lucide="wallet"[^>]*><\/i><span>Earnings/);
+    assert.match(adminLayout, /'label'\s*=>\s*'Seller Payments',[\s\S]*?'icon'\s*=>\s*'wallet'/);
 });
 
 test('Seller Waybills search clear affordance uses a visible gold X', () => {
@@ -449,5 +457,8 @@ test('dark mode uses the official dark logo variant instead of recoloring the li
 test('independent page styles and shared headers load the theme system', () => {
     assert.match(viteConfig, /resources\/js\/theme\.js/);
     themeCssEntries.forEach((css) => assert.match(css, /@import\s+["']\.\/theme\.css["']/));
-    themeHeaders.forEach((view) => assert.match(view, /partials\.theme-toggle/));
+    themeHeaders.forEach((view) => {
+        assert.match(view, /partials\.theme-toggle|partials\.registration-application-header/);
+    });
+    assert.match(registrationApplicationHeader, /partials\.theme-toggle/);
 });

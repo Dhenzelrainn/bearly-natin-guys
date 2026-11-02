@@ -88,6 +88,9 @@ if (userId > 0 && key) {
             .listen('.shipping-settlement.rider-earning-updated', (payload) => {
                 window.dispatchEvent(new CustomEvent('bearly:rider-shipping-earning-updated', { detail: payload }));
             })
+            .listen('.rider.operational-status-updated', (payload) => {
+                window.dispatchEvent(new CustomEvent('bearly:rider-operational-status-updated', { detail: payload }));
+            })
             .listen('.message.created', (payload) => {
                 window.dispatchEvent(new CustomEvent('bearly:message-created', { detail: payload }));
 

@@ -71,6 +71,30 @@
 .workflow-notice > a svg,
 .delivery-completion-notice > a svg { width: 14px; height: 14px; }
 
+.product-draft-notice {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: baseline;
+    margin: 0 0 20px;
+    padding: 12px 16px;
+    border: 1px solid var(--seller-line);
+    border-radius: 10px;
+    color: var(--seller-muted);
+    background: var(--seller-surface, #fffdf9);
+    font-size: 11px;
+    line-height: 1.55;
+}
+
+.product-draft-notice [data-product-draft-status] {
+    color: var(--seller-brown-700);
+    font-weight: 700;
+}
+
+.product-draft-notice [data-product-draft-status][data-state="error"] {
+    color: var(--seller-danger, #b42318);
+}
+
 /* Order ownership and lifecycle */
 .order-flow-strip {
     display: grid;

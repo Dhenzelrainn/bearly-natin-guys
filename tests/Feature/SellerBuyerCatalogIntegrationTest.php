@@ -13,11 +13,13 @@ use App\Models\StoreSubcategory;
 use App\Models\User;
 use App\Services\BuyerCatalogService;
 use App\Services\ComplianceScanner;
+use App\Services\SellerProductDraftService;
 use App\Services\SellerProductService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -134,6 +136,140 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
             ])
             ->assertOk()
             ->assertJsonPath('data.cart_count', 1);
+    }
+
+    public function test_successful_product_save_promotes_temporary_image_and_cleans_draft_files(): void
+    {
+        Storage::fake('local');
+        Storage::fake('public');
+
+        $category = $this->category();
+        $seller = $this->seller($category);
+        $store = Store::create([
+            'seller_profile_id' => $seller->sellerProfile->id,
+            'name' => 'Temporary Image Store',
+            'slug' => 'temporary-image-store',
+            'contact_email' => $seller->email,
+            'contact_phone' => '+639171234567',
+            'publication_status' => 'draft',
+        ]);
+
+        $drafts = app(SellerProductDraftService::class);
+        $validPng = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+            true,
+        );
+        $temporaryImage = $drafts->replaceImages(
+            $store,
+            'primary',
+            [UploadedFile::fake()->createWithContent('temporary-primary.png', $validPng)],
+        )[0];
+        $draftId = $temporaryImage->seller_product_draft_id;
+        Storage::disk('local')->assertExists($temporaryImage->path);
+
+        $this->actingAs($seller)
+            ->post('/seller/products', [
+                'product_mode' => 'single',
+                'name' => 'Temporary Image Product',
+                'category' => $category->name,
+                'price' => '1299.00',
+                'stock' => 4,
+                'package_weight_kg' => '0.250',
+                'package_length_cm' => '24',
+                'package_width_cm' => '18',
+                'package_height_cm' => '8',
+                'low_stock_threshold' => 2,
+                'intent' => 'draft',
+            ])
+            ->assertRedirect('/seller/products');
+
+        $product = Product::query()->where('store_id', $store->id)->firstOrFail();
+        $catalogImage = $product->images()->firstOrFail();
+
+        $this->assertDatabaseMissing('seller_product_drafts', ['id' => $draftId]);
+        $this->assertDatabaseMissing('seller_product_draft_images', ['id' => $temporaryImage->id]);
+        Storage::disk('local')->assertMissing($temporaryImage->path);
+        Storage::disk('public')->assertExists($catalogImage->path);
+    }
+
+    public function test_successful_product_save_keeps_only_cleanup_metadata_when_temporary_deletion_fails(): void
+    {
+        Storage::fake('local');
+        Storage::fake('public');
+
+        $category = $this->category();
+        $seller = $this->seller($category);
+        $store = Store::create([
+            'seller_profile_id' => $seller->sellerProfile->id,
+            'name' => 'Cleanup Retry Store',
+            'slug' => 'cleanup-retry-store',
+            'publication_status' => 'draft',
+        ]);
+
+        $drafts = app(SellerProductDraftService::class);
+        $drafts->save($store, ['name' => 'Stale product form values'], [], []);
+        $temporaryImage = $drafts->replaceImages(
+            $store,
+            'primary',
+            [UploadedFile::fake()->create('cleanup-retry.png', 10, 'image/png')],
+        )[0];
+        $draft = $temporaryImage->draft->fresh('images');
+        $product = app(SellerProductService::class)->save(
+            $seller,
+            [
+                'product_mode' => 'single',
+                'name' => 'Saved Before Cleanup Retry',
+                'category' => $category->name,
+                'price' => '1299.00',
+                'stock' => 4,
+                'package_weight_kg' => '0.250',
+                'package_length_cm' => '24',
+                'package_width_cm' => '18',
+                'package_height_cm' => '8',
+                'low_stock_threshold' => 2,
+                'intent' => 'draft',
+            ],
+            $drafts->uploadedFiles($draft, 'primary')[0],
+            [],
+        );
+
+        $fileExists = true;
+        $deleteAttempts = 0;
+        $disk = Mockery::mock();
+        $disk->shouldReceive('delete')
+            ->with($temporaryImage->path)
+            ->andReturnUsing(function () use (&$deleteAttempts, &$fileExists): bool {
+                $deleteAttempts++;
+                if ($deleteAttempts === 1) {
+                    return false;
+                }
+
+                $fileExists = false;
+
+                return true;
+            });
+        $disk->shouldReceive('exists')
+            ->with($temporaryImage->path)
+            ->andReturnUsing(function () use (&$fileExists): bool {
+                return $fileExists;
+            });
+        Storage::shouldReceive('disk')->with('local')->andReturn($disk);
+
+        $this->assertFalse($drafts->forget($draft));
+        $cleanupDraft = $draft->fresh();
+        $this->assertSame($product->id, Product::query()->where('name', 'Saved Before Cleanup Retry')->firstOrFail()->id);
+        $this->assertTrue($cleanupDraft->payload['cleanup_only']);
+        $this->assertArrayNotHasKey('fields', $cleanupDraft->payload);
+        $this->assertContains($temporaryImage->id, $cleanupDraft->payload['pending_image_cleanup']);
+
+        $this->actingAs($seller)
+            ->get('/seller/products/create')
+            ->assertOk()
+            ->assertDontSee('Stale product form values');
+
+        $this->assertSame(2, $deleteAttempts);
+        $this->assertDatabaseMissing('seller_product_drafts', ['id' => $draft->id]);
+        $this->assertDatabaseMissing('seller_product_draft_images', ['id' => $temporaryImage->id]);
     }
 
     public function test_seller_can_select_or_create_a_subcategory_only_for_their_own_store(): void
@@ -1249,7 +1385,7 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
             'publication_status' => 'draft',
         ]);
 
-        $scanner = \Mockery::mock(ComplianceScanner::class);
+        $scanner = Mockery::mock(ComplianceScanner::class);
         $scanner->shouldReceive('scan')
             ->once()
             ->andThrow(new RuntimeException('Simulated compliance scanner failure.'));

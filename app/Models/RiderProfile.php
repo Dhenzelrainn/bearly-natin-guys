@@ -58,6 +58,11 @@ class RiderProfile extends Model
         return $this->hasMany(PickupAssignment::class);
     }
 
+    public function liveLocation()
+    {
+        return $this->hasOne(RiderLocation::class);
+    }
+
     public function deliveryAttempts()
     {
         return $this->hasMany(DeliveryAttempt::class);

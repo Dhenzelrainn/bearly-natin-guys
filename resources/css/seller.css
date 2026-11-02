@@ -4309,8 +4309,12 @@ svg {
     line-height: 1.45;
 }
 
-.product-primary-upload input,
-.product-gallery-field input[type="file"] {
+.product-file-picker {
+    display: flex;
+    width: 100%;
+    height: 56px;
+    align-items: center;
+    box-sizing: border-box;
     padding: 9px;
     border: 1px solid #ded5cd;
     border-radius: 8px;
@@ -4319,9 +4323,72 @@ svg {
     font-size: 10px;
 }
 
+.product-file-picker:focus-within {
+    border-color: #ce8a24;
+    box-shadow: 0 0 0 3px rgba(233, 167, 47, .13);
+}
+
+.product-file-picker-button {
+    display: inline-flex;
+    width: 98px;
+    min-width: 98px;
+    height: 38px;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    border: 1px solid #c58a3c;
+    border-radius: 6px;
+    background: #f2e0c4;
+    color: #6f4a31;
+    font: inherit;
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.product-file-picker-button:focus-visible {
+    outline: 2px solid #ce8a24;
+    outline-offset: 2px;
+}
+
+.product-file-picker-name {
+    min-width: 0;
+    margin-left: 8px;
+    overflow: hidden;
+    color: inherit;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.product-file-picker-input {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    margin: -1px !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    border: 0 !important;
+    clip: rect(0 0 0 0) !important;
+    clip-path: inset(50%) !important;
+    white-space: nowrap !important;
+}
+
+.product-file-picker-input[hidden] {
+    display: none !important;
+}
+
+.product-file-picker:has(.product-file-picker-input:disabled) {
+    cursor: not-allowed;
+    opacity: .58;
+}
+
+.product-file-picker:has(.product-file-picker-input:disabled) .product-file-picker-button {
+    cursor: not-allowed;
+}
+
 .product-gallery-field {
     align-content: start;
-    padding: 18px;
+    padding: 16px;
     border: 1px solid #ebe2da;
     border-radius: 12px;
     background: #fcfaf8;
@@ -4365,21 +4432,9 @@ svg {
 
 .product-variant-images-field {
     align-content: start;
-    padding: 14px;
-    border: 1px solid #ebe2da;
-    border-radius: 10px;
-    background: #fff;
-}
-
-.product-variant-images-field input[type="file"] {
-    width: 100%;
-    box-sizing: border-box;
-    padding: 8px;
-    border: 1px solid #ded5cd;
-    border-radius: 8px;
-    color: var(--seller-muted);
-    background: #fff;
-    font-size: 10px;
+    padding: 0;
+    border: 0;
+    background: transparent;
 }
 
 .product-variant-image-uploads {

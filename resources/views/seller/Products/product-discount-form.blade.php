@@ -13,6 +13,109 @@
 @section('page-title', $promotion ? 'Edit Product Discount' : 'Create Product Discount')
 @section('topbar-subtitle', 'Schedule a Seller-funded automatic price reduction.')
 
+@push('styles')
+    <style>
+        /* Keep Product Discount controls readable if a deployment serves stale Seller CSS. */
+        :root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page :is(
+            .promotion-create-layout,
+            .promotion-create-card,
+            .promotion-input-shell,
+            .promotion-product-option,
+            .promotion-empty-state
+        ) {
+            border-color: #594737 !important;
+            background-color: #30241d !important;
+            color: var(--theme-text);
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page .promotion-scope-notice {
+            border-color: #72563e !important;
+            background-color: #3a2c20 !important;
+            color: #f1e9e1;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page .promotion-create-card + .promotion-create-card {
+            border-top-color: #594737;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page :is(
+            .promotion-create-card-heading h2,
+            .promotion-create-card-heading p,
+            .promotion-field > span,
+            .promotion-product-copy strong,
+            .promotion-product-price strong,
+            .promotion-create-submit strong
+        ) {
+            color: #f1e9e1 !important;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page :is(
+            .promotion-field small,
+            .promotion-field-optional,
+            .promotion-form-schedule-note,
+            .promotion-product-copy small,
+            .promotion-product-price > span,
+            .promotion-create-submit p
+        ) {
+            color: #d5c2ad !important;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page :is(
+            .promotion-field > input,
+            .promotion-field > select,
+            .promotion-field > textarea
+        ) {
+            border-color: #594737 !important;
+            background-color: #211c18 !important;
+            color: #f1e9e1 !important;
+            color-scheme: dark;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page .promotion-input-shell {
+            background-color: #211c18 !important;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page .promotion-input-shell input {
+            background: transparent !important;
+            color: #f1e9e1 !important;
+            color-scheme: dark;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page .promotion-input-suffix {
+            border-left-color: #594737;
+            background-color: #3a2c20;
+            color: #efbd71;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page :is(
+            .promotion-field > input[type="date"],
+            .promotion-field > input[type="time"]
+        )::-webkit-calendar-picker-indicator {
+            filter: invert(82%) sepia(17%) saturate(560%) hue-rotate(352deg) brightness(93%);
+            opacity: .88;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page .promotion-scope-note-compact {
+            border: 1px solid #72563e;
+            background-color: #3a2c20;
+            color: #efbd71;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page .promotion-scope-note-compact strong {
+            color: #fff8ef;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page .promotion-product-option:hover {
+            border-color: #806334 !important;
+            background-color: #3a2c20 !important;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page .promotion-product-price small {
+            color: #efbd71 !important;
+        }
+    </style>
+@endpush
+
 @section('content')
 <div class="promotion-create-page" data-product-discount-form>
     <div class="promotion-create-toolbar">

@@ -6,8 +6,8 @@ use App\Enums\AccountStatus;
 use App\Enums\ParcelStatus;
 use App\Enums\RiderWorkType;
 use App\Enums\UserRole;
-use App\Models\LinehaulRun;
 use App\Models\Conversation;
+use App\Models\LinehaulRun;
 use App\Models\Message;
 use App\Models\MessageAttachment;
 use App\Models\OrderItem;
@@ -23,14 +23,19 @@ use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
 use App\Services\LinehaulRunService;
 use App\Services\PostalCodeLookup;
+use App\Services\PsgcAddressService;
+use App\Services\RegistrationDraftService;
 use App\Services\RegistrationLifecycleService;
 use App\Services\ReturnRefundService;
+use App\Services\RiderAccountStatusService;
 use App\Services\RiderDeliveryHistoryService;
 use App\Services\RiderDeliveryService;
 use App\Services\RiderEarningsService;
 use App\Services\RiderPickupService;
-use App\Services\RiderZoneAssignmentService;
+use App\Services\RiderLocationService;
+use App\Services\RiderWorkloadService;
 use App\Services\RiderVehicleChangeService;
+use App\Services\RiderZoneAssignmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -709,8 +714,11 @@ class RiderController extends Controller
         return view('rider.landing.index');
     }
 
-    public function register(Request $request, ApplicationReviewService $reviews): View
-    {
+    public function register(
+        Request $request,
+        ApplicationReviewService $reviews,
+        RegistrationDraftService $drafts,
+    ): View {
         $applicationReview = $reviews->forSession($request);
         $logisticsPartners = Schema::hasTable('users')
             ? User::query()
@@ -731,7 +739,11 @@ class RiderController extends Controller
                 ->all()
             : [];
 
-        return view('rider.applications.create', compact('logisticsPartners', 'applicationReview'));
+        return view('rider.applications.create', [
+            'logisticsPartners' => $logisticsPartners,
+            'applicationReview' => $applicationReview,
+            'registrationDraft' => $drafts->forPage($request, 'rider'),
+        ]);
     }
 
     private function uniqueRiderPlateRule(
@@ -820,6 +832,8 @@ class RiderController extends Controller
                     }
                 },
             ],
+            'region' => ['required', 'string', 'max:160'],
+            'region_code' => ['required', 'regex:/^\d{10}$/D'],
             'province' => ['required', 'string', 'max:120'],
             'municipality' => ['required', 'string', 'max:120'],
             'barangay' => ['required', 'string', 'max:120'],
@@ -876,6 +890,11 @@ class RiderController extends Controller
             'postal_code' => $validated['postal_code'],
             'postal_manual' => $validated['postal_manual'] ?? false,
         ]);
+
+        $validated = app(PsgcAddressService::class)->normalize([
+            ...$validated,
+            'city' => $validated['municipality'],
+        ], true);
 
         $logistics = User::query()
             ->whereKey($validated['logistics_partner'])
@@ -942,6 +961,8 @@ class RiderController extends Controller
                     'role' => UserRole::Rider->value,
                     'status' => AccountStatus::Pending->value,
                     'logistics_id' => $logistics->id,
+                    'region' => $validated['region'],
+                    'region_code' => $validated['region_code'],
                     'province' => $validated['province'],
                     'city' => $validated['municipality'],
                     'barangay' => $validated['barangay'],
@@ -960,6 +981,8 @@ class RiderController extends Controller
                         [
                             'house_number' => $validated['house_number'],
                             'street' => $validated['street'],
+                            'region' => $validated['region'],
+                            'region_code' => $validated['region_code'],
                             'barangay' => $validated['barangay'],
                             'municipality' => $validated['municipality'],
                             'province' => $validated['province'],
@@ -996,6 +1019,7 @@ class RiderController extends Controller
         }
 
         $verification->forget($request);
+        app(RegistrationDraftService::class)->forget($request, 'rider');
 
         session([
             'rider_application' => [
@@ -1163,7 +1187,9 @@ class RiderController extends Controller
     }
 
     public function updateAvailability(
-        Request $request
+        Request $request,
+        RiderAccountStatusService $statusService,
+        RiderLocationService $locationService,
     ): RedirectResponse {
         /** @var User|null $user */
         $user = $request->user();
@@ -1191,9 +1217,27 @@ class RiderController extends Controller
             403
         );
 
-        $riderProfile->update([
-            'availability_status' => $validated['availability_status'],
-        ]);
+        DB::transaction(function () use (
+            $riderProfile,
+            $validated,
+            $locationService,
+        ): void {
+            $riderProfile->update([
+                'availability_status' => $validated['availability_status'],
+            ]);
+
+            if ($validated['availability_status'] === 'offline') {
+                $locationService->clear($riderProfile);
+            }
+        });
+
+        $riderProfile->refresh();
+
+        $statusService->broadcastOperationalStatus(
+            $user,
+            $riderProfile,
+            (int) $riderProfile->logisticsProfile()->value('user_id'),
+        );
 
         $message =
             $validated['availability_status'] === 'available'
@@ -1203,7 +1247,108 @@ class RiderController extends Controller
         return back()->with('success', $message);
     }
 
-    public function deliveriesDashboard(): View
+    public function updateLocation(
+        Request $request,
+        RiderLocationService $locationService,
+    ): JsonResponse {
+        /** @var User|null $user */
+        $user = $request->user();
+
+        abort_unless(
+            $user instanceof User
+            && $user->status === AccountStatus::Active->value
+            && $user->hasRole(UserRole::Rider->value),
+            403,
+        );
+
+        $riderProfile = $user->riderProfile()->first();
+
+        abort_unless(
+            $riderProfile
+            && $riderProfile->verification_status === 'approved',
+            403,
+        );
+
+        abort_unless(
+            $riderProfile->work_type === null
+            || $riderProfile->work_type === RiderWorkType::Local->value,
+            409,
+            'Live location sharing is available for local Rider work only.',
+        );
+
+        abort_unless(
+            $riderProfile->availability_status === 'available',
+            409,
+            'Set your Rider availability to Available before sharing your location.',
+        );
+
+        $validated = $request->validate([
+            'latitude' => [
+                'required',
+                'numeric',
+                'between:-90,90',
+            ],
+            'longitude' => [
+                'required',
+                'numeric',
+                'between:-180,180',
+            ],
+            'accuracy_meters' => [
+                'nullable',
+                'numeric',
+                'between:0,100000',
+            ],
+        ]);
+
+        $location = $locationService->record(
+            $riderProfile,
+            (float) $validated['latitude'],
+            (float) $validated['longitude'],
+            isset($validated['accuracy_meters'])
+                ? (float) $validated['accuracy_meters']
+                : null,
+        );
+
+        return response()->json([
+            'data' => [
+                'latitude' => $location->latitude,
+                'longitude' => $location->longitude,
+                'accuracy_meters' => $location->accuracy_meters,
+                'last_seen_at' => $location->last_seen_at?->toIso8601String(),
+                'stale_after_seconds' => RiderLocationService::FRESHNESS_SECONDS,
+            ],
+            'message' => 'Live location updated.',
+        ]);
+    }
+
+    public function clearLocation(
+        Request $request,
+        RiderLocationService $locationService,
+    ): JsonResponse {
+        /** @var User|null $user */
+        $user = $request->user();
+
+        abort_unless(
+            $user instanceof User
+            && $user->hasRole(UserRole::Rider->value),
+            403,
+        );
+
+        $riderProfile = $user->riderProfile()->first();
+
+        if ($riderProfile) {
+            $locationService->clear($riderProfile);
+        }
+
+        return response()->json([
+            'data' => null,
+            'message' => 'Live location sharing stopped.',
+        ]);
+    }
+
+    public function deliveriesDashboard(
+        RiderWorkloadService $workloadService,
+    ): View
     {
         /** @var User|null $user */
         $user = Auth::user();
@@ -1212,6 +1357,17 @@ class RiderController extends Controller
             $this->deliveryAssignmentsFor(
                 $user
             );
+
+        $riderProfile = $user
+            ?->riderProfile()
+            ->first();
+
+        $workload = $riderProfile
+            ? $workloadService->metricsFor($riderProfile)
+            : [
+                'active_jobs' => 0,
+                'completed_today' => 0,
+            ];
 
         $deliveries = $assignments
             ->filter(
@@ -1262,7 +1418,11 @@ class RiderController extends Controller
 
                     'out_for_delivery' => $outForDelivery,
 
-                    'active_stops' => $deliveries->count(),
+                    'active_stops' => $workload['active_jobs'],
+
+                    'active_jobs' => $workload['active_jobs'],
+
+                    'completed_today' => $workload['completed_today'],
 
                     'cod_minor' => $codMinor,
                 ],

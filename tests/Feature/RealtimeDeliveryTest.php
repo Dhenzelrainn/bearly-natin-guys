@@ -6,6 +6,7 @@ use App\Events\AnnouncementPublished;
 use App\Events\ConversationMessageCreated;
 use App\Events\LogisticsRefundCashPayoutUpdated;
 use App\Events\RiderShippingEarningUpdated;
+use App\Events\RiderOperationalStatusUpdated;
 use App\Events\SellerReturnStatusUpdated;
 use App\Models\Announcement;
 use App\Models\Role;
@@ -141,6 +142,36 @@ class RealtimeDeliveryTest extends TestCase
         $this->assertSame([
             'earning_id' => 42,
             'status' => 'paid',
+            'updated_at' => '2026-10-29T12:00:00+00:00',
+        ], $event->broadcastWith());
+    }
+
+    public function test_rider_operational_status_event_targets_the_rider_and_owning_logistics_user(): void
+    {
+        $rider = $this->user('rider');
+        $logistics = $this->user('logistics');
+        $event = new RiderOperationalStatusUpdated(
+            riderUserId: (int) $rider->id,
+            logisticsUserId: (int) $logistics->id,
+            accountStatus: 'suspended',
+            availabilityStatus: 'offline',
+            updatedAt: '2026-10-29T12:00:00+00:00',
+        );
+
+        $channels = collect($event->broadcastOn())
+            ->map(fn ($channel): string => $channel->name)
+            ->values()
+            ->all();
+
+        $this->assertSame([
+            'private-users.'.$rider->id,
+            'private-users.'.$logistics->id,
+        ], $channels);
+        $this->assertSame('rider.operational-status-updated', $event->broadcastAs());
+        $this->assertSame([
+            'rider_user_id' => (int) $rider->id,
+            'account_status' => 'suspended',
+            'availability_status' => 'offline',
             'updated_at' => '2026-10-29T12:00:00+00:00',
         ], $event->broadcastWith());
     }

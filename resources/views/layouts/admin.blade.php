@@ -25,6 +25,296 @@
     ])
     @include('partials.session-safety')
     @stack('styles')
+    <style>
+        /* Keep Admin filters consistent when an older CSS bundle is cached. */
+        :root[data-theme="dark"] body.admin-body :is(
+            .admin-search, .field-with-icon, .registration-search, .table-search
+        ) input[type="search"]:focus-visible {
+            outline: none !important;
+            outline-offset: 0 !important;
+            box-shadow: none !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body :is(.admin-search, .field-with-icon) input[type="search"] {
+            border-color: transparent !important;
+            background-color: transparent !important;
+            box-shadow: none !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body select:not([multiple]):not([size]) {
+            appearance: none !important;
+            -webkit-appearance: none !important;
+            min-width: 0;
+            padding-right: 34px;
+            border-color: #4a3d34 !important;
+            background-color: #1b1714 !important;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23efbd71' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
+            background-position: right 12px center !important;
+            background-repeat: no-repeat !important;
+            background-size: 12px !important;
+            color: #f1e9e1 !important;
+            color-scheme: dark;
+        }
+
+        :root[data-theme="dark"] body.admin-body select:not([multiple]):not([size]):focus-visible {
+            border-color: #efbd71 !important;
+            outline: none !important;
+            box-shadow: 0 0 0 2px rgba(239, 189, 113, .22) !important;
+        }
+
+        /* Keep dispute participant controls readable when an older Admin bundle is cached. */
+        :root[data-theme="dark"] body.admin-body .coordination-panel .coordination-grid {
+            border-color: #4a3d34 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .coordination-panel .party-card {
+            border-right-color: #4a3d34 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .coordination-panel .party-icon {
+            background: #45331d !important;
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .coordination-panel .party-card small,
+        :root[data-theme="dark"] body.admin-body .coordination-panel .dispute-visibility-help {
+            color: #c0b2a5 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .coordination-panel .party-card strong,
+        :root[data-theme="dark"] body.admin-body .coordination-panel .form-field > span {
+            color: #f1e9e1 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .coordination-panel .form-field textarea {
+            border-color: #4a3d34 !important;
+            background: #1b1714 !important;
+            color: #f1e9e1 !important;
+        }
+
+        /* Keep Finance action forms dark when an older Admin bundle is cached. */
+        :root[data-theme="dark"] body.admin-body .finance-action-form {
+            border-color: #4a3d34 !important;
+            background: #211c18 !important;
+            color: #f1e9e1 !important;
+            box-shadow: none !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .finance-action-form label,
+        :root[data-theme="dark"] body.admin-body .finance-action-form .finance-confirm {
+            color: #f1e9e1 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .finance-action-form :is(
+            input:not([type="checkbox"]), select, textarea
+        ) {
+            border-color: #4a3d34 !important;
+            background: #1b1714 !important;
+            color: #f1e9e1 !important;
+            color-scheme: dark;
+        }
+
+        :root[data-theme="dark"] body.admin-body .finance-action-form :is(
+            small, .table-subline
+        ) {
+            color: #c0b2a5 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .finance-action-form .finance-confirm input {
+            accent-color: #efbd71;
+        }
+
+        /* Keep announcement composer surfaces dark when an older Admin bundle is cached. */
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-composer-author strong,
+        :root[data-theme="dark"] body.admin-body .announcement-composer .form-field > span,
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-audience-field legend {
+            color: #f1e9e1 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-composer-author small,
+        :root[data-theme="dark"] body.admin-body .announcement-composer .form-field > span small,
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-audience-field legend small,
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-media-count,
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-delivery-note {
+            color: #c0b2a5 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-retention-note {
+            border-color: #72563e !important;
+            background: #3b3027 !important;
+            color: #d8cabd !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-retention-note svg,
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-delivery-note svg {
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-audience-field,
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-existing-media {
+            border-color: #594232 !important;
+            background: #211c18 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-audience-options label {
+            border-color: #72563e !important;
+            background: #3b3027 !important;
+            color: #f1e9e1 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-audience-options input,
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-remove-choice input {
+            accent-color: #efbd71;
+        }
+
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-media-upload {
+            border-color: #806334 !important;
+            background: #2b241f !important;
+            color: #f1e9e1 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-media-upload-icon {
+            background: #45331d !important;
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-media-upload-copy strong {
+            color: #f1e9e1 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-media-upload-copy small,
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-media-upload input {
+            color: #c0b2a5 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-media-upload input[type="file"] {
+            border-color: #594232 !important;
+            background: #1b1714 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-media-upload input[type="file"]::file-selector-button {
+            border: 0;
+            border-right: 1px solid #594232;
+            background: #3b3027;
+            color: #f1e9e1;
+            cursor: pointer;
+        }
+
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-upload-preview-item {
+            border-color: #594232 !important;
+            background: #2b241f !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-upload-preview-item img,
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-upload-preview-item video {
+            background: #211c18 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-upload-preview-item figcaption {
+            color: #c0b2a5 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .announcement-composer .announcement-upload-remove {
+            border: 1px solid #72504a !important;
+            background: #3b2523 !important;
+            color: #ffaaa0 !important;
+        }
+
+        /* Keep Platform Settings controls dark when an older Admin bundle is cached. */
+        :root[data-theme="dark"] body.admin-body .settings-toggle-card > div {
+            background: #45331d !important;
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .settings-toggle-card:hover {
+            border-color: #806334 !important;
+            background: #2b241f !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .settings-toggle-row + .settings-toggle-row {
+            border-color: #4a3d34 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .settings-save-state {
+            border-color: #72563e !important;
+            background: #3b3027 !important;
+            color: #f1e9e1 !important;
+            box-shadow: none !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .settings-save-state strong {
+            color: #f1e9e1 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .settings-save-state small {
+            color: #c0b2a5 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .settings-save-state-icon {
+            background: #1e3828 !important;
+            color: #a8d5b0 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .settings-save-state[data-state="dirty"] {
+            border-color: #806334 !important;
+            background: #3b3020 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .settings-save-state[data-state="dirty"] .settings-save-state-icon {
+            background: #45331d !important;
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .settings-save-state[data-state="default"] {
+            border-color: #594232 !important;
+            background: #2b241f !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .settings-save-state[data-state="default"] .settings-save-state-icon {
+            background: #3b3027 !important;
+            color: #d8cabd !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .settings-grid input[type="number"],
+        :root[data-theme="dark"] body.admin-body .settings-editor-panel input[type="number"] {
+            color-scheme: dark;
+        }
+
+        :root[data-theme="dark"] body.admin-body .settings-availability-state {
+            border-color: #4a3d34 !important;
+        }
+
+        /* Keep Shipping Fees values and calculation help readable when an older Admin bundle is cached. */
+        :root[data-theme="dark"] body.admin-body :is(
+            label[for="shipping-base-fee"],
+            label[for="zone-surcharge-step"],
+            label[for="volumetric-divisor"],
+            label[for="shipping-change-reason"]
+        ) {
+            color: #f1e9e1 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body :is(
+            #shipping-base-fee,
+            #zone-surcharge-step,
+            #volumetric-divisor,
+            #shipping-change-reason
+        ) {
+            border-color: #4a3d34 !important;
+            background: #1b1714 !important;
+            color: #f1e9e1 !important;
+            color-scheme: dark;
+        }
+
+        :root[data-theme="dark"] body.admin-body :is(
+            #shipping-base-fee + small,
+            #zone-surcharge-step + small,
+            #volumetric-divisor + small,
+            #shipping-change-reason + small
+        ) {
+            color: #c0b2a5 !important;
+        }
+    </style>
 </head>
 
 <body class="admin-body" data-realtime-user-id="{{ auth()->id() }}">
@@ -139,7 +429,7 @@ $adminNavGroups = [
             [
                 'label' => 'Seller Payments',
                 'route' => 'admin.payments',
-                'icon' => 'credit-card',
+                'icon' => 'wallet',
             ],
             [
                 'label' => 'Shipping Settlements',

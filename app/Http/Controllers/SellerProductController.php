@@ -2,15 +2,19 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Product;
 use App\Models\MarketplaceSubcategory;
+use App\Models\Product;
+use App\Models\SellerProductDraft;
 use App\Services\MarketplaceTaxonomyService;
 use App\Services\SellerIdentityService;
 use App\Services\SellerNotificationService;
+use App\Services\SellerProductDraftService;
 use App\Services\SellerProductService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -38,7 +42,7 @@ class SellerProductController extends Controller
 
     private function normalizeProduct(array $product): array
     {
-        return array_merge([
+        $normalized = array_merge([
             'id' => '',
             'name' => '',
             'category' => '',
@@ -63,6 +67,7 @@ class SellerProductController extends Controller
             'option_one_values' => '',
             'option_two_name' => '',
             'option_two_values' => '',
+            'package_shared' => false,
             'variants' => [],
             'payment_methods' => [],
             'product_mode' => 'single',
@@ -74,6 +79,12 @@ class SellerProductController extends Controller
             'gallery_image_urls' => [],
             'media_preview' => [],
         ], $product);
+
+        foreach (['voucher_eligible', 'package_shared'] as $booleanField) {
+            $normalized[$booleanField] = in_array($normalized[$booleanField], [true, 1, '1'], true);
+        }
+
+        return $normalized;
     }
 
     private function validateProduct(
@@ -214,10 +225,19 @@ class SellerProductController extends Controller
         Request $request,
         SellerProductService $products,
         MarketplaceTaxonomyService $taxonomy,
-    ): View
-    {
+        SellerProductDraftService $drafts,
+    ): View {
         $registeredCategory = $this->registeredCategory($request);
         $storeSubcategories = $products->subcategoriesFor($request->user());
+        $draft = $drafts->forStore($products->storeFor($request->user()));
+        $draftPayload = $draft->payload ?? [];
+        $draftFields = is_array($draftPayload['fields'] ?? null) ? $draftPayload['fields'] : [];
+        $draftProduct = array_merge($draftFields, [
+            'category' => $registeredCategory,
+            'subcategory' => '',
+            'variants' => is_array($draftPayload['variants'] ?? null) ? $draftPayload['variants'] : [],
+            'media_preview' => $drafts->imagesForView($draft),
+        ]);
 
         return view('seller.Products.product-form', [
             'seller' => $this->seller(),
@@ -226,17 +246,19 @@ class SellerProductController extends Controller
             'registeredCategory' => $registeredCategory,
             'subcategories' => $storeSubcategories,
             'marketplaceSubcategories' => $taxonomy->marketplaceSubcategoriesForSeller($request->user()),
-            'product' => $this->normalizeProduct([
-                'category' => $registeredCategory,
-                'subcategory_id' => null,
-                'subcategory' => '',
-            ]),
+            'product' => $this->normalizeProduct($draftProduct),
+            'productDraft' => $draft,
             'mode' => 'create',
         ]);
     }
 
-    public function addProduct(Request $request, SellerProductService $products): RedirectResponse
-    {
+    public function addProduct(
+        Request $request,
+        SellerProductService $products,
+        SellerProductDraftService $drafts,
+    ): RedirectResponse {
+        $draft = $drafts->forStore($products->storeFor($request->user()));
+        $this->restoreTemporaryImages($request, $draft, $drafts);
         $validated = $this->validateProduct($request, $products);
         $savedProduct = $products->save(
             $request->user(),
@@ -249,6 +271,10 @@ class SellerProductController extends Controller
             $request->file('variant_color_images', []),
             $validated['variant_image_colors'] ?? [],
         );
+        $draftCleanupSucceeded = $drafts->forget($draft);
+        $draftCleanupNotice = $draftCleanupSucceeded
+            ? ''
+            : ' Temporary product photos could not be fully deleted and will be retried.';
 
         if (in_array($savedProduct->product_status, ['blocked', 'flagged'], true)) {
             $statusFilter = $savedProduct->product_status === 'blocked' ? 'Blocked' : 'Needs Review';
@@ -256,17 +282,199 @@ class SellerProductController extends Controller
             return redirect()->route('seller.products', ['status' => $statusFilter])->with(
                 'compliance_warning',
                 $savedProduct->product_status === 'blocked'
-                    ? 'Compliance warning: this product is blocked and hidden from Buyers. Review the reason beside the product before making changes.'
-                    : 'Compliance warning: this product is held for Admin review and hidden from Buyers. Review the reason beside the product before making changes.'
+                    ? 'Compliance warning: this product is blocked and hidden from Buyers. Review the reason beside the product before making changes.'.$draftCleanupNotice
+                    : 'Compliance warning: this product is held for Admin review and hidden from Buyers. Review the reason beside the product before making changes.'.$draftCleanupNotice
             );
         }
 
         return redirect()->route('seller.products')->with(
             'success',
             $validated['intent'] === 'publish'
-                ? 'Product published in your approved business category.'
-                : 'Product saved as a draft.'
+                ? 'Product published in your approved business category.'.$draftCleanupNotice
+                : 'Product saved as a draft.'.$draftCleanupNotice
         );
+    }
+
+    public function saveProductDraft(Request $request, SellerProductService $products, SellerProductDraftService $drafts): JsonResponse
+    {
+        $validated = $request->validate([
+            'fields' => ['required', 'array', 'max:25'],
+            'fields.name' => ['nullable', 'string', 'max:120'],
+            'fields.marketplace_subcategory_id' => ['nullable', 'string', 'max:20'],
+            'fields.subcategory_id' => ['nullable', 'string', 'max:20'],
+            'fields.new_subcategory_name' => ['nullable', 'string', 'max:120'],
+            'fields.description' => ['nullable', 'string', 'max:1000'],
+            'fields.sku' => ['nullable', 'string', 'max:60'],
+            'fields.price' => ['nullable', 'string', 'max:30'],
+            'fields.voucher_eligible' => ['nullable', 'string', 'in:0,1'],
+            'fields.product_mode' => ['nullable', 'string', 'in:single,with_variants'],
+            'fields.stock' => ['nullable', 'string', 'max:20'],
+            'fields.low_stock_threshold' => ['nullable', 'string', 'max:20'],
+            'fields.package_weight_kg' => ['nullable', 'string', 'max:30'],
+            'fields.package_length_cm' => ['nullable', 'string', 'max:30'],
+            'fields.package_width_cm' => ['nullable', 'string', 'max:30'],
+            'fields.package_height_cm' => ['nullable', 'string', 'max:30'],
+            'fields.option_one_name' => ['nullable', 'string', 'max:40'],
+            'fields.option_one_values' => ['nullable', 'string', 'max:250'],
+            'fields.option_two_name' => ['nullable', 'string', 'max:40'],
+            'fields.option_two_values' => ['nullable', 'string', 'max:250'],
+            'fields.package_shared' => ['nullable', 'string', 'in:0,1'],
+            'fields.shared_package' => ['nullable', 'array', 'max:4'],
+            'fields.shared_package.*' => ['nullable', 'string', 'max:30'],
+            'variants' => ['required', 'array', 'max:100'],
+            'variants.*' => ['required', 'array', 'max:16'],
+            'variants.*.label' => ['nullable', 'string', 'max:120'],
+            'variants.*.sku' => ['nullable', 'string', 'max:80'],
+            'variants.*.price' => ['nullable', 'string', 'max:30'],
+            'variants.*.stock' => ['nullable', 'string', 'max:20'],
+            'variants.*.low_stock_threshold' => ['nullable', 'string', 'max:20'],
+            'variants.*.package_weight_kg' => ['nullable', 'string', 'max:30'],
+            'variants.*.package_length_cm' => ['nullable', 'string', 'max:30'],
+            'variants.*.package_width_cm' => ['nullable', 'string', 'max:30'],
+            'variants.*.package_height_cm' => ['nullable', 'string', 'max:30'],
+            'variants.*.package_override' => ['nullable', 'boolean'],
+            'variants.*.package_selected' => ['nullable', 'boolean'],
+            'variants.*.packageDetailsOpen' => ['nullable', 'boolean'],
+            'variant_image_colors' => ['nullable', 'array', 'max:100'],
+            'variant_image_colors.*' => ['nullable', 'string', 'max:120'],
+            'draft_image_colors' => ['nullable', 'array', 'max:100'],
+            'draft_image_colors.*' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        $draft = $drafts->save(
+            $products->storeFor($request->user()),
+            $validated['fields'],
+            $validated['variants'],
+            $validated['variant_image_colors'] ?? [],
+            $validated['draft_image_colors'] ?? [],
+        );
+
+        return response()->json([
+            'data' => ['expires_at' => $draft->expires_at->toIso8601String()],
+            'message' => 'Product details saved privately for 7 days.',
+        ]);
+    }
+
+    public function uploadDraftImages(Request $request, SellerProductService $products, SellerProductDraftService $drafts): JsonResponse
+    {
+        $validated = $request->validate([
+            'purpose' => ['required', Rule::in(['primary', 'gallery', 'variant_color'])],
+            'images' => ['required', 'array', 'min:1', 'max:100'],
+            'images.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+            'colors' => ['nullable', 'array', 'max:100'],
+            'colors.*' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        $store = $products->storeFor($request->user());
+        $draftImages = $drafts->replaceImages(
+            $store,
+            $validated['purpose'],
+            $validated['images'],
+            $validated['colors'] ?? [],
+        );
+
+        $draft = $draftImages[0]->draft->load('images');
+
+        $cleanupNotice = $drafts->cleanupFailureCount() > 0
+            ? ' Previous temporary product photos could not be fully deleted and will be retried.'
+            : '';
+
+        return response()->json([
+            'data' => $drafts->imagesForView($draft),
+            'message' => 'Product photos are stored privately for 7 days.'.$cleanupNotice,
+        ]);
+    }
+
+    public function removeDraftImage(Request $request, int $image, SellerProductService $products, SellerProductDraftService $drafts): JsonResponse
+    {
+        $draft = $drafts->removeImage($products->storeFor($request->user()), $image);
+
+        return response()->json([
+            'data' => $drafts->imagesForView($draft),
+            'message' => 'Temporary product photo removed.',
+        ]);
+    }
+
+    public function clearDraftImages(Request $request, SellerProductService $products, SellerProductDraftService $drafts): JsonResponse
+    {
+        $validated = $request->validate([
+            'purpose' => ['required', Rule::in(['primary', 'gallery', 'variant_color'])],
+        ]);
+        $draft = $drafts->removeImages($products->storeFor($request->user()), $validated['purpose']);
+
+        return response()->json([
+            'data' => $draft ? $drafts->imagesForView($draft) : [],
+            'message' => 'Temporary product photos removed.',
+        ]);
+    }
+
+    public function showDraftImage(Request $request, int $image, SellerProductService $products, SellerProductDraftService $drafts)
+    {
+        $draftImage = $drafts->imageForStore($products->storeFor($request->user()), $image);
+        $disk = Storage::disk($draftImage->disk);
+
+        abort_unless($disk->exists($draftImage->path), 404);
+
+        return response()->file($disk->path($draftImage->path), [
+            'Content-Type' => $draftImage->mime_type,
+            'Content-Disposition' => 'inline',
+            'Cache-Control' => 'private, no-store, max-age=0',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    private function restoreTemporaryImages(
+        Request $request,
+        SellerProductDraft $draft,
+        SellerProductDraftService $drafts,
+    ): void {
+        $temporaryImageFields = [
+            'image' => 'primary',
+            'gallery_images' => 'gallery',
+        ];
+
+        if ($request->input('product_mode') === 'with_variants') {
+            $temporaryImageFields['variant_color_images'] = 'variant_color';
+        }
+
+        foreach ($temporaryImageFields as $field => $purpose) {
+            // Read the raw FileBag here instead of Request::hasFile(). The
+            // latter caches converted files, so adding a restored file after
+            // that check would leave validateProduct() seeing the old null.
+            if ($request->files->has($field)) {
+                continue;
+            }
+
+            $files = $drafts->uploadedFiles($draft, $purpose);
+            if ($files === []) {
+                continue;
+            }
+
+            $request->files->set($field, $field === 'image' ? $files[0] : $files);
+        }
+
+        if ($request->input('product_mode') === 'with_variants'
+            && ! $request->hasFile('variant_color_images')) {
+            $submittedColors = $request->input('draft_image_colors', []);
+            $colors = $draft->images
+                ->where('purpose', 'variant_color')
+                ->sortBy('position')
+                ->map(function ($image) use ($submittedColors): ?string {
+                    $color = is_array($submittedColors) && array_key_exists((string) $image->id, $submittedColors)
+                        ? $submittedColors[$image->id]
+                        : $image->color;
+
+                    return is_scalar($color) && trim((string) $color) !== ''
+                        ? trim((string) $color)
+                        : null;
+                })
+                ->values()
+                ->all();
+
+            if ($colors !== []) {
+                $request->merge(['variant_image_colors' => $colors]);
+            }
+        }
     }
 
     public function editProduct(
@@ -274,8 +482,7 @@ class SellerProductController extends Controller
         string $product,
         SellerProductService $products,
         MarketplaceTaxonomyService $taxonomy,
-    ): View
-    {
+    ): View {
         $item = $products->findForSeller($request->user(), $product);
         $registeredCategory = $products->registeredCategoryName($request->user());
         $item = $products->formPayload($item);

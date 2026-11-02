@@ -26,16 +26,21 @@
     </div>
 
     <div class="page-actions rider-dashboard-actions">
-        <div class="rider-availability-control">
+        <div
+            class="rider-availability-control"
+            data-rider-availability-control
+            data-rider-verification-status="{{ $riderVerificationStatus ?? 'pending' }}"
+        >
             <div class="rider-availability-copy" role="status" aria-live="polite">
                 <span
                     class="rider-availability-dot {{ $isRiderAvailable ? 'is-available' : ($isRiderApproved ? 'is-offline' : 'is-pending') }}"
+                    data-rider-availability-dot
                     aria-hidden="true"
                 ></span>
                 <span>
                     @if($isRiderApproved)
-                        <strong>{{ $isRiderAvailable ? 'Available' : 'Offline' }}</strong>
-                        <small id="rider-availability-help">
+                        <strong data-rider-availability-label>{{ $isRiderAvailable ? 'Available' : 'Off duty' }}</strong>
+                        <small id="rider-availability-help" data-rider-availability-help>
                             {{ $isRiderAvailable
                                 ? 'Visible for new pickup assignments.'
                                 : 'Hidden from new pickup assignments.' }}
@@ -48,20 +53,22 @@
             </div>
 
             @if($isRiderApproved)
-                <form method="POST" action="{{ route('rider.availability.update') }}">
+                <form method="POST" action="{{ route('rider.availability.update') }}" data-rider-availability-form>
                     @csrf
                     @method('PATCH')
                     <input
                         type="hidden"
                         name="availability_status"
                         value="{{ $isRiderAvailable ? 'offline' : 'available' }}"
+                        data-rider-availability-input
                     >
                     <button
                         class="button button-small {{ $isRiderAvailable ? '' : 'button-primary' }}"
                         type="submit"
                         aria-describedby="rider-availability-help"
+                        data-rider-availability-submit
                     >
-                        {{ $isRiderAvailable ? 'Go offline' : 'Go available' }}
+                        {{ $isRiderAvailable ? 'Go off duty' : 'Go available' }}
                     </button>
                 </form>
             @endif

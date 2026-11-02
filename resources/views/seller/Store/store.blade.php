@@ -3,6 +3,23 @@
 @section('title', 'My Store')
 @section('page-title', 'My Store')
 
+@push('styles')
+    <style>
+        /* Keep document icons visible if a cached deployment serves the old Seller bundle. */
+        :root[data-theme="dark"] body.seller-body .seller-content .store-document-status > span:first-child {
+            border: 1px solid #806334;
+            background-color: #45331d !important;
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .store-document-status > span:first-child svg {
+            color: inherit !important;
+            fill: none;
+            stroke: currentColor;
+        }
+    </style>
+@endpush
+
 @section('content')
 <div class="store-profile-page">
     <section class="page-heading store-profile-heading">

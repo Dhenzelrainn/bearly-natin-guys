@@ -76,6 +76,8 @@ export function setupPostal(form) {
             if (version !== generation) return;
             manual();
             help.textContent = 'Postal lookup is unavailable. You can enter your code manually.';
+            if (restoring && previous) input.value = previous;
+            restoring = false;
         } finally { clearTimeout(timeout); }
     }
     return { lookup, clear, manual };

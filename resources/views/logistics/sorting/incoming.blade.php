@@ -14,6 +14,7 @@
 </div>
 <section class="metric-strip">
     <article class="metric-item"><span class="metric-icon"><i data-lucide="package-open"></i></span><span class="metric-copy"><small>Received today</small><strong>{{ $intakeMetrics['received_today'] }}</strong><span>From {{ $intakeMetrics['seller_pickups'] }} pickup locations</span></span></article>
+    <article class="metric-item"><span class="metric-icon"><i data-lucide="truck"></i></span><span class="metric-copy"><small>Awaiting center intake</small><strong>{{ $intakeMetrics['awaiting_intake'] }}</strong><span>Picked-up parcels still with Logistics</span></span></article>
     <article class="metric-item"><span class="metric-icon"><i data-lucide="list-checks"></i></span><span class="metric-copy"><small>Awaiting sorting</small><strong>{{ $intakeMetrics['awaiting_sorting'] }}</strong><span>Ready for zone assignment</span></span></article>
     <article class="metric-item"><span class="metric-icon"><i data-lucide="scale"></i></span><span class="metric-copy"><small>Total weight</small><strong>{{ $intakeMetrics['total_weight'] }} kg</strong><span>Today’s intake</span></span></article>
     <article class="metric-item"><span class="metric-icon"><i data-lucide="triangle-alert"></i></span><span class="metric-copy"><small>Intake exceptions</small><strong>{{ $intakeMetrics['exceptions'] }}</strong><span>Requires inspection</span></span></article>
@@ -21,7 +22,7 @@
 <section class="panel" data-table-scope>
     <div class="table-toolbar">
         <div class="search-field"><i data-lucide="search"></i><input type="search" data-table-search placeholder="Scan or search waybill, order, seller, or rider"></div>
-        <select class="filter-select" data-filter-status><option value="">All intake statuses</option><option>Received</option><option>Sorted</option><option>Exception</option></select>
+        <select class="filter-select" data-filter-status><option value="">All intake statuses</option><option>Awaiting Intake</option><option>Received</option><option>Sorted</option><option>Exception</option></select>
         <select class="filter-select" data-filter-zone>
             <option value="">All destinations</option>
             @foreach($incomingParcels->pluck('destination')->unique()->sort() as $destination)<option>{{ $destination }}</option>@endforeach
@@ -37,7 +38,15 @@
                         <td class="incoming-products-cell">@include('partials.order-item-preview-list', ['items' => $parcel['products']])</td>
                         <td><span class="cell-title"><strong>{{ $parcel['seller'] }}</strong><small>{{ $parcel['purpose_label'] }}</small></span></td><td>{{ $parcel['rider'] }}</td><td>{{ $parcel['received'] }}</td><td>{{ $parcel['pieces'] }}</td><td>{{ $parcel['weight'] }}</td><td>{{ $parcel['destination'] }}</td>
                         <td><span class="status-badge" data-status-badge data-status="{{ $parcel['status'] }}">{{ $parcel['status'] }}</span></td>
-                        <td><a class="button button-small" href="{{ route('logistics.sorting.center', ['search' => $parcel['waybill']]) }}">Open sorting</a></td>
+                        <td>
+                            @if($parcel['status'] === 'Awaiting Intake')
+                                <button class="button button-small button-primary" type="button" data-modal-open="log-parcel" data-waybill-prefill="{{ $parcel['waybill'] }}">
+                                    <i data-lucide="scan-line"></i>Log intake
+                                </button>
+                            @else
+                                <a class="button button-small" href="{{ route('logistics.sorting.center', ['search' => $parcel['waybill']]) }}">Open sorting</a>
+                            @endif
+                        </td>
                     </tr>
                 @endforeach
                 <tr><td class="empty-row" colspan="10" data-empty-row>No incoming parcels match these filters.</td></tr>

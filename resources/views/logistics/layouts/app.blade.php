@@ -12,6 +12,34 @@
     @vite(['resources/css/logistics.css', 'resources/css/messages-standard.css', 'resources/css/maps.css', 'resources/css/waybill-scanner.css', 'resources/js/messages-standard.js', 'resources/js/realtime.js', 'resources/js/waybill-scanner.js', 'resources/js/destination-map.js', 'resources/js/logistics.js'])
     @include('partials.session-safety')
     @stack('styles')
+    <style>
+        /* Keep ops filters usable when an older Logistics CSS bundle is cached. */
+        :root[data-theme="dark"] body.ops-body :is(.search-field, .zone-search-field) input:focus-visible {
+            outline: none !important;
+            outline-offset: 0 !important;
+            box-shadow: none !important;
+        }
+
+        :root[data-theme="dark"] body.ops-body select:not([multiple]):not([size]) {
+            appearance: none !important;
+            -webkit-appearance: none !important;
+            padding-right: 34px;
+            border-color: #4a3d34 !important;
+            background-color: #1b1714 !important;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23efbd71' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
+            background-position: right 12px center !important;
+            background-repeat: no-repeat !important;
+            background-size: 12px !important;
+            color: #f1e9e1 !important;
+            color-scheme: dark;
+        }
+
+        :root[data-theme="dark"] body.ops-body select:not([multiple]):not([size]):focus-visible {
+            border-color: #efbd71 !important;
+            outline: none !important;
+            box-shadow: 0 0 0 2px rgba(239, 189, 113, .22) !important;
+        }
+    </style>
 </head>
 <body class="ops-body" data-module="logistics" data-realtime-user-id="{{ auth()->id() }}">
 @include('partials.realtime-identity')

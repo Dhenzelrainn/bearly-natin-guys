@@ -797,6 +797,10 @@ class RegistrationLifecycleService
                     $user->street_address ?: 'Not provided',
                 'barangay' =>
                     $user->barangay ?: 'Not provided',
+                'region' =>
+                    $user->region ?: null,
+                'psgc_region_code' =>
+                    $user->region_code ?: null,
                 'city_municipality' =>
                     $user->city ?: 'Not provided',
                 'province' =>
@@ -875,6 +879,12 @@ class RegistrationLifecycleService
 
         $city = (string) ($data['city'] ?? $data['municipality'] ?? 'Not provided');
         $province = (string) ($data['province'] ?? 'Not provided');
+        $region = filled($data['region'] ?? null)
+            ? (string) $data['region']
+            : ($user->region ?: null);
+        $regionCode = filled($data['region_code'] ?? null)
+            ? (string) $data['region_code']
+            : ($user->region_code ?: null);
         $cityCode = app(PostalCodeLookup::class)->canonicalCityCode(
             isset($data['city_code']) ? (string) $data['city_code'] : null,
             $province,
@@ -900,6 +910,7 @@ class RegistrationLifecycleService
                 ?? 'Not provided',
             'barangay' =>
                 $data['barangay'] ?? 'Not provided',
+            'region' => $region,
             'city_municipality' =>
                 $city,
             'province' =>
@@ -907,6 +918,7 @@ class RegistrationLifecycleService
             'postal_code' =>
                 $data['postal_code'] ?? null,
             'psgc_city_code' => $cityCode,
+            'psgc_region_code' => $regionCode,
             'is_default_shipping' =>
                 $role === UserRole::Buyer->value,
             'is_default_pickup' => in_array(
@@ -1248,6 +1260,12 @@ class RegistrationLifecycleService
                     'barangay' =>
                         $user->barangay
                         ?: 'Not provided',
+                    'region' =>
+                        $user->region
+                        ?: null,
+                    'region_code' =>
+                        $user->region_code
+                        ?: null,
                     'municipality' =>
                         $user->city
                         ?: 'Not provided',

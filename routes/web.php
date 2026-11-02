@@ -49,6 +49,7 @@ use App\Http\Controllers\ProductComplianceController;
 use App\Http\Controllers\PsgcController;
 use App\Http\Controllers\RiderCashController;
 use App\Http\Controllers\RiderController;
+use App\Http\Controllers\RegistrationDraftController;
 use App\Http\Controllers\SellerCampaignController;
 use App\Http\Controllers\SellerController;
 use App\Http\Controllers\SellerMessageController;
@@ -109,6 +110,11 @@ Route::view('/terms', 'legal.terms')->name('terms');
 Route::view('/privacy', 'legal.privacy')->name('privacy');
 
 Route::middleware('guest')->group(function () {
+    Route::post('/register/draft/{flow}', [RegistrationDraftController::class, 'save'])
+        ->whereIn('flow', ['buyer-seller', 'rider', 'logistics'])
+        ->middleware('throttle:30,1')
+        ->name('register.draft.save');
+
     Route::post('/register/email/send', [EmailVerificationController::class, 'send'])
         ->middleware('throttle:10,1')->block(30, 5)->name('register.email.send');
     Route::post('/register/email/check', [EmailVerificationController::class, 'check'])
@@ -172,6 +178,12 @@ Route::get('/api/postal-codes', PostalCodeController::class)
 Route::prefix('api/psgc')
     ->middleware('throttle:60,1')
     ->group(function () {
+        Route::get('/regions', [PsgcController::class, 'regions'])
+            ->name('psgc.regions');
+
+        Route::get('/regions/{regionCode}/provinces', [PsgcController::class, 'provincesForRegion'])
+            ->name('psgc.region-provinces');
+
         Route::get('/provinces', [PsgcController::class, 'provinces'])
             ->name('psgc.provinces');
 
@@ -1274,6 +1286,28 @@ Route::prefix('seller')
             ->middleware('throttle:10,1')
             ->name('products.subcategory-requests.store');
 
+        Route::post('/products/draft', [SellerProductController::class, 'saveProductDraft'])
+            ->middleware('throttle:60,1')
+            ->name('products.draft.save');
+
+        Route::post('/products/draft/images', [SellerProductController::class, 'uploadDraftImages'])
+            ->middleware('throttle:12,1')
+            ->name('products.draft.images.upload');
+
+        Route::delete('/products/draft/images', [SellerProductController::class, 'clearDraftImages'])
+            ->middleware('throttle:30,1')
+            ->name('products.draft.images.clear');
+
+        Route::delete('/products/draft/images/{image}', [SellerProductController::class, 'removeDraftImage'])
+            ->whereNumber('image')
+            ->middleware('throttle:30,1')
+            ->name('products.draft.images.delete');
+
+        Route::get('/products/draft/images/{image}', [SellerProductController::class, 'showDraftImage'])
+            ->whereNumber('image')
+            ->middleware('throttle:120,1')
+            ->name('products.draft.images.show');
+
         Route::get('/products/create', [SellerProductController::class, 'createProduct'])
             ->name('products.create');
 
@@ -1454,11 +1488,23 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::get('/riders/{id}', [LogisticsController::class, 'showRider'])
             ->name('riders.show');
 
+        Route::patch('/riders/{user}/status', [LogisticsController::class, 'updateRiderStatus'])
+            ->whereNumber('user')
+            ->name('riders.status.update');
+
+        Route::patch('/riders/{user}/capacity', [LogisticsController::class, 'updateRiderCapacity'])
+            ->whereNumber('user')
+            ->name('riders.capacity.update');
+
         Route::patch('/riders/{user}/assignment', [LogisticsController::class, 'updateRiderAssignment'])
             ->name('riders.assignment.update');
 
         Route::get('/pickups', [LogisticsController::class, 'pickups'])
             ->name('pickups.index');
+
+        Route::get('/pickups/{pickupRequest}/locations', [LogisticsController::class, 'pickupRiderLocations'])
+            ->whereNumber('pickupRequest')
+            ->name('pickups.locations');
 
         Route::post('/pickups/{pickupRequest}/verify', [LogisticsController::class, 'verifyPickup'])
             ->name('pickups.verify');
@@ -1667,6 +1713,12 @@ Route::prefix('rider')->name('rider.')->group(function () {
 
         Route::patch('/account/availability', [RiderController::class, 'updateAvailability'])
             ->name('availability.update');
+
+        Route::post('/account/location', [RiderController::class, 'updateLocation'])
+            ->name('location.update');
+
+        Route::delete('/account/location', [RiderController::class, 'clearLocation'])
+            ->name('location.destroy');
 
         Route::get('/dashboard/deliveries', [RiderController::class, 'deliveriesDashboard'])
             ->name('dashboard.deliveries');

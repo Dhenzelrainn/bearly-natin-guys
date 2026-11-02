@@ -2,6 +2,17 @@
 @section('title','Rider Management')
 @section('page-title','Rider Management')
 @section('content')
+@php
+    $accountStatusLabels = [
+        'active' => 'Enabled',
+        'suspended' => 'Suspended',
+        'deactivated' => 'Deactivated',
+    ];
+
+    $availabilityLabels = [
+        'offline' => 'Off duty',
+    ];
+@endphp
 <div class="page-header">
     <div>
         <p class="page-kicker">Workforce</p>
@@ -90,7 +101,7 @@
         </div>
     </section>
 
-    <section class="panel" data-tab-panel="accounts" hidden style="margin-top:16px" data-table-scope>
+    <section class="panel" data-tab-panel="accounts" hidden style="margin-top:16px" data-table-scope data-rider-accounts-table>
         <div class="table-toolbar">
             <div class="search-field">
                 <i data-lucide="search"></i>
@@ -98,9 +109,9 @@
             </div>
             <select class="filter-select" data-filter-status>
                 <option value="">All account states</option>
-                <option>Active</option>
-                <option>Suspended</option>
-                <option>Deactivated</option>
+                <option value="active">Enabled</option>
+                <option value="suspended">Suspended</option>
+                <option value="deactivated">Deactivated</option>
             </select>
         </div>
 
@@ -111,8 +122,8 @@
                         <th>Rider</th>
                         <th>Vehicle</th>
                         <th>Area</th>
-                        <th>Completed jobs</th>
-                        <th>Rating</th>
+                        <th>Active jobs</th>
+                        <th>Completed today</th>
                         <th>Account</th>
                         <th>Availability</th>
                         <th>Actions</th>
@@ -125,17 +136,17 @@
                         data-record-row
                         data-record-type="riderAccounts"
                         data-record-id="{{ $rider['id'] }}"
-                        data-status="{{ $rider['status'] }}"
+                        data-status="{{ $rider['status_key'] }}"
                         data-availability="{{ $rider['availability_status'] }}"
                     >
                         <td><strong>{{ $rider['name'] }}</strong></td>
                         <td>{{ $rider['vehicle'] }}</td>
                         <td>{{ $rider['zone'] }}</td>
-                        <td>{{ $rider['jobs'] }}</td>
-                        <td>{{ $rider['rating'] !== null ? '★ '.$rider['rating'] : '—' }}</td>
+                        <td>{{ $rider['active_jobs'] }}</td>
+                        <td>{{ $rider['completed_today'] }}</td>
                         <td>
-                            <span class="status-badge" data-status-badge data-status="{{ $rider['status'] }}">
-                                {{ $rider['status'] }}
+                            <span class="status-badge" data-status-badge data-status="{{ $rider['status_key'] }}">
+                                {{ $accountStatusLabels[$rider['status_key']] ?? $rider['status'] }}
                             </span>
                         </td>
                         <td>
@@ -143,7 +154,7 @@
                                 class="status-badge rider-availability-badge"
                                 data-availability="{{ $rider['availability_status'] }}"
                             >
-                                {{ $rider['availability'] }}
+                                {{ $availabilityLabels[$rider['availability_status']] ?? $rider['availability'] }}
                             </span>
                         </td>
                         <td>

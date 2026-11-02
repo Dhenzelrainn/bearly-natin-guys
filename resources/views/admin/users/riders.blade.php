@@ -13,7 +13,8 @@
 
         <p>
             View Rider accounts, assigned Logistics Centers,
-            vehicle information, delivery activity, and account status.
+            vehicle information, delivery activity, and account status. Rider status changes are
+            read-only here and must be handled by the owning Logistics provider.
         </p>
     </div>
 

@@ -1,5 +1,7 @@
 import { isValidPhilippineMobile } from './registration-phone.js';
+import { restoreRegistrationDraft, setupRegistrationDraft } from './registration-draft.js';
 import './notification-center.js';
+import { setupLogisticsPickupMaps } from './logistics-pickup-map.js';
 import {
     acknowledgeConversation,
     acknowledgeIncoming,
@@ -12,6 +14,15 @@ import {
 const normalize = (value) => String(value || '').trim().toLowerCase().replaceAll('_', ' ');
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[character]);
 const refreshIcons = () => window.lucide?.createIcons();
+const riderAccountStatusLabels = {
+    active: 'Enabled',
+    suspended: 'Suspended',
+    deactivated: 'Deactivated',
+};
+const riderAvailabilityLabels = {
+    available: 'Available',
+    offline: 'Off duty',
+};
 
 function toast(message) {
     const stack = document.querySelector('[data-toast-stack]');
@@ -68,6 +79,12 @@ function setupModals() {
         modal.hidden = false;
         if (backdrop) backdrop.hidden = false;
         document.body.style.overflow = 'hidden';
+        const prefilledWaybill = button.dataset.waybillPrefill;
+        const waybillInput = modal.querySelector('[data-waybill-identifier]');
+        if (prefilledWaybill && waybillInput) {
+            waybillInput.value = prefilledWaybill;
+            waybillInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
         const initialFocus = modal.querySelector('[data-modal-initial-focus]');
         const visibleControl = [...modal.querySelectorAll('button:not(:disabled), input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled)')]
             .find((control) => !control.closest('[hidden]'));
@@ -269,6 +286,43 @@ function setupTables() {
             rows.sort((a, b) => a.children[index].innerText.localeCompare(b.children[index].innerText, undefined, { numeric: true }) * (direction === 'asc' ? 1 : -1));
             rows.forEach((row) => row.parentElement.append(row));
         }));
+    });
+}
+
+function setupRiderAccountRealtime() {
+    const scope = document.querySelector('[data-rider-accounts-table]');
+    if (!scope) return;
+
+    const labelFor = (labels, value) => labels[value]
+        || String(value || '').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+    window.addEventListener('bearly:rider-operational-status-updated', (event) => {
+        const payload = event.detail || {};
+        const riderUserId = String(payload.rider_user_id || '');
+        const accountStatus = String(payload.account_status || '').toLowerCase();
+        const availabilityStatus = String(payload.availability_status || '').toLowerCase();
+        const row = [...scope.querySelectorAll('[data-record-type="riderAccounts"][data-record-id]')]
+            .find((candidate) => candidate.dataset.recordId === riderUserId);
+
+        if (!row || !accountStatus || !availabilityStatus) return;
+
+        row.dataset.status = accountStatus;
+        row.dataset.availability = availabilityStatus;
+
+        const accountBadge = row.querySelector('[data-status-badge]');
+        if (accountBadge) {
+            accountBadge.dataset.status = accountStatus;
+            accountBadge.textContent = labelFor(riderAccountStatusLabels, accountStatus);
+        }
+
+        const availabilityBadge = row.querySelector('[data-availability]');
+        if (availabilityBadge) {
+            availabilityBadge.dataset.availability = availabilityStatus;
+            availabilityBadge.textContent = labelFor(riderAvailabilityLabels, availabilityStatus);
+        }
+
+        scope.querySelector('[data-filter-status]')?.dispatchEvent(new Event('change'));
+        toast('Rider status updated in real time.');
     });
 }
 
@@ -1855,13 +1909,16 @@ function setupRegistration() {
     const form = document.querySelector('[data-registration-form]');
     if (!form) return;
 
-    let step = 1;
+    restoreRegistrationDraft(form);
+    setupRegistrationDraft(form);
+    let step = Math.max(1, Math.min(3, Number(form.dataset.draftStep || 1)));
 
     const emailVerification = setupRegistrationEmail(form);
     const passwordUx = setupRegistrationPassword(form);
 
     setupMiddleInitial(form);
 
+    const region = form.querySelector('[data-region]');
     const province = form.querySelector('[data-province]');
     const city = form.querySelector('[data-city]');
     const barangay = form.querySelector('[data-barangay]');
@@ -1870,7 +1927,12 @@ function setupRegistration() {
     const postalChoices = form.querySelector('[data-postal-choices]');
     const postalHelp = form.querySelector('[data-postal-help]');
     const cityCodeField = form.elements.city_code;
+    const regionCodeField = form.elements.region_code;
     const postalManualField = form.elements.postal_manual;
+    const savedPostalCode = postalCode?.value || '';
+    const savedPostalManual = postalManualField?.value === '1';
+    const savedCityCode = cityCodeField?.value || '';
+    let restoringAddress = Boolean(savedPostalCode && savedCityCode);
 
     /*
      * Searchable address dropdowns
@@ -2287,6 +2349,7 @@ function setupRegistration() {
 
     const show = (next) => {
         step = next;
+        form.dataset.currentStep = String(step);
 
         document
             .querySelectorAll('[data-form-step]')
@@ -2316,6 +2379,7 @@ function setupRegistration() {
             top: 0,
             behavior: 'smooth',
         });
+        form.dispatchEvent(new Event('registration:step'));
     };
 
     const validateStep = () => {
@@ -2487,52 +2551,61 @@ function setupRegistration() {
         });
 
     const fallbackLocations = (url) => {
+        if (url.endsWith('/regions')) {
+            return [
+                {
+                    name: 'Region IV-A (CALABARZON)',
+                    code: '0400000000',
+                },
+            ];
+        }
+
         if (url.endsWith('/provinces')) {
             return [
                 {
                     name: 'Laguna',
-                    code: '043400000',
+                    code: '0403400000',
                 },
                 {
                     name: 'Batangas',
-                    code: '041000000',
+                    code: '0401000000',
                 },
                 {
                     name: 'Cavite',
-                    code: '042100000',
+                    code: '0402100000',
                 },
                 {
                     name: 'Quezon',
-                    code: '045600000',
+                    code: '0405600000',
                 },
             ];
         }
 
         if (
             url.includes(
-                '/provinces/043400000/'
+                '/provinces/0403400000/'
             )
         ) {
             return [
                 {
                     name: 'San Pablo City',
-                    code: '043426000',
+                    code: '0403424000',
                 },
                 {
                     name: 'Santa Cruz',
-                    code: '043428000',
+                    code: '0403426000',
                 },
                 {
                     name: 'Calauan',
-                    code: '043405000',
+                    code: '0403406000',
                 },
                 {
                     name: 'Pila',
-                    code: '043419000',
+                    code: '0403422000',
                 },
                 {
                     name: 'Bay',
-                    code: '043403000',
+                    code: '0403402000',
                 },
             ];
         }
@@ -2585,6 +2658,13 @@ function setupRegistration() {
                 .join('');
 
         select.disabled = false;
+        const oldValue = select.dataset.oldValue || '';
+        select.dataset.oldValue = '';
+        if (oldValue) {
+            const match = [...select.options].find((option) =>
+                option.value.toLocaleLowerCase() === oldValue.toLocaleLowerCase());
+            if (match) select.value = match.value;
+        }
         syncSearchableSelect(select);
     };
 
@@ -2867,11 +2947,95 @@ function setupRegistration() {
         }
     );
 
-    if (province && city && barangay) {
-        load(
-            '/api/psgc/provinces',
-            province,
-            'Select province'
+    if (region && province && city && barangay) {
+        const restoreAddressCascade = async () => {
+            await load(
+                '/api/psgc/regions',
+                region,
+                'Select region'
+            );
+
+            const regionCode = region.selectedOptions[0]?.dataset.code || '';
+            if (regionCodeField) regionCodeField.value = regionCode;
+            if (!regionCode) return;
+
+            await load(
+                `/api/psgc/regions/${regionCode}/provinces`,
+                province,
+                'Select province'
+            );
+
+            const provinceCode = province.selectedOptions[0]?.dataset.code || '';
+            if (!provinceCode) return;
+
+            await load(
+                `/api/psgc/provinces/${provinceCode}/cities`,
+                city,
+                'Select municipality / city'
+            );
+
+            const cityCode = city.selectedOptions[0]?.dataset.code || '';
+            if (!cityCode) return;
+
+            await load(
+                `/api/psgc/cities/${cityCode}/barangays`,
+                barangay,
+                'Select barangay'
+            );
+
+            await loadPostalCode();
+
+            if (restoringAddress) {
+                const selectedCityCode = city.selectedOptions[0]?.dataset.code || '';
+                if (selectedCityCode && selectedCityCode === savedCityCode) {
+                    postalCode.value = savedPostalCode;
+                    postalCode.readOnly = !savedPostalManual;
+                    postalManualField.value = savedPostalManual ? '1' : '0';
+                    cityCodeField.value = selectedCityCode;
+                }
+
+                restoringAddress = false;
+            }
+        };
+
+        void restoreAddressCascade();
+
+        region.addEventListener(
+            'change',
+            () => {
+                const code = region.selectedOptions[0]?.dataset.code || '';
+                if (regionCodeField) regionCodeField.value = code;
+
+                province.dataset.oldValue = '';
+                province.innerHTML =
+                    '<option value="">Select region first</option>';
+
+                province.disabled = true;
+
+                city.innerHTML =
+                    '<option value="">Select province first</option>';
+
+                city.disabled = true;
+
+                barangay.innerHTML =
+                    '<option value="">Select city first</option>';
+
+                barangay.disabled = true;
+
+                syncSearchableSelect(province);
+                syncSearchableSelect(city);
+                syncSearchableSelect(barangay);
+
+                resetPostal();
+
+                if (code) {
+                    load(
+                        `/api/psgc/regions/${code}/provinces`,
+                        province,
+                        'Select province'
+                    );
+                }
+            }
         );
 
         province.addEventListener(
@@ -2932,7 +3096,19 @@ function setupRegistration() {
                     );
                 }
 
-                loadPostalCode();
+                void loadPostalCode().finally(() => {
+                    if (!restoringAddress) return;
+
+                    const selectedCityCode = city.selectedOptions[0]?.dataset.code || '';
+                    if (selectedCityCode && selectedCityCode === savedCityCode) {
+                        postalCode.value = savedPostalCode;
+                        postalCode.readOnly = !savedPostalManual;
+                        postalManualField.value = savedPostalManual ? '1' : '0';
+                        cityCodeField.value = selectedCityCode;
+                    }
+
+                    restoringAddress = false;
+                });
             }
         );
 
@@ -2944,7 +3120,7 @@ function setupRegistration() {
         );
     }
 
-    show(1);
+    show(step);
 }
 
 function setupSortingZones() {
@@ -3510,6 +3686,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupPickupRejection();
     setupTabs();
     setupTables();
+    setupRiderAccountRealtime();
     setupChat();
     setupNewConversation();
     setupRegistration();
@@ -3523,5 +3700,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setupShippingSettlementRealtime();
     setupRefundCashRealtime();
     setupShipmentTransfers();
+    setupLogisticsPickupMaps();
     refreshIcons();
 });

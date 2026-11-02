@@ -75,6 +75,8 @@ class AccountApprovalWorkflowTest extends TestCase
             'email' => 'bianca@example.test',
             'contact_number' => '09171234567',
             'phone_country' => 'PH',
+            'region' => 'Region IV-A (CALABARZON)',
+            'region_code' => '0400000000',
             'province' => 'Laguna',
             'city' => 'San Pablo City',
             'barangay' => 'San Rafael',
@@ -127,6 +129,10 @@ class AccountApprovalWorkflowTest extends TestCase
         $this->assertSame('Bearly Street', $address->street);
         $this->assertSame('San Pablo City', $address->city_municipality);
         $this->assertSame('Laguna', $address->province);
+        $this->assertSame('Region IV-A (CALABARZON)', $buyer->region);
+        $this->assertSame('0400000000', $buyer->region_code);
+        $this->assertSame('Region IV-A (CALABARZON)', $address->region);
+        $this->assertSame('0400000000', $address->psgc_region_code);
         $this->assertSame('4000', $address->postal_code);
 
         $this->assertFalse($buyer->applications()->exists());
@@ -172,6 +178,8 @@ class AccountApprovalWorkflowTest extends TestCase
             'email' => 'selena@example.test',
             'contact_number' => '09181234567',
             'phone_country' => 'PH',
+            'region' => 'Region IV-A (CALABARZON)',
+            'region_code' => '0400000000',
             'province' => 'Laguna',
             'city' => 'Calamba City',
             'barangay' => 'Real',
@@ -281,6 +289,8 @@ class AccountApprovalWorkflowTest extends TestCase
                 'contact_number' =>
                     '09281234567',
                 'birthday' => '1995-03-20',
+                'region' => 'Region IV-A (CALABARZON)',
+                'region_code' => '0400000000',
                 'province' => 'Laguna',
                 'municipality' =>
                     'Santa Cruz',
@@ -394,6 +404,8 @@ class AccountApprovalWorkflowTest extends TestCase
             'email' => 'duplicate-pila@example.test',
             'contact_number' => '09281234568',
             'birthday' => '1995-03-20',
+            'region' => 'Region IV-A (CALABARZON)',
+            'region_code' => '0400000000',
             'province' => 'Laguna',
             'municipality' => 'Pila',
             'city_code' => '0403422000',
@@ -454,6 +466,8 @@ class AccountApprovalWorkflowTest extends TestCase
                 'contact_number' =>
                     '09191234567',
                 'birthday' => '1998-05-14',
+                'region' => 'Region IV-A (CALABARZON)',
+                'region_code' => '0400000000',
                 'province' => 'Laguna',
                 'municipality' =>
                     'City of San Pablo',

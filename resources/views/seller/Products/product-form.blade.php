@@ -32,7 +32,7 @@
     $currentProductGuidance = $selectedMarketplaceSubcategory?->marketplaceCategory?->slug
         ? $productGuidanceForCategory((string) $selectedMarketplaceSubcategory->marketplaceCategory->slug)
         : $businessCategoryGuidance;
-    $isSharedPackageMode = (bool) old('package_shared', false);
+    $isSharedPackageMode = (bool) old('package_shared', $product['package_shared'] ?? false);
     $variantRowsForEditor = old('variants', $product['variants'] ?? []);
     $variantRowsForEditor = is_array($variantRowsForEditor) ? array_values($variantRowsForEditor) : [];
     $oldPackageOverrides = old('package_overrides', []);
@@ -47,7 +47,7 @@
             $variantRow = [];
         }
 
-        $variantRow['package_override'] = (bool) ($oldPackageOverrides[$variantIndex] ?? false);
+        $variantRow['package_override'] = (bool) ($oldPackageOverrides[$variantIndex] ?? $variantRow['package_override'] ?? false);
         $variantRow['package_validation_errors'] = [];
 
         foreach ($packageFieldLabels as $packageField => $packageLabel) {
@@ -75,6 +75,166 @@
 
 @section('title', $isEdit ? 'Edit Product' : 'Add Product')
 @section('page-title', $isEdit ? 'Edit Product' : 'Add Product')
+@push('styles')
+    <style>
+        /* Keep the product picker intact if a cached deployment serves the old Seller bundle. */
+        body.seller-body .seller-content .product-file-picker {
+            display: flex;
+            width: 100%;
+            height: 56px;
+            align-items: center;
+            box-sizing: border-box;
+            padding: 9px;
+            border: 1px solid #ded5cd;
+            border-radius: 8px;
+            color: var(--seller-muted, #756d67);
+            background: var(--theme-input, #fff);
+            font-size: 10px;
+        }
+
+        body.seller-body .seller-content .product-file-picker-button {
+            display: inline-flex;
+            width: 98px;
+            min-width: 98px;
+            height: 38px;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+            border: 1px solid #c58a3c;
+            border-radius: 6px;
+            background: #f2e0c4;
+            color: #6f4a31;
+            font: inherit;
+            text-align: center;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        body.seller-body .seller-content .product-file-picker-button:focus-visible {
+            outline: 2px solid #ce8a24;
+            outline-offset: 2px;
+        }
+
+        body.seller-body .seller-content .product-file-picker-name {
+            min-width: 0;
+            margin-left: 8px;
+            overflow: hidden;
+            color: inherit;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        body.seller-body .seller-content .product-file-picker-input[hidden] {
+            display: none !important;
+        }
+
+        body.seller-body .seller-content .product-variant-images-field {
+            align-content: start;
+            padding: 0;
+            border: 0;
+            background: transparent;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .product-file-picker {
+            border-color: #594737;
+            background: #211c18;
+            color: #c0b2a5;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .product-file-picker-button {
+            border-color: #806334;
+            background: #45331d;
+            color: #efbd71;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content :is(
+            .variation-group, .variant-matrix-empty, .variant-matrix-table-wrap,
+            .variant-package-manager
+        ) {
+            border-color: #72563e !important;
+            background-color: #3a2c20 !important;
+            color: var(--theme-text);
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content :is(
+            .variation-group, .variant-matrix-empty, .variant-matrix-table-wrap,
+            .variant-package-manager
+        ) :is(strong, span, small, label) {
+            color: var(--theme-text);
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content :is(
+            .variation-group > div small, .variation-group .seller-field small,
+            .variant-matrix-empty span, .variant-package-copy-panel small,
+            .variant-package-progress-copy small
+        ) {
+            color: #d5c2ad !important;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content :is(
+            .variant-matrix-table-wrap, .variant-package-manager
+        ) :is(th, td, .variant-package-shared-panel, .variant-package-progress-panel, .variant-package-copy-panel) {
+            border-color: #594737;
+            background-color: #2b241f;
+            color: var(--theme-text);
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .variant-matrix-table-wrap tbody tr {
+            background-color: #211c18;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .variant-package-progress-copy progress {
+            background: #594737;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .variant-package-progress-copy progress::-webkit-progress-bar {
+            background: #594737;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .variant-package-progress-copy progress::-webkit-progress-value,
+        :root[data-theme="dark"] body.seller-body .seller-content .variant-package-progress-copy progress::-moz-progress-bar {
+            background: #e9b25b;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .variant-package-row > td {
+            border-bottom-color: #594737;
+            background-color: #211c18;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .variant-package-details > summary {
+            border: 1px solid #594737;
+            background-color: #2b241f;
+            color: #f1e9e1;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .variant-package-details[open] > summary {
+            background-color: #30241d;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .variant-package-details > summary span {
+            color: #d5c2ad;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .variant-package-details > summary span[data-state="incomplete"] {
+            color: #efbd71;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .variant-package-details > summary span[data-state="complete"] {
+            color: #a8d5b0;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .variant-package-shared-note {
+            color: #d5c2ad;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .variant-package-row.has-incomplete-package > td,
+        :root[data-theme="dark"] body.seller-body .seller-content .variant-package-row.has-package-server-error > td,
+        :root[data-theme="dark"] body.seller-body .seller-content .variant-matrix-table tr.has-incomplete-package > td:first-child {
+            border-bottom-color: #72563e;
+            background-color: #2b241f !important;
+        }
+    </style>
+@endpush
 @section('content')
 <section class="page-heading product-editor-heading">
     <div>
@@ -84,6 +244,13 @@
     </div>
     @if ($isEdit)<span class="product-status status-{{ strtolower($product['status']) }}">{{ $product['status'] }}</span>@endif
 </section>
+
+@if (! $isEdit)
+    <p class="product-draft-notice" role="status" aria-live="polite">
+        Product details and photos save privately to your Store for 7 days. Nothing is added to Products or Inventory until you choose Save as Draft or Publish.
+        <span data-product-draft-status></span>
+    </p>
+@endif
 
 @if ($errors->any())
     <div class="form-alert products-alert"><i data-lucide="circle-alert"></i><span>Please review the highlighted product fields.</span></div>
@@ -122,6 +289,13 @@
     data-preview-reserved-stock="{{ (int) ($product['reserved_stock'] ?? 0) }}"
     data-product-discount-percent="{{ $formDiscount }}"
     data-platform-commission-rate="0.10"
+    @if (! $isEdit && isset($productDraft))
+        data-product-draft-save-url="{{ route('seller.products.draft.save') }}"
+        data-product-draft-image-upload-url="{{ route('seller.products.draft.images.upload') }}"
+        data-product-draft-image-clear-url="{{ route('seller.products.draft.images.clear') }}"
+        data-product-draft-image-delete-url="{{ route('seller.products.draft.images.delete', '__IMAGE__') }}"
+        data-product-draft-id="{{ $productDraft->id }}"
+    @endif
 >
     @csrf
     @if ($isEdit) @method('PUT') @endif
@@ -192,11 +366,11 @@
                         </select>
                         <small>Optional organization shown only on your Store page. This is separate from marketplace classification.</small>
                         @error('subcategory_id')<small class="field-error">{{ $message }}</small>@enderror
-                        <details class="seller-subcategory-create" @if (filled(old('new_subcategory_name'))) open @endif>
+                        <details class="seller-subcategory-create" @if (filled(old('new_subcategory_name', $product['new_subcategory_name'] ?? ''))) open @endif>
                             <summary>Create a Store section / collection</summary>
                             <label class="seller-field" for="new-product-subcategory">
                                 <span>Store section name</span>
-                                <input id="new-product-subcategory" name="new_subcategory_name" value="{{ old('new_subcategory_name') }}" maxlength="120" placeholder="e.g. Summer Shorts">
+                                <input id="new-product-subcategory" name="new_subcategory_name" value="{{ old('new_subcategory_name', $product['new_subcategory_name'] ?? '') }}" maxlength="120" placeholder="e.g. Summer Shorts">
                                 <small>Saved for your Store when you save this product. Existing matching Store sections are reused; this will not appear in global Buyer category navigation.</small>
                                 @error('new_subcategory_name')<small class="field-error">{{ $message }}</small>@enderror
                             </label>
@@ -241,7 +415,9 @@
                                         data-product-media-thumbnail
                                         data-media-id="{{ $media['id'] }}"
                                         data-image-id="{{ $media['image_id'] ?? '' }}"
+                                        data-draft-image-id="{{ $media['draft_image_id'] ?? '' }}"
                                         data-media-kind="{{ $media['kind'] }}"
+                                        data-media-purpose="{{ $media['purpose'] ?? '' }}"
                                         data-color="{{ $media['color'] ?? '' }}"
                                         data-variant-id="{{ $media['variant_id'] ?? '' }}"
                                         data-variant-label="{{ $media['variant_label'] ?? '' }}"
@@ -275,13 +451,37 @@
                     <div class="product-gallery-column">
                         <label class="product-primary-upload">
                             <span>Primary Product Image</span>
-                            <input type="file" name="image" accept="image/png,image/jpeg,image/webp" data-product-image-input>
+                            <span class="product-file-picker" data-product-file-picker>
+                                <span class="product-file-picker-button" data-product-file-picker-trigger role="button" tabindex="0" aria-controls="product-primary-image-input">Choose File</span>
+                                <span class="product-file-picker-name" data-product-file-name aria-live="polite">No file chosen</span>
+                                <input
+                                    id="product-primary-image-input"
+                                    class="product-file-picker-input"
+                                    type="file"
+                                    hidden
+                                    name="image"
+                                    accept="image/png,image/jpeg,image/webp"
+                                    data-product-image-input
+                                >
+                            </span>
                             <small>JPG, PNG, or WEBP · up to 10 MB per image; 50 MB total per save. This image appears first to buyers.</small>
                             @error('image')<small class="field-error">{{ $message }}</small>@enderror
                         </label>
                         <label class="seller-field product-gallery-field">
                             <span>Gallery Images</span>
-                            <input type="file" name="gallery_images[]" accept="image/png,image/jpeg,image/webp" multiple>
+                            <span class="product-file-picker" data-product-file-picker>
+                                <span class="product-file-picker-button" data-product-file-picker-trigger role="button" tabindex="0" aria-controls="product-gallery-images-input">Choose File</span>
+                                <span class="product-file-picker-name" data-product-file-name aria-live="polite">No file chosen</span>
+                                <input
+                                    id="product-gallery-images-input"
+                                    class="product-file-picker-input"
+                                    type="file"
+                                    hidden
+                                    name="gallery_images[]"
+                                    accept="image/png,image/jpeg,image/webp"
+                                    multiple
+                                >
+                            </span>
                             <small>Add up to four additional photos. Each image is up to 10 MB; all new product images must total 50 MB or less per save. A new selection replaces the saved gallery.</small>
                             @if ($isEdit && count($product['gallery_images']))<span class="existing-gallery-count"><i data-lucide="images"></i>{{ count($product['gallery_images']) }} gallery image(s) saved</span>@endif
                             @error('gallery_images')<small class="field-error">{{ $message }}</small>@enderror
@@ -294,7 +494,20 @@
                             </div>
                             <label class="seller-field product-variant-images-field">
                                 <span>Choose Variant Images</span>
-                                <input type="file" name="variant_color_images[]" accept="image/png,image/jpeg,image/webp" multiple data-variant-color-image-input>
+                                <span class="product-file-picker" data-product-file-picker>
+                                    <span class="product-file-picker-button" data-product-file-picker-trigger role="button" tabindex="0" aria-controls="product-variant-images-input">Choose File</span>
+                                    <span class="product-file-picker-name" data-product-file-name aria-live="polite">No file chosen</span>
+                                    <input
+                                        id="product-variant-images-input"
+                                        class="product-file-picker-input"
+                                        type="file"
+                                        hidden
+                                        name="variant_color_images[]"
+                                        accept="image/png,image/jpeg,image/webp"
+                                        multiple
+                                        data-variant-color-image-input
+                                    >
+                                </span>
                                 <small>Choose images before or after generating variants. Add a Color option above to assign them. Up to 10 MB per image; all new product images must total 50 MB or less per save.</small>
                                 @error('variant_color_images')<small class="field-error">{{ $message }}</small>@enderror
                                 @error('variant_color_images.*')<small class="field-error">{{ $message }}</small>@enderror
@@ -498,7 +711,7 @@
                                         <input
                                             type="number"
                                             name="shared_package[{{ $packageField }}]"
-                                            value="{{ old('shared_package.'.$packageField, '') }}"
+                                            value="{{ old('shared_package.'.$packageField, $product['shared_package'][$packageField] ?? '') }}"
                                             min="0.001"
                                             max="1000"
                                             step="0.001"

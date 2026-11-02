@@ -904,6 +904,10 @@ body:has(.login-page) .auth-header {
     grid-template-columns: repeat(3, 1fr);
 }
 
+.form-grid.four {
+    grid-template-columns: repeat(4, 1fr);
+}
+
 .form-grid.two {
     grid-template-columns: repeat(2, 1fr);
 }
@@ -1253,6 +1257,15 @@ body:has(.login-page) .auth-header {
 
 .info-box {
     padding: 18px;
+}
+
+.info-box.registration-draft-notice {
+    display: grid;
+    gap: 4px;
+    margin: 0 0 16px;
+    padding: 10px 13px;
+    font-size: 12px;
+    line-height: 1.5;
 }
 
 .upload-grid {
@@ -1951,6 +1964,7 @@ button:disabled {
     }
 
     .form-grid.three,
+    .form-grid.four,
     .form-grid.two,
     .form-grid.two-wide,
     .upload-grid {

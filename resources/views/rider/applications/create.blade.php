@@ -170,43 +170,24 @@
                     data-email-send="{{ route('register.email.send') }}"
                     data-email-check="{{ route('register.email.check') }}"
                     data-postal-url="{{ route('postal.lookup') }}"
+                    data-draft-save-url="{{ route('register.draft.save', 'rider') }}"
+                    data-draft-step="{{ $registrationDraft['step'] ?? 1 }}"
+                    data-has-old-input="{{ session()->hasOldInput() ? 'true' : 'false' }}"
                     novalidate
                 >
                     @csrf
+                    <script type="application/json" data-registration-draft>@json($registrationDraft['fields'] ?? [])</script>
+                    <p class="registration-draft-notice" role="status" aria-live="polite">
+                        @if ($registrationDraft['has_draft'] ?? false)
+                            Your saved application was restored. Fields save on this browser for 7 days; passwords, codes, documents, and consent are not saved.
+                        @else
+                            Fields save on this browser for 7 days. Passwords, codes, documents, and consent are not saved.
+                        @endif
+                        <span data-registration-draft-status></span>
+                    </p>
 
                     <section class="form-step" data-form-step="1">
                         <div class="field-grid three">
-                            <div class="field span-2">
-                                <label for="rider-logistics-partner">
-                                    Apply under Logistics / Sorting Center
-                                    <span>*</span>
-                                </label>
-
-                                <select
-                                    id="rider-logistics-partner"
-                                    name="logistics_partner"
-                                    required
-                                >
-                                    <option value="">
-                                        Select approved partner
-                                    </option>
-
-                                    @foreach ($logisticsPartners as $partner)
-                                        <option
-                                            value="{{ $partner['id'] }}"
-                                            data-city-code="{{ $partner['city_code'] }}"
-                                            @selected(
-                                                old('logistics_partner')
-                                                === $partner['id']
-                                            )
-                                        >
-                                            {{ $partner['name'] }}@if($partner['city']) — {{ $partner['city'] }}@endif
-                                        </option>
-                                    @endforeach
-                                </select>
-                                <small class="field-hint" data-logistics-partner-help role="status" aria-live="polite">Select your home municipality to find its approved Logistics partner.</small>
-                            </div>
-
                             <div class="field">
                                 <label for="rider-sex">
                                     Sex <span>*</span>
@@ -544,19 +525,38 @@
 
                         <div class="registration-address-grid">
                             <div class="field location-field">
+                                <label for="rider-region">
+                                    Region <span>*</span>
+                                </label>
+                                <select
+                                    id="rider-region"
+                                    name="region"
+                                    data-old-value="{{ old('region') }}"
+                                    data-region
+                                    data-location-select="region"
+                                    data-searchable-location
+                                    data-search-placeholder="Search region"
+                                    required
+                                >
+                                    <option value="">Loading regions…</option>
+                                </select>
+                            </div>
+
+                            <div class="field location-field">
                                 <label for="rider-province">
                                     Province <span>*</span>
                                 </label>
 <select
                                     id="rider-province"
                                     name="province"
+                                    data-old-value="{{ old('province') }}"
                                     data-province
                                     data-location-select="province"
                                     data-searchable-location
                                     data-search-placeholder="Search province"
                                     required
                                 >
-                                    <option value="">Loading provinces…</option>
+                                    <option value="">Select region first</option>
                                 </select>
                             </div>
 
@@ -567,6 +567,7 @@
 <select
                                     id="rider-city"
                                     name="municipality"
+                                    data-old-value="{{ old('municipality') }}"
                                     data-city
                                     data-location-select="city"
                                     data-searchable-location
@@ -578,6 +579,44 @@
                                 </select>
                             </div>
 
+                            <div class="field span-2">
+                                <label for="rider-logistics-partner">
+                                    Apply under Logistics / Sorting Center
+                                    <span>*</span>
+                                </label>
+
+                                <select
+                                    id="rider-logistics-partner"
+                                    name="logistics_partner"
+                                    aria-describedby="rider-logistics-partner-help"
+                                    required
+                                >
+                                    <option value="">
+                                        Select approved partner
+                                    </option>
+
+                                    @foreach ($logisticsPartners as $partner)
+                                        <option
+                                            value="{{ $partner['id'] }}"
+                                            data-city-code="{{ $partner['city_code'] }}"
+                                            @selected(
+                                                old('logistics_partner')
+                                                === $partner['id']
+                                            )
+                                        >
+                                            {{ $partner['name'] }}@if($partner['city']) — {{ $partner['city'] }}@endif
+                                        </option>
+                                    @endforeach
+                                </select>
+                                <small
+                                    id="rider-logistics-partner-help"
+                                    class="field-hint"
+                                    data-logistics-partner-help
+                                    role="status"
+                                    aria-live="polite"
+                                >Select your home municipality to find an approved Logistics partner.</small>
+                            </div>
+
                             <div class="field location-field">
                                 <label for="rider-barangay">
                                     Barangay <span>*</span>
@@ -585,6 +624,7 @@
 <select
                                     id="rider-barangay"
                                     name="barangay"
+                                    data-old-value="{{ old('barangay') }}"
                                     data-barangay
                                     data-location-select="barangay"
                                     data-searchable-location
@@ -624,6 +664,11 @@
                                     Select a municipality to fill this automatically.
                                 </small>
 
+                                <input
+                                    type="hidden"
+                                    name="region_code"
+                                    value="{{ old('region_code') }}"
+                                >
                                 <input
                                     type="hidden"
                                     name="city_code"

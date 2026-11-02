@@ -47,6 +47,25 @@ body:not(.bc) button:focus-visible,
 body:not(.bc) a:focus-visible,
 body:not(.bc) input:focus-visible,
 body:not(.bc) select:focus-visible{outline:3px solid var(--gold-dark);outline-offset:4px}
+
+/* Composite search controls own the focus ring on their rounded wrapper. Do
+   not draw a second rectangular outline around the inner text field. */
+body:not(.bc) :is(.search, .bearly-chat-search, .help-search, .nc-search) input[type="search"]:focus-visible,
+body.bc :is(.search, .category-search) input[type="search"]:focus-visible {
+    outline: none !important;
+    outline-offset: 0 !important;
+    box-shadow: none !important;
+}
+
+body:not(.bc) .search:focus-within {
+    border-color: var(--gold-dark);
+    box-shadow: 0 0 0 2px rgba(233, 167, 47, .18);
+}
+
+body.bc :is(.search, .category-search):focus-within {
+    border-color: var(--gold-dark);
+    box-shadow: 0 0 0 2px rgba(233, 167, 47, .18);
+}
 body:not(.bc) h1,
 body:not(.bc) h2,
 body:not(.bc) h3,

@@ -110,6 +110,8 @@
                                 .' '
                                 .$application['province']
                                 .' '
+                                .$application['region']
+                                .' '
                                 .$application['email']
                                 .' '
                                 .$application['id']
@@ -161,7 +163,7 @@
                         <td>
                             <div class="table-primary-secondary">
                                 <strong>{{ $application['municipality'] }}</strong>
-                                <small>{{ $application['province'] }}</small>
+                                <small>{{ $application['province'] }}, {{ $application['region'] }}</small>
                             </div>
                         </td>
 
@@ -441,6 +443,11 @@
                 </h3>
 
                 <div class="detail-grid">
+
+                    <div>
+                        <span>Region</span>
+                        <strong>{{ $application['region'] }}</strong>
+                    </div>
 
                     <div>
                         <span>Province</span>

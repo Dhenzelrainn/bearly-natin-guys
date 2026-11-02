@@ -1,6 +1,7 @@
 import { setupEmail } from './registration-email';
 import { setupPhone } from './registration-phone';
 import { setupPostal } from './registration-postal';
+import { restoreRegistrationDraft, setupRegistrationDraft } from './registration-draft';
 
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('[data-toggle-password]').forEach((button) => {
@@ -27,10 +28,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!form || !next || !back || !submit) return;
 
+    restoreRegistrationDraft(form);
+    setupRegistrationDraft(form);
+
     const PSGC_API = '/api/psgc';
+    const regionSelect = registration.querySelector('[data-region-select]');
     const provinceSelect = registration.querySelector('[data-province-select]');
     const citySelect = registration.querySelector('[data-city-select]');
     const barangaySelect = registration.querySelector('[data-barangay-select]');
+    const regionCodeField = form.elements.region_code;
     const addressMessage = registration.querySelector('[data-address-message]');
     const addressRetry = registration.querySelector('[data-address-retry]');
     const addressManual = registration.querySelector('[data-address-manual]');
@@ -401,6 +407,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 title: 'Address',
                 editStep: 2,
                 fields: [
+                    ['Region', valueOf('region')],
                     ['Province', valueOf('province')],
                     ['City / Municipality', valueOf('city')],
                     ['Barangay', valueOf('barangay')],
@@ -525,9 +532,11 @@ document.addEventListener('DOMContentLoaded', () => {
         back.disabled = currentStep === 1;
         next.hidden = currentStep === 4;
         submit.hidden = currentStep !== 4;
+        form.dataset.currentStep = String(currentStep);
 
         if (currentStep === 4) buildReview();
         updateRoleUI();
+        form.dispatchEvent(new Event('registration:step'));
     }
 
     function validateStep() {
@@ -607,7 +616,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (currentStep === 1 && (!phone.validate() || !emailVerification.validate())) return false;
         if (currentStep === 2) {
-            for (const name of ['province', 'city', 'barangay', 'postal_code']) {
+            for (const name of ['region', 'province', 'city', 'barangay', 'postal_code']) {
                 const field = form.elements[name];
                 if (!field || field.disabled || !field.value.trim()) {
                     setAddressMessage('Complete your address, or choose manual entry if the address service is unavailable.', 'error');
@@ -657,6 +666,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (match) select.value = match.value;
         }
 
+        // A restored value is one-time input for the initial PSGC load. Do
+        // not reuse it if the user later changes its parent address select.
+        select.dataset.oldValue = '';
+
         syncSearchableSelect(select);
     }
 
@@ -694,19 +707,68 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function loadProvinces() {
-        if (!provinceSelect || !citySelect || !barangaySelect) return;
+    async function loadRegions() {
+        if (!regionSelect || !provinceSelect || !citySelect || !barangaySelect) return;
 
-        setSelectState(provinceSelect, 'Loading provinces...');
+        setSelectState(regionSelect, 'Loading regions...');
+        setSelectState(provinceSelect, 'Select region first');
         setSelectState(citySelect, 'Select province first');
         setSelectState(barangaySelect, 'Select city first');
 
+        if (regionCodeField) regionCodeField.value = '';
         if (addressRetry) addressRetry.hidden = true;
 
         setAddressMessage('Loading Philippine address data...');
 
         try {
-            const provinces = await fetchAddressData('/provinces');
+            const regions = await fetchAddressData('/regions');
+
+            populateSelect(
+                regionSelect,
+                regions,
+                'Select region',
+                regionSelect.dataset.oldValue
+            );
+
+            setAddressMessage('Choose your region to load its provinces.', 'success');
+
+            if (regionSelect.value) {
+                await loadProvinces();
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') return;
+
+            console.error('Unable to load regions:', error);
+            setSelectState(regionSelect, 'Address service unavailable');
+            setAddressMessage(
+                'Address service is unavailable. Retry or enter your address manually.',
+                'error'
+            );
+
+            if (addressRetry) addressRetry.hidden = false;
+        }
+    }
+
+    async function loadProvinces() {
+        if (!regionSelect || !provinceSelect || !citySelect || !barangaySelect) return;
+
+        const regionCode = regionSelect.selectedOptions[0]?.dataset.code;
+        if (regionCodeField) regionCodeField.value = regionCode || '';
+
+        setSelectState(provinceSelect, 'Loading provinces...');
+        setSelectState(citySelect, 'Select province first');
+        setSelectState(barangaySelect, 'Select city first');
+
+        if (!regionCode) {
+            setSelectState(provinceSelect, 'Select region first');
+            setAddressMessage('Select a region, then select its province.', 'info');
+            return;
+        }
+
+        try {
+            const provinces = await fetchAddressData(
+                `/regions/${encodeURIComponent(regionCode)}/provinces`
+            );
 
             populateSelect(
                 provinceSelect,
@@ -715,7 +777,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 provinceSelect.dataset.oldValue
             );
 
-            setAddressMessage('Address service is ready.', 'success');
+            setAddressMessage('Provinces loaded. Choose one to continue.', 'success');
 
             if (provinceSelect.value) {
                 await loadCities();
@@ -724,16 +786,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (error.name === 'AbortError') return;
 
             console.error('Unable to load provinces:', error);
-
-            setSelectState(
-                provinceSelect,
-                'Address service unavailable'
-            );
-
-            setAddressMessage(
-                'Address service is unavailable. Retry or enter your address manually.',
-                'error'
-            );
+            setSelectState(provinceSelect, 'Unable to load provinces');
+            setAddressMessage('Unable to load provinces. Please retry.', 'error');
 
             if (addressRetry) addressRetry.hidden = false;
         }
@@ -834,7 +888,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function enableManualAddress() {
         postal.clear();
         postal.manual();
+        if (regionCodeField) regionCodeField.value = '';
         [
+            [regionSelect, 'Enter region'],
             [provinceSelect, 'Enter province'],
             [citySelect, 'Enter city or municipality'],
             [barangaySelect, 'Enter barangay'],
@@ -900,9 +956,16 @@ document.addEventListener('DOMContentLoaded', () => {
         showStep(Number(edit.dataset.editStep));
     });
 
-    provinceSelect?.addEventListener('change', async () => {
+    regionSelect?.addEventListener('change', async () => {
+        if (regionCodeField) regionCodeField.value = regionSelect.selectedOptions[0]?.dataset.code || '';
+        if (provinceSelect) provinceSelect.dataset.oldValue = '';
         if (citySelect) citySelect.dataset.oldValue = '';
         if (barangaySelect) barangaySelect.dataset.oldValue = '';
+        await loadProvinces();
+    });
+
+    provinceSelect?.addEventListener('change', async () => {
+        if (regionCodeField) regionCodeField.value = regionSelect?.selectedOptions[0]?.dataset.code || '';
         await loadCities();
     });
 
@@ -911,7 +974,7 @@ document.addEventListener('DOMContentLoaded', () => {
         await loadBarangays();
     });
 
-    addressRetry?.addEventListener('click', loadProvinces);
+    addressRetry?.addEventListener('click', loadRegions);
     addressManual?.addEventListener('click', enableManualAddress);
 
     const birthday = form.elements.birthday;
@@ -1238,6 +1301,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     submit.addEventListener('click', () => form.requestSubmit());
 
-    showStep(1);
-    loadProvinces();
+    showStep(Number(form.dataset.draftStep || 1));
+    loadRegions();
 });

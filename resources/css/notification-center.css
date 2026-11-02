@@ -242,6 +242,23 @@ body:not(.bc).bh main.nc-main {
     color: #a8998f;
 }
 
+/* The rounded search shell is the single focus target; avoid a second box
+   around the inner input when Buyer's global focus rule is also loaded. */
+.nc-page .nc-search {
+    transition: border-color .16s ease, box-shadow .16s ease;
+}
+
+.nc-page .nc-search:focus-within {
+    border-color: #b97a2a;
+    box-shadow: 0 0 0 2px rgba(185, 122, 42, .16);
+}
+
+.nc-page .nc-search input:focus-visible {
+    outline: none;
+    outline-offset: 0;
+    box-shadow: none;
+}
+
 /* History rows */
 
 .nc-list {

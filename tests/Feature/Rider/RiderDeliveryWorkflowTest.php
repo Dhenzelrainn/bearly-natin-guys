@@ -718,6 +718,88 @@ class RiderDeliveryWorkflowTest extends TestCase
 
     }
 
+    public function test_dashboard_counts_active_and_completed_work_at_shipment_level(): void
+    {
+        Storage::fake('local');
+
+        $rider = $this->makeRider('WORKLOAD-OWNER');
+        $foreignRider = $this->makeRider('WORKLOAD-FOREIGN');
+        $deliveryService = app(RiderDeliveryService::class);
+
+        $completed = $this->makeDispatchAssignment(
+            $rider,
+            'WORKLOAD-COMPLETED',
+            3,
+            0,
+            'Completed Work Recipient',
+        );
+
+        $deliveryService->startDelivery(
+            $completed['shipment']->shipment_no,
+            $rider->user,
+        );
+        $deliveryService->completeDelivery(
+            $completed['shipment']->shipment_no,
+            $rider->user,
+            $this->fakeProofPhoto('workload-owner.png'),
+            'Completed Work Recipient',
+        );
+
+        $today = now('Asia/Manila')
+            ->startOfDay()
+            ->addHours(9)
+            ->utc();
+
+        $completed['parcels']->each(
+            fn (Parcel $parcel) => $parcel->deliveryAttempts()->update([
+                'attempted_at' => $today,
+            ]),
+        );
+
+        $foreignCompleted = $this->makeDispatchAssignment(
+            $foreignRider,
+            'WORKLOAD-FOREIGN-COMPLETED',
+            1,
+            0,
+            'Foreign Completed Recipient',
+        );
+
+        $deliveryService->startDelivery(
+            $foreignCompleted['shipment']->shipment_no,
+            $foreignRider->user,
+        );
+        $deliveryService->completeDelivery(
+            $foreignCompleted['shipment']->shipment_no,
+            $foreignRider->user,
+            $this->fakeProofPhoto('workload-foreign.png'),
+            'Foreign Completed Recipient',
+        );
+
+        $active = $this->makeDispatchAssignment(
+            $rider,
+            'WORKLOAD-ACTIVE',
+            2,
+            0,
+            'Active Work Recipient',
+        );
+
+        $deliveryService->startDelivery(
+            $active['shipment']->shipment_no,
+            $rider->user,
+        );
+
+        $this->actingAs($rider->user)
+            ->get(route('rider.dashboard.deliveries'))
+            ->assertOk()
+            ->assertSeeText('Completed today')
+            ->assertViewHas(
+                'metrics',
+                fn (array $metrics): bool => $metrics['active_stops'] === 1
+                    && $metrics['active_jobs'] === 1
+                    && $metrics['completed_today'] === 1,
+            );
+    }
+
     public function test_rider_can_open_only_own_delivery_detail(): void
 
     {

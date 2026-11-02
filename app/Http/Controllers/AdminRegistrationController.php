@@ -109,6 +109,7 @@ class AdminRegistrationController extends Controller
             'contact' => $user->contact_number ?: '—',
             'birthday' => $birthday?->format('F j, Y') ?? '—',
             'age' => $birthday?->age ?? '—',
+            'region' => $user->region ?: '—',
             'province' => $user->province ?: '—',
             'municipality' => $user->city ?: '—',
             'barangay' => $user->barangay ?: '—',

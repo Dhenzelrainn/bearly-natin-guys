@@ -10,11 +10,14 @@ use App\Models\LogisticsProfile;
 use App\Models\Order;
 use App\Models\Parcel;
 use App\Models\PickupRequest;
+use App\Models\RiderLocation;
 use App\Models\RiderProfile;
 use App\Models\Role;
 use App\Models\SellerOrder;
 use App\Models\SellerProfile;
 use App\Models\Shipment;
+use App\Models\SortingCenter;
+use App\Models\SortingZone;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
@@ -477,10 +480,206 @@ class PickupRequestWorkflowTest extends TestCase
             ->assertSee('Needs Rider assignment')
             ->assertSee('Assign Rider')
             ->assertSee('Assign Rider &amp; schedule pickup', false)
+            ->assertSee('Live pickup map')
+            ->assertSee(
+                route('logistics.pickups.locations', $verified),
+                false
+            )
             ->assertDontSee($foreignRider->user->name)
             ->assertSee('Pickup requests are submitted by Sellers.')
             ->assertDontSee('data-preview-form="manualPickup"', false)
             ->assertDontSee('data-set-status=', false);
+    }
+
+    public function test_logistics_pickup_recommendation_uses_fresh_gps_before_manual_confirmation(): void
+    {
+        $provider = $this->makeProvider('GPS-RECOMMEND');
+        $seller = $this->makeSeller('GPS-RECOMMEND');
+        $seller['address']->update([
+            'latitude' => 14.5995,
+            'longitude' => 120.9842,
+        ]);
+        $pickup = $this->makePickup(
+            $provider,
+            $seller,
+            'GPS-RECOMMEND',
+            'verified',
+        )['pickup'];
+        $near = $this->makeRider($provider, 'GPS-NEAR');
+        $far = $this->makeRider($provider, 'GPS-FAR');
+
+        RiderLocation::query()->create([
+            'rider_profile_id' => $near->id,
+            'latitude' => 14.6000,
+            'longitude' => 120.9842,
+            'accuracy_meters' => 10,
+            'last_seen_at' => now(),
+        ]);
+        RiderLocation::query()->create([
+            'rider_profile_id' => $far->id,
+            'latitude' => 14.7000,
+            'longitude' => 120.9842,
+            'accuracy_meters' => 10,
+            'last_seen_at' => now(),
+        ]);
+
+        $response = $this
+            ->actingAs($provider['user'])
+            ->get(route('logistics.pickups.index'));
+
+        $response
+            ->assertOk()
+            ->assertSee('Suggested Rider: '.$near->user->name)
+            ->assertSee('fresh Rider location update')
+            ->assertViewHas(
+                'pickups',
+                function (array $pickups) use ($pickup, $near, $far): bool {
+                    $row = collect($pickups)->firstWhere(
+                        'database_id',
+                        $pickup->id,
+                    );
+                    $recommendations = collect($row['rider_recommendations'] ?? []);
+
+                    return $recommendations->first()['id'] === $near->id
+                        && $recommendations->first()['distance_km']
+                            < $recommendations->last()['distance_km']
+                        && $recommendations->pluck('id')->all() === [
+                            $near->id,
+                            $far->id,
+                        ];
+                },
+            );
+
+        $this->assertDatabaseCount('pickup_assignments', 0);
+    }
+
+    public function test_pickup_map_returns_only_fresh_riders_owned_by_the_logistics_provider(): void
+    {
+        $provider = $this->makeProvider('MAP');
+        $foreignProvider = $this->makeProvider('MAP-FOREIGN');
+        $seller = $this->makeSeller('MAP');
+        $seller['address']->update([
+            'latitude' => 14.5995,
+            'longitude' => 120.9842,
+        ]);
+        $pickup = $this->makePickup(
+            $provider,
+            $seller,
+            'MAP',
+            'verified',
+        )['pickup'];
+        $freshRider = $this->makeRider($provider, 'MAP-FRESH');
+        $staleRider = $this->makeRider($provider, 'MAP-STALE');
+        $foreignRider = $this->makeRider($foreignProvider, 'MAP-FOREIGN');
+
+        RiderLocation::query()->create([
+            'rider_profile_id' => $freshRider->id,
+            'latitude' => 14.6000,
+            'longitude' => 120.9842,
+            'accuracy_meters' => 8,
+            'last_seen_at' => now(),
+        ]);
+        RiderLocation::query()->create([
+            'rider_profile_id' => $staleRider->id,
+            'latitude' => 14.6010,
+            'longitude' => 120.9842,
+            'accuracy_meters' => 12,
+            'last_seen_at' => now()->subSeconds(181),
+        ]);
+        RiderLocation::query()->create([
+            'rider_profile_id' => $foreignRider->id,
+            'latitude' => 14.6020,
+            'longitude' => 120.9842,
+            'accuracy_meters' => 10,
+            'last_seen_at' => now(),
+        ]);
+
+        $response = $this
+            ->actingAs($provider['user'])
+            ->get(route('logistics.pickups.locations', $pickup));
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('data.pickup.latitude', 14.5995)
+            ->assertJsonPath('data.pickup.longitude', 120.9842)
+            ->assertJsonPath('data.stale_after_seconds', 180)
+            ->assertJsonPath('data.riders.0.id', $freshRider->id)
+            ->assertJsonPath('data.riders.0.latitude', 14.6)
+            ->assertJsonPath('data.riders.0.accuracy_meters', 8)
+            ->assertJsonCount(1, 'data.riders');
+
+        $this
+            ->actingAs($foreignProvider['user'])
+            ->get(route('logistics.pickups.locations', $pickup))
+            ->assertNotFound();
+    }
+
+    public function test_pickup_recommendation_falls_back_to_the_riders_assigned_sorting_zone(): void
+    {
+        $provider = $this->makeProvider('ZONE-RECOMMEND');
+        $seller = $this->makeSeller('ZONE-RECOMMEND');
+        $pickup = $this->makePickup(
+            $provider,
+            $seller,
+            'ZONE-RECOMMEND',
+            'verified',
+        )['pickup'];
+        $zoneRider = $this->makeRider($provider, 'ZONE-MATCH');
+        $this->makeRider($provider, 'ZONE-OTHER');
+
+        $centerAddress = Address::query()->create([
+            'user_id' => $provider['user']->id,
+            'label' => 'Sorting Center',
+            'recipient_name' => $provider['user']->name,
+            'phone' => '09173333333',
+            'house_number' => '1',
+            'street' => 'Sorting Center Road',
+            'barangay' => 'San Rafael',
+            'city_municipality' => 'San Pablo City',
+            'province' => 'Laguna',
+            'postal_code' => '4000',
+        ]);
+        $center = SortingCenter::query()->create([
+            'logistics_profile_id' => $provider['profile']->id,
+            'address_id' => $centerAddress->id,
+            'name' => 'Zone Recommendation Center',
+            'code' => 'ZRC-'.strtoupper(substr(uniqid(), -6)),
+            'status' => 'active',
+        ]);
+        $zone = SortingZone::query()->create([
+            'sorting_center_id' => $center->id,
+            'code' => 'ZONE-'.strtoupper(substr(uniqid(), -6)),
+            'name' => 'San Rafael Zone',
+            'destination_rules' => [
+                'province' => 'Laguna',
+                'city_municipality' => 'San Pablo City',
+                'barangays' => ['San Rafael'],
+            ],
+            'status' => 'active',
+        ]);
+        $zoneRider->update([
+            'home_sorting_center_id' => $center->id,
+            'current_zone_id' => $zone->id,
+        ]);
+
+        $this->actingAs($provider['user'])
+            ->get(route('logistics.pickups.index'))
+            ->assertOk()
+            ->assertViewHas(
+                'pickups',
+                function (array $pickups) use ($pickup, $zoneRider): bool {
+                    $row = collect($pickups)->firstWhere(
+                        'database_id',
+                        $pickup->id,
+                    );
+                    $recommendation = collect($row['rider_recommendations'] ?? [])
+                        ->first();
+
+                    return $recommendation['id'] === $zoneRider->id
+                        && $recommendation['area_match'] === true
+                        && $recommendation['distance_km'] === null;
+                },
+            );
     }
 
     public function test_dashboard_uses_owned_pending_pickup_count(): void

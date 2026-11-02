@@ -24,6 +24,7 @@ use App\Models\Waybill;
 use App\Services\DispatchService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Tests\TestCase;
@@ -686,6 +687,315 @@ class DispatchWorkflowTest extends TestCase
                         ]['trend']
                             === '1 active route';
                 }
+            );
+    }
+
+    public function test_dashboard_defaults_to_today_in_manila(): void
+    {
+        $zone = $this->makeZone(
+            $this->centerA,
+            'DASH-TODAY'
+        );
+
+        $today = $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $zone,
+            'DASH-TODAY'
+        );
+
+        $yesterday = $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $zone,
+            'DASH-YESTERDAY'
+        );
+
+        $this->recordDashboardReceivedEvent(
+            $today,
+            $this->centerA,
+            $zone,
+            $this->logisticsA,
+            '2026-10-04 00:00:00',
+            'Dashboard Manila start boundary.'
+        );
+
+        $this->recordDashboardReceivedEvent(
+            $yesterday,
+            $this->centerA,
+            $zone,
+            $this->logisticsA,
+            '2026-10-03 23:59:59',
+            'Dashboard outside yesterday.'
+        );
+
+        Carbon::setTestNow(
+            Carbon::create(
+                2026,
+                10,
+                4,
+                12,
+                0,
+                0,
+                'Asia/Manila'
+            )
+        );
+
+        try {
+            $this
+                ->actingAs($this->logisticsA)
+                ->get(route('logistics.dashboard'))
+                ->assertOk()
+                ->assertViewHas(
+                    'dashboardRange',
+                    [
+                        'from' => '2026-10-04',
+                        'to' => '2026-10-04',
+                    ]
+                )
+                ->assertViewHas(
+                    'metrics',
+                    function (array $metrics): bool {
+                        return collect($metrics)
+                            ->keyBy('label')
+                            ->get('Incoming Parcels')['value'] === 1;
+                    }
+                )
+                ->assertSee(
+                    'value="2026-10-04"',
+                    false
+                );
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_dashboard_uses_inclusive_manila_date_bounds_for_incoming_and_activity(): void
+    {
+        $zone = $this->makeZone(
+            $this->centerA,
+            'DASH-RANGE'
+        );
+
+        $start = $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $zone,
+            'DASH-RANGE-START'
+        );
+
+        $end = $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $zone,
+            'DASH-RANGE-END'
+        );
+
+        $before = $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $zone,
+            'DASH-RANGE-BEFORE'
+        );
+
+        $after = $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $zone,
+            'DASH-RANGE-AFTER'
+        );
+
+        $this->recordDashboardReceivedEvent(
+            $start,
+            $this->centerA,
+            $zone,
+            $this->logisticsA,
+            '2026-10-01 00:00:00',
+            'Dashboard selected start boundary.'
+        );
+
+        $this->recordDashboardReceivedEvent(
+            $end,
+            $this->centerA,
+            $zone,
+            $this->logisticsA,
+            '2026-10-03 23:59:59',
+            'Dashboard selected end boundary.'
+        );
+
+        $this->recordDashboardReceivedEvent(
+            $before,
+            $this->centerA,
+            $zone,
+            $this->logisticsA,
+            '2026-09-30 23:59:59',
+            'Dashboard before selected range.'
+        );
+
+        $this->recordDashboardReceivedEvent(
+            $after,
+            $this->centerA,
+            $zone,
+            $this->logisticsA,
+            '2026-10-04 00:00:00',
+            'Dashboard after selected range.'
+        );
+
+        $this
+            ->actingAs($this->logisticsA)
+            ->get(
+                route(
+                    'logistics.dashboard',
+                    [
+                        'from' => '2026-10-01',
+                        'to' => '2026-10-03',
+                    ]
+                )
+            )
+            ->assertOk()
+            ->assertViewHas(
+                'dashboardRange',
+                [
+                    'from' => '2026-10-01',
+                    'to' => '2026-10-03',
+                ]
+            )
+            ->assertViewHas(
+                'metrics',
+                function (array $metrics): bool {
+                    return collect($metrics)
+                        ->keyBy('label')
+                        ->get('Incoming Parcels')['value'] === 2;
+                }
+            )
+            ->assertSee(
+                'Dashboard selected start boundary.'
+            )
+            ->assertSee(
+                'Dashboard selected end boundary.'
+            )
+            ->assertDontSee(
+                'Dashboard before selected range.'
+            )
+            ->assertDontSee(
+                'Dashboard after selected range.'
+            )
+            ->assertSee(
+                'value="2026-10-01"',
+                false
+            )
+            ->assertSee(
+                'value="2026-10-03"',
+                false
+            );
+    }
+
+    public function test_dashboard_rejects_invalid_and_reversed_date_ranges(): void
+    {
+        $invalid = $this
+            ->actingAs($this->logisticsA)
+            ->get(
+                route(
+                    'logistics.dashboard',
+                    [
+                        'from' => '2026-02-30',
+                        'to' => '2026-03-01',
+                    ]
+                )
+            );
+
+        $invalid
+            ->assertRedirect()
+            ->assertSessionHasErrors('from');
+
+        $reversed = $this
+            ->actingAs($this->logisticsA)
+            ->get(
+                route(
+                    'logistics.dashboard',
+                    [
+                        'from' => '2026-10-04',
+                        'to' => '2026-10-03',
+                    ]
+                )
+            );
+
+        $reversed
+            ->assertRedirect(route('logistics.dashboard'))
+            ->assertSessionHasErrors('to');
+    }
+
+    public function test_dashboard_date_metrics_ignore_query_ownership_ids_and_other_facilities(): void
+    {
+        $ownZone = $this->makeZone(
+            $this->centerA,
+            'DASH-SCOPE-OWN'
+        );
+
+        $foreignZone = $this->makeZone(
+            $this->centerB,
+            'DASH-SCOPE-FOREIGN'
+        );
+
+        $own = $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $ownZone,
+            'DASH-SCOPE-OWN'
+        );
+
+        $foreign = $this->makeReadyShipmentFor(
+            $this->profileB,
+            $this->centerB,
+            $foreignZone,
+            'DASH-SCOPE-FOREIGN'
+        );
+
+        $this->recordDashboardReceivedEvent(
+            $own,
+            $this->centerA,
+            $ownZone,
+            $this->logisticsA,
+            '2026-10-02 10:00:00',
+            'Dashboard authenticated facility activity.'
+        );
+
+        $this->recordDashboardReceivedEvent(
+            $foreign,
+            $this->centerB,
+            $foreignZone,
+            $this->logisticsB,
+            '2026-10-02 12:00:00',
+            'Dashboard foreign provider activity.'
+        );
+
+        $this
+            ->actingAs($this->logisticsA)
+            ->get(
+                route(
+                    'logistics.dashboard',
+                    [
+                        'from' => '2026-10-02',
+                        'to' => '2026-10-02',
+                        'logistics_profile_id' => $this->profileB->id,
+                        'sorting_center_id' => $this->centerB->id,
+                    ]
+                )
+            )
+            ->assertOk()
+            ->assertViewHas(
+                'metrics',
+                function (array $metrics): bool {
+                    return collect($metrics)
+                        ->keyBy('label')
+                        ->get('Incoming Parcels')['value'] === 1;
+                }
+            )
+            ->assertSee(
+                'Dashboard authenticated facility activity.'
+            )
+            ->assertDontSee(
+                'Dashboard foreign provider activity.'
             );
     }
 
@@ -2221,7 +2531,30 @@ class DispatchWorkflowTest extends TestCase
             ],
 
             'status' =>
-                'active',
+            'active',
+        ]);
+    }
+
+    private function recordDashboardReceivedEvent(
+        array $record,
+        SortingCenter $center,
+        SortingZone $zone,
+        User $actor,
+        string $occurredAt,
+        string $notes
+    ): ShipmentEvent {
+        return ShipmentEvent::query()->create([
+            'shipment_id' => $record['shipment']->id,
+            'parcel_id' => $record['parcel']->id,
+            'event_type' => 'received_at_center',
+            'from_status' => ParcelStatus::PickedUp->value,
+            'to_status' => ParcelStatus::Received->value,
+            'sorting_center_id' => $center->id,
+            'sorting_zone_id' => $zone->id,
+            'actor_user_id' => $actor->id,
+            'source' => 'logistics',
+            'notes' => $notes,
+            'occurred_at' => $occurredAt,
         ]);
     }
 

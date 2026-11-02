@@ -2,6 +2,136 @@
 
 @section('title', 'Dashboard Overview')
 
+@push('styles')
+    <style>
+        /* Keep the dashboard readable if a cached deployment serves old Admin CSS. */
+        :root[data-theme="dark"] body.admin-body :is(.dashboard-kpi-card .metric-icon, .platform-overview-metric .metric-icon) {
+            border-color: #806334 !important;
+            background: #45331d !important;
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-kpi-card > p {
+            color: #c0b2a5 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-kpi-card > strong {
+            color: #fff8ef !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-kpi-card > small {
+            color: #b4a79c !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-kpi-status.is-success {
+            border: 1px solid #386146 !important;
+            background: #1e3828 !important;
+            color: #a8d5b0 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-kpi-status.is-warning {
+            border: 1px solid #806334 !important;
+            background: #44331d !important;
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-kpi-status.is-danger {
+            border: 1px solid #79443d !important;
+            background: #452521 !important;
+            color: #ffaaa2 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-kpi-status.is-neutral {
+            border: 1px solid #72563e !important;
+            background: #3b3027 !important;
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .platform-overview-metric span:not(.metric-icon) {
+            color: #e4c39d !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .platform-overview-metric small {
+            color: #b4a79c !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .segmented-control {
+            border-color: #594737 !important;
+            background: #30241d !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .segmented-control button {
+            color: #c0b2a5 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .segmented-control button.is-active {
+            border-color: #806334 !important;
+            background: #45331d !important;
+            color: #efbd71 !important;
+            box-shadow: none;
+        }
+
+        :root[data-theme="dark"] body.admin-body .chart-y-labels,
+        :root[data-theme="dark"] body.admin-body .bar-column small {
+            color: #b4a79c !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .bar-chart {
+            border-color: #594737 !important;
+            background: repeating-linear-gradient(to bottom, transparent 0, transparent 61px, #3b3027 62px) !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-chart-empty {
+            color: #b4a79c !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-chart-empty > svg {
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-chart-empty strong {
+            color: #fff8ef !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body :is(.notice-card, .quick-action-grid a) {
+            border-color: #594737 !important;
+            background: #30241d !important;
+            color: var(--theme-text) !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .notice-marker,
+        :root[data-theme="dark"] body.admin-body .quick-action-grid a > span {
+            border: 1px solid #806334 !important;
+            background: #45331d !important;
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .notice-card strong,
+        :root[data-theme="dark"] body.admin-body .quick-action-grid strong,
+        :root[data-theme="dark"] body.admin-body .activity-row strong {
+            color: #fff8ef !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .notice-card p,
+        :root[data-theme="dark"] body.admin-body .activity-row small,
+        :root[data-theme="dark"] body.admin-body .quick-action-grid small {
+            color: #b4a79c !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .notice-card a {
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .activity-row {
+            border-bottom-color: #594737 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .quick-action-grid a:hover {
+            border-color: #806334 !important;
+            background: #45331d !important;
+        }
+    </style>
+@endpush
 
 @section('content')
 <section class="page-hero compact-hero">

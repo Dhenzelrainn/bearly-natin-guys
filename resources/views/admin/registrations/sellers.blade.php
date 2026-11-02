@@ -155,9 +155,10 @@
                             <div class="table-primary-secondary">
                                 <strong>{{ $application['business_name'] }}</strong>
 
-                                <small>
-                                    {{ $application['municipality'] }},
-                                    {{ $application['province'] }}
+                                    <small>
+                                        {{ $application['municipality'] }},
+                                        {{ $application['province'] }},
+                                        {{ $application['region'] }}
                                 </small>
                             </div>
                         </td>
@@ -447,6 +448,11 @@
                 </h3>
 
                 <div class="detail-grid">
+
+                    <div>
+                        <span>Region</span>
+                        <strong>{{ $application['region'] }}</strong>
+                    </div>
 
                     <div>
                         <span>Province</span>

@@ -7,7 +7,9 @@ use App\Enums\UserRole;
 use App\Models\AccountApplication;
 use App\Models\Address;
 use App\Models\Category;
+use App\Models\LogisticsProfile;
 use App\Models\User;
+use App\Services\RegistrationDraftService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -119,6 +121,7 @@ class RegistrationValidationTest extends TestCase
             ->assertSee('placeholder="Street or purok"', false)
             ->assertSee('placeholder="House or unit no."', false)
             ->assertSee('placeholder="e.g. 1000"', false)
+            ->assertSee('data-search-placeholder="Search region"', false)
             ->assertSee('data-search-placeholder="Search city"', false)
             ->assertSee('placeholder="Registered business name"', false);
 
@@ -150,6 +153,7 @@ class RegistrationValidationTest extends TestCase
                 ->assertSee('placeholder="Auto-generated"', false)
                 ->assertSee('placeholder="Street or purok"', false)
                 ->assertSee('placeholder="House or unit no."', false)
+                ->assertSee('data-search-placeholder="Search region"', false)
                 ->assertSee('data-search-placeholder="Search municipality"', false)
                 ->assertSee('placeholder="Create password"', false)
                 ->assertSee('placeholder="Confirm password"', false);
@@ -163,6 +167,43 @@ class RegistrationValidationTest extends TestCase
         $this->get(route('logistics.register'))
             ->assertOk()
             ->assertSee('placeholder="Registered facility or business name"', false);
+    }
+
+    public function test_rider_logistics_partner_selector_is_after_municipality_in_address_step(): void
+    {
+        $html = (string) $this->get(route('rider.register'))
+            ->assertOk()
+            ->getContent();
+
+        $stepOneStart = strpos($html, '<section class="form-step" data-form-step="1">');
+        $stepTwoStart = strpos($html, '<section class="form-step" data-form-step="2" hidden>');
+        $stepThreeStart = strpos($html, '<section class="form-step" data-form-step="3" hidden>');
+
+        $this->assertNotFalse($stepOneStart);
+        $this->assertNotFalse($stepTwoStart);
+        $this->assertNotFalse($stepThreeStart);
+
+        $stepOne = substr($html, $stepOneStart, $stepTwoStart - $stepOneStart);
+        $stepTwo = substr($html, $stepTwoStart, $stepThreeStart - $stepTwoStart);
+
+        $this->assertStringNotContainsString('name="logistics_partner"', $stepOne);
+        $this->assertMatchesRegularExpression(
+            '/<select\b(?=[^>]*\bid="rider-logistics-partner")(?=[^>]*\bname="logistics_partner")(?=[^>]*\brequired\b)[^>]*>/s',
+            $stepTwo
+        );
+        $this->assertStringContainsString('aria-describedby="rider-logistics-partner-help"', $stepTwo);
+        $this->assertStringContainsString('id="rider-logistics-partner-help"', $stepTwo);
+        $this->assertStringContainsString('data-logistics-partner-help', $stepTwo);
+
+        $cityPosition = strpos($stepTwo, 'id="rider-city"');
+        $partnerPosition = strpos($stepTwo, 'id="rider-logistics-partner"');
+        $barangayPosition = strpos($stepTwo, 'id="rider-barangay"');
+
+        $this->assertNotFalse($cityPosition);
+        $this->assertNotFalse($partnerPosition);
+        $this->assertNotFalse($barangayPosition);
+        $this->assertGreaterThan($cityPosition, $partnerPosition);
+        $this->assertLessThan($barangayPosition, $partnerPosition);
     }
 
     public function test_buyer_registration_rejects_missing_email_proof_without_persisting_user_or_address(): void
@@ -181,6 +222,100 @@ class RegistrationValidationTest extends TestCase
         $this->assertFalse(Address::query()->where('recipient_name', 'Bianca Santos')->exists());
         $this->assertFalse(AccountApplication::query()->exists());
         $this->assertSame([], Storage::disk('local')->allFiles('registration-documents/valid-ids'));
+    }
+
+    public function test_buyer_registration_rejects_a_region_that_does_not_match_the_selected_city(): void
+    {
+        $payload = $this->buyerData('mismatched-region@example.test', '09171234567', [
+            'region' => 'Region I (Ilocos Region)',
+            'region_code' => '0100000000',
+        ]);
+
+        $this->from(route('register'))
+            ->post(route('register.submit'), $payload)
+            ->assertRedirect(route('register'))
+            ->assertSessionHasErrors('region');
+
+        $this->assertDatabaseMissing('users', [
+            'email' => $payload['email'],
+        ]);
+    }
+
+    public function test_registration_draft_cookie_is_http_only_lax_and_renews_for_seven_days(): void
+    {
+        $now = Carbon::create(2026, 11, 2, 9, 0, 0);
+        Carbon::setTestNow($now);
+
+        try {
+            $response = $this->get(route('register'))->assertOk();
+            $cookie = $response->getCookie(RegistrationDraftService::COOKIE_NAME);
+
+            $this->assertNotNull($cookie);
+            $this->assertTrue($cookie->isHttpOnly());
+            $this->assertSame('lax', $cookie->getSameSite());
+            $this->assertSame($response->baseRequest->isSecure(), $cookie->isSecure());
+            $this->assertSame($now->copy()->addDays(7)->timestamp, $cookie->getExpiresTime());
+
+            $secureResponse = $this->withServerVariables(['HTTPS' => 'on'])
+                ->get(route('rider.register'))
+                ->assertOk();
+            $secureCookie = $secureResponse->getCookie(RegistrationDraftService::COOKIE_NAME);
+            $this->assertNotNull($secureCookie);
+            $this->assertTrue($secureCookie->isSecure());
+            $this->assertTrue($secureCookie->isHttpOnly());
+            $this->assertSame('lax', $secureCookie->getSameSite());
+
+            Carbon::setTestNow($now->copy()->addDays(2));
+            $renewed = $this->withCredentials()->withCookie(
+                RegistrationDraftService::COOKIE_NAME,
+                $cookie->getValue(),
+            )->postJson(route('register.draft.save', 'rider'), [
+                'fields' => ['first_name' => 'Saved'],
+                'step' => 2,
+            ]);
+            $renewedCookie = $renewed->getCookie(RegistrationDraftService::COOKIE_NAME);
+
+            $renewed->assertOk();
+            $this->assertNotNull($renewedCookie);
+            $this->assertTrue($renewedCookie->isHttpOnly());
+            $this->assertSame('lax', $renewedCookie->getSameSite());
+            $this->assertSame($renewed->baseRequest->isSecure(), $renewedCookie->isSecure());
+            $this->assertSame($now->copy()->addDays(9)->timestamp, $renewedCookie->getExpiresTime());
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_successful_buyer_registration_clears_its_registration_draft(): void
+    {
+        $email = 'draft-cleanup-buyer@example.test';
+        $token = str_repeat('e', 64);
+
+        $this->withCredentials()->withCookie(RegistrationDraftService::COOKIE_NAME, $token)
+            ->postJson(route('register.draft.save', 'buyer-seller'), [
+                'fields' => [
+                    'role' => UserRole::Buyer->value,
+                    'first_name' => 'Bianca',
+                    'email' => $email,
+                ],
+                'step' => 2,
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('registration_drafts', [
+            'browser_token_hash' => hash('sha256', $token),
+            'flow' => 'buyer-seller',
+        ]);
+
+        $this->grantEmailProof($email);
+        $this->withCookie(RegistrationDraftService::COOKIE_NAME, $token)
+            ->post(route('register.submit'), $this->buyerData($email, '09181234567'))
+            ->assertRedirect(route('login'));
+
+        $this->assertDatabaseMissing('registration_drafts', [
+            'browser_token_hash' => hash('sha256', $token),
+            'flow' => 'buyer-seller',
+        ]);
     }
 
     public function test_seller_registration_still_requires_id_and_business_permit(): void
@@ -414,6 +549,8 @@ class RegistrationValidationTest extends TestCase
             'email' => 'invalid-names-logistics@example.test',
             'contact_number' => '09285551234',
             'birthday' => '1990-01-01',
+            'region' => 'Region IV-A (CALABARZON)',
+            'region_code' => '0400000000',
             'province' => 'Laguna',
             'municipality' => 'San Pablo City',
             'barangay' => 'San Rafael',
@@ -447,6 +584,8 @@ class RegistrationValidationTest extends TestCase
             'email' => 'postal-logistics@example.test',
             'contact_number' => '09285551234',
             'birthday' => '1990-01-01',
+            'region' => 'Region IV-A (CALABARZON)',
+            'region_code' => '0400000000',
             'province' => 'Laguna',
             'municipality' => 'San Pablo City',
             'barangay' => 'San Rafael',
@@ -475,6 +614,8 @@ class RegistrationValidationTest extends TestCase
             'email' => 'mismatched-postal-logistics@example.test',
             'contact_number' => '09285551234',
             'birthday' => '1990-01-01',
+            'region' => 'Region IV-A (CALABARZON)',
+            'region_code' => '0400000000',
             'province' => 'Laguna',
             'municipality' => 'Santa Cruz',
             'barangay' => 'Poblacion',
@@ -598,6 +739,62 @@ class RegistrationValidationTest extends TestCase
         ]);
     }
 
+    public function test_rider_registration_rejects_a_region_that_does_not_match_the_selected_city(): void
+    {
+        $logistics = User::factory()->create([
+            'email' => 'region-check-logistics@example.test',
+            'contact_number' => '+639281234567',
+            'role' => UserRole::Logistics->value,
+            'status' => AccountStatus::Active->value,
+        ]);
+
+        $data = $this->riderData($logistics, [
+            'email' => 'mismatched-region-rider@example.test',
+            'region' => 'Region I (Ilocos Region)',
+            'region_code' => '0100000000',
+        ]);
+
+        $this->from(route('rider.register'))
+            ->post(route('rider.register.submit'), $data)
+            ->assertRedirect(route('rider.register'))
+            ->assertSessionHasErrors('region');
+
+        $this->assertDatabaseMissing('users', [
+            'email' => 'mismatched-region-rider@example.test',
+        ]);
+    }
+
+    public function test_rider_registration_rejects_partner_that_does_not_serve_submitted_municipality(): void
+    {
+        $logistics = User::factory()->create([
+            'email' => 'other-city-logistics@example.test',
+            'contact_number' => '+639281234567',
+            'role' => UserRole::Logistics->value,
+            'status' => AccountStatus::Active->value,
+        ]);
+
+        LogisticsProfile::query()->create([
+            'user_id' => $logistics->id,
+            'legal_name' => 'Other City Logistics',
+            'display_name' => 'Other City Logistics',
+            'contact_phone' => '09170000001',
+            'psgc_city_code' => '0403422000',
+            'status' => AccountStatus::Active->value,
+        ]);
+
+        $data = $this->riderData($logistics, [
+            'email' => 'mismatched-partner-city@example.test',
+        ]);
+
+        $this->from(route('rider.register'))
+            ->post(route('rider.register.submit'), $data)
+            ->assertSessionHasErrors('logistics_partner');
+
+        $this->assertDatabaseMissing('users', [
+            'email' => 'mismatched-partner-city@example.test',
+        ]);
+    }
+
     public function test_rider_rejects_invalid_philippine_mobile_formats_before_email_proof(): void
     {
         $logistics = User::factory()->create([
@@ -653,6 +850,8 @@ class RegistrationValidationTest extends TestCase
             'email' => $email,
             'contact_number' => $contactNumber,
             'phone_country' => 'PH',
+            'region' => 'Region IV-A (CALABARZON)',
+            'region_code' => '0400000000',
             'province' => 'Laguna',
             'city' => 'San Pablo City',
             'barangay' => 'San Rafael',
@@ -675,6 +874,8 @@ class RegistrationValidationTest extends TestCase
             'email' => 'valid-rider@example.test',
             'contact_number' => '09451239876',
             'birthday' => '1995-03-22',
+            'region' => 'Region IV-A (CALABARZON)',
+            'region_code' => '0400000000',
             'province' => 'Laguna',
             'municipality' => 'City of San Pablo',
             'barangay' => 'San Rafael',

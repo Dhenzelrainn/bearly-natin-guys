@@ -107,21 +107,26 @@ class AdminUserStatusManagementTest extends TestCase
         }
 
         foreach ($routes as $routeName => $url) {
-            $this->actingAs($this->admin)
+            $response = $this->actingAs($this->admin)
                 ->get($url)
                 ->assertOk()
                 ->assertSee('admin-user-profile-modal', false)
                 ->assertSee('admin-user-profile-information', false)
-                ->assertSee('data-user-primary-action', false)
-                ->assertSee('data-user-status="active"', false)
                 ->assertSee('data-user-status-dialog', false, "The {$routeName} directory should include the shared status dialog.");
+
+            if ($routeName === 'riders') {
+                $response->assertDontSee('data-user-primary-action', false)
+                    ->assertDontSee('Logistics-managed · read-only', false)
+                    ->assertDontSee('Rider status is Logistics-managed and read-only here.', false);
+            } else {
+                $response->assertSee('data-user-primary-action', false)
+                    ->assertSee('data-user-status="active"', false);
+            }
         }
     }
 
-    public function test_admin_can_reactivate_a_deactivated_rider(): void
+    public function test_admin_cannot_change_a_rider_status(): void
     {
-        Notification::fake();
-
         $rider = User::factory()->create([
             'role' => 'rider',
             'status' => 'deactivated',
@@ -130,16 +135,13 @@ class AdminUserStatusManagementTest extends TestCase
         $this->actingAs($this->admin)
             ->patchJson(route('admin.users.status', $rider), [
                 'status' => 'active',
-                'reason' => 'Account access restored after review.',
+                'reason' => 'Attempted Admin Rider mutation.',
             ])
-            ->assertOk()
-            ->assertJsonPath('data.status', 'active')
-            ->assertJsonPath('data.allowed_statuses', ['suspended', 'deactivated']);
+            ->assertForbidden();
 
-        $this->assertSame('active', $rider->fresh()->status);
-        $this->assertDatabaseHas('audit_logs', [
+        $this->assertSame('deactivated', $rider->fresh()->status);
+        $this->assertDatabaseMissing('audit_logs', [
             'action' => 'user.status_changed',
-            'actor_user_id' => $this->admin->id,
             'auditable_id' => $rider->id,
         ]);
     }

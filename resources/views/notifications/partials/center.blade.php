@@ -16,6 +16,31 @@
     $emptyFilteredBody = $emptyFilteredBody ?? 'Try another filter or search term.';
 @endphp
 
+@push('styles')
+    <style>
+        /* Keep the single rounded focus treatment if a cached bundle is served. */
+        .nc-page .nc-search {
+            transition: border-color .16s ease, box-shadow .16s ease;
+        }
+
+        .nc-page .nc-search:focus-within {
+            border-color: #b97a2a;
+            box-shadow: 0 0 0 2px rgba(185, 122, 42, .16);
+        }
+
+        .nc-page .nc-search input:focus-visible {
+            outline: none !important;
+            outline-offset: 0 !important;
+            box-shadow: none !important;
+        }
+
+        :root[data-theme="dark"] .nc-page .nc-search:focus-within {
+            border-color: #efbd71;
+            box-shadow: 0 0 0 2px rgba(239, 189, 113, .22);
+        }
+    </style>
+@endpush
+
 <section
     class="nc-page nc-page--{{ $role }}"
     data-notification-center-page

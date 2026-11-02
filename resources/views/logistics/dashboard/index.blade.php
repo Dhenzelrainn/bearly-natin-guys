@@ -3,17 +3,57 @@
 @section('page-title','Dashboard')
 @section('content')
 <div class="page-header">
-    <div><p class="page-kicker">Operations overview</p><h2>{{ $greeting }}, {{ explode(' ', $operator['name'])[0] }}</h2><p>Monitor today’s rider approvals, parcel movement, sorting progress, and dispatch readiness.</p></div>
+    <div><p class="page-kicker">Operations overview</p><h2>{{ $greeting }}, {{ explode(' ', $operator['name'])[0] }}</h2><p>Monitor rider approvals, parcel movement, sorting progress, and dispatch readiness.</p></div>
     <div class="page-actions"><a class="button" href="{{ route('logistics.sorting.incoming') }}"><i data-lucide="scan-line"></i>Log incoming parcel</a><a class="button button-primary" href="{{ route('logistics.dispatch.index') }}"><i data-lucide="send"></i>Open dispatch board</a></div>
 </div>
-<section class="metric-strip" aria-label="Today's logistics metrics">
+<section class="panel" style="margin-bottom:20px" aria-labelledby="dashboard-period-title">
+    <div class="panel-header">
+        <div>
+            <h3 id="dashboard-period-title">Dashboard period</h3>
+            <p id="dashboard-period-help">Incoming parcels and recent fulfillment activity use this period. Queue, readiness, available riders, and active dispatch values remain live current-state counts.</p>
+        </div>
+    </div>
+    <form class="table-toolbar" method="GET" action="{{ route('logistics.dashboard') }}" aria-describedby="dashboard-period-help">
+        <div class="field">
+            <label for="dashboard-from">From</label>
+            <input
+                id="dashboard-from"
+                name="from"
+                type="date"
+                value="{{ old('from', $dashboardRange['from']) }}"
+                @if($errors->has('from')) aria-invalid="true" aria-describedby="dashboard-from-error" @endif
+            >
+            @error('from')
+                <small class="field-error" id="dashboard-from-error">{{ $message }}</small>
+            @enderror
+        </div>
+        <div class="field">
+            <label for="dashboard-to">To</label>
+            <input
+                id="dashboard-to"
+                name="to"
+                type="date"
+                value="{{ old('to', $dashboardRange['to']) }}"
+                @if($errors->has('to')) aria-invalid="true" aria-describedby="dashboard-to-error" @endif
+            >
+            @error('to')
+                <small class="field-error" id="dashboard-to-error">{{ $message }}</small>
+            @enderror
+        </div>
+        <button class="button button-primary" type="submit">
+            <i data-lucide="filter"></i>
+            Apply range
+        </button>
+    </form>
+</section>
+<section class="metric-strip" aria-label="Dashboard metrics for the selected period and current state">
     @foreach($metrics as $metric)
     <article class="metric-item"><span class="metric-icon"><i data-lucide="{{ $metric['icon'] }}"></i></span><span class="metric-copy"><small>{{ $metric['label'] }}</small><strong>{{ number_format($metric['value']) }}</strong><span>{{ $metric['trend'] }}</span></span></article>
     @endforeach
 </section>
 <div class="content-grid">
     <section class="panel">
-        <div class="panel-header"><div><h3>Zone readiness</h3><p>Parcels currently staged for today’s delivery runs.</p></div><a class="text-button" href="{{ route('logistics.dispatch.index') }}">Manage assignments</a></div>
+        <div class="panel-header"><div><h3>Zone readiness</h3><p>Live current-state view of parcels staged for delivery runs; not limited by the selected dates.</p></div><a class="text-button" href="{{ route('logistics.dispatch.index') }}">Manage assignments</a></div>
         <div class="table-wrap"><table class="data-table"><thead><tr><th>Delivery area</th><th>Parcels</th><th>Sorted & ready</th><th>Available riders</th><th>Readiness</th></tr></thead><tbody>
         @forelse($zones as $zone)
             @php(
@@ -72,7 +112,7 @@
         </tbody></table></div>
     </section>
     <section class="panel">
-        <div class="panel-header"><div><h3>Needs attention</h3><p>Items requiring an operator decision.</p></div></div>
+        <div class="panel-header"><div><h3>Needs attention</h3><p>Current queues and exceptions requiring an operator decision.</p></div></div>
         <div class="panel-body attention-list">
             <a class="attention-item" href="{{ route('logistics.riders.index') }}"><i data-lucide="user-round-check"></i><span><strong>{{ $pendingRiderCount }} rider {{ $pendingRiderCount === 1 ? 'application' : 'applications' }}</strong><small>Credentials are ready for review</small></span><i data-lucide="chevron-right"></i></a>
             <a class="attention-item" href="{{ route('logistics.pickups.index') }}"><i data-lucide="package-check"></i><span><strong>{{ $pendingPickupCount }} pickup {{ $pendingPickupCount === 1 ? 'request' : 'requests' }}</strong><small>Seller requests are awaiting verification</small></span><i data-lucide="chevron-right"></i></a>
@@ -102,7 +142,7 @@
     </section>
 </div>
 <div class="content-grid equal" style="margin-top:20px">
-    <section class="panel"><div class="panel-header"><div><h3>Recent activity</h3><p>Latest activity across your logistics operations.</p></div></div><div class="panel-body activity-list">
+    <section class="panel"><div class="panel-header"><div><h3>Recent activity</h3><p>Fulfillment and rider activity recorded within the selected period.</p></div></div><div class="panel-body activity-list">
         @forelse($activity as $item)
             <div class="activity-item">
                 <span class="activity-time">

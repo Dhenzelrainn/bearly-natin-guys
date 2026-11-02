@@ -8,6 +8,7 @@ import {
     packageValuesForVariant,
     packageVariantsForSubmission,
 } from './variant-package-utils.js';
+import { setupSellerProductDraft } from './seller-product-draft.js';
 
 const initializeSellerPolish = () => {
     /*
@@ -75,6 +76,40 @@ const initializeSellerPolish = () => {
     /* Product commission preview. Existing seller.js still owns buyer-price preview. */
     const productEditor = document.querySelector('[data-product-editor]');
     const productDiscountPercent = Math.min(90, Math.max(0, Number(productEditor?.dataset.productDiscountPercent || 0)));
+    if (productEditor) setupSellerProductDraft(productEditor);
+    const syncProductFilePickerName = (input) => {
+        const nameNode = input?.closest('[data-product-file-picker]')?.querySelector('[data-product-file-name]');
+        if (!nameNode) return;
+
+        const files = [...(input.files || [])];
+        nameNode.textContent = files.length === 0
+            ? 'No file chosen'
+            : files.length === 1
+                ? files[0].name
+                : `${files.length} files selected`;
+    };
+
+    productEditor?.querySelectorAll('[data-product-file-picker] input[type="file"]').forEach((input) => {
+        const trigger = input.closest('[data-product-file-picker]')?.querySelector('[data-product-file-picker-trigger]');
+
+        syncProductFilePickerName(input);
+        input.addEventListener('change', () => syncProductFilePickerName(input));
+
+        trigger?.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!input.disabled) input.click();
+        });
+
+        trigger?.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            if (!input.disabled) input.click();
+        });
+    });
+
     if (productEditor) {
         const priceInput = productEditor.querySelector('[data-product-price]');
         const commissionableNode = productEditor.querySelector('[data-product-commissionable]');
@@ -169,6 +204,7 @@ const initializeSellerPolish = () => {
 
         const localMediaUrls = new Map();
         const variantImageColorAssignments = new Map();
+        const removedDraftImageIds = new Set();
         let productMediaItems = [];
         let activeProductMediaId = null;
         let lastBuyerPreviewSelection = null;
@@ -191,7 +227,9 @@ const initializeSellerPolish = () => {
                 renderedMediaById.set(id, {
                     id,
                     image_id: button.dataset.imageId || null,
+                    draft_image_id: button.dataset.draftImageId || null,
                     kind: button.dataset.mediaKind || 'gallery',
+                    purpose: button.dataset.mediaPurpose || '',
                     color: button.dataset.color || '',
                     variant_id: button.dataset.variantId || null,
                     variant_label: button.dataset.variantLabel || '',
@@ -204,7 +242,8 @@ const initializeSellerPolish = () => {
         });
 
         productMediaItems = [...renderedMediaById.values()]
-            .filter((item) => !removedProductImageIds.has(String(item.image_id || '')));
+            .filter((item) => !removedProductImageIds.has(String(item.image_id || ''))
+                && !removedDraftImageIds.has(String(item.draft_image_id || '')));
 
         const splitValues = (input) => (input?.value || '')
             .split(',')
@@ -693,7 +732,8 @@ const initializeSellerPolish = () => {
             if (!mediaGallery || !mediaGalleryThumbnails) return;
 
             const savedById = new Map(savedProductMedia
-                .filter((item) => !removedProductImageIds.has(String(item.image_id || '')))
+                .filter((item) => !removedProductImageIds.has(String(item.image_id || ''))
+                    && !removedDraftImageIds.has(String(item.draft_image_id || '')))
                 .map((item) => [item.id, item]));
             const items = [];
             const localIds = new Set();
@@ -720,7 +760,8 @@ const initializeSellerPolish = () => {
                 });
             } else {
                 items.push(...savedProductMedia.filter((item) => item.kind === 'gallery'
-                    && !removedProductImageIds.has(String(item.image_id || ''))));
+                    && !removedProductImageIds.has(String(item.image_id || ''))
+                    && !removedDraftImageIds.has(String(item.draft_image_id || ''))));
             }
 
             if (currentProductMode() === 'with_variants') {
@@ -728,9 +769,15 @@ const initializeSellerPolish = () => {
                 const uploadedColors = new Set();
                 const addSavedVariantImage = (item) => {
                     if (!item) return;
-                    const imageId = String(item.image_id || '');
-                    if (imageId && includedVariantImageIds.has(imageId)) return;
-                    if (imageId) includedVariantImageIds.add(imageId);
+                    if (removedProductImageIds.has(String(item.image_id || ''))
+                        || removedDraftImageIds.has(String(item.draft_image_id || ''))) return;
+                    const imageKey = item.image_id
+                        ? `image:${item.image_id}`
+                        : item.draft_image_id
+                            ? `draft:${item.draft_image_id}`
+                            : `media:${item.id}`;
+                    if (includedVariantImageIds.has(imageKey)) return;
+                    includedVariantImageIds.add(imageKey);
                     items.push(item);
                 };
 
@@ -769,24 +816,37 @@ const initializeSellerPolish = () => {
                         && !item.color_shared
                         && (variantId
                             ? String(item.variant_id || '') === variantId
-                            : String(item.variant_label || '').toLocaleLowerCase() === variantLabel.toLocaleLowerCase()));
+                            : String(item.variant_label || '').toLocaleLowerCase() === variantLabel.toLocaleLowerCase())
+                        && !removedProductImageIds.has(String(item.image_id || ''))
+                        && !removedDraftImageIds.has(String(item.draft_image_id || '')));
                     const color = normalizedColorKey(colorForVariant(variantLabel));
                     const colorFallback = savedProductMedia.find((item) => item.kind === 'variant'
                         && (item.color_shared || item.legacy_color)
-                        && normalizedColorKey(item.color) === color);
+                        && normalizedColorKey(item.color) === color
+                        && !removedProductImageIds.has(String(item.image_id || ''))
+                        && !removedDraftImageIds.has(String(item.draft_image_id || '')));
                     const activeFallback = colorFallback
                         && !uploadedColors.has(color)
                         && !removedProductImageIds.has(String(colorFallback.image_id || ''))
+                        && !removedDraftImageIds.has(String(colorFallback.draft_image_id || ''))
                         ? colorFallback
                         : null;
                     const activeSavedImage = savedImage
                         && !removedProductImageIds.has(String(savedImage.image_id || ''))
+                        && !removedDraftImageIds.has(String(savedImage.draft_image_id || ''))
                         ? savedImage
                         : null;
 
                     addSavedVariantImage(activeSavedImage);
                     addSavedVariantImage(activeFallback);
                 });
+
+                // Draft images can outlive the current option labels while a
+                // Seller is editing the form. Keep them visible and removable
+                // instead of silently dropping them from the restored gallery.
+                savedProductMedia
+                    .filter((item) => item.kind === 'variant' && item.draft_image_id)
+                    .forEach(addSavedVariantImage);
             }
 
             localMediaUrls.forEach((cached, id) => {
@@ -813,7 +873,9 @@ const initializeSellerPolish = () => {
                 thumbnailButton.dataset.productMediaThumbnail = '';
                 thumbnailButton.dataset.mediaId = item.id;
                 thumbnailButton.dataset.imageId = item.image_id ? String(item.image_id) : '';
+                thumbnailButton.dataset.draftImageId = item.draft_image_id ? String(item.draft_image_id) : '';
                 thumbnailButton.dataset.mediaKind = item.kind;
+                thumbnailButton.dataset.mediaPurpose = item.purpose || (item.kind === 'variant' ? 'variant_color' : item.kind);
                 thumbnailButton.dataset.color = item.color || '';
                 thumbnailButton.dataset.variantId = item.variant_id ? String(item.variant_id) : '';
                 thumbnailButton.dataset.variantLabel = item.variant_label || '';
@@ -848,10 +910,28 @@ const initializeSellerPolish = () => {
             syncVariantRowImages();
         };
 
+        productEditor.addEventListener('seller:draft-images-updated', (event) => {
+            const images = event.detail?.images;
+            if (!Array.isArray(images)) return;
+
+            const purpose = String(event.detail?.purpose || '');
+            savedProductMedia = purpose
+                ? [
+                    ...savedProductMedia.filter((item) => item.purpose !== purpose),
+                    ...images.filter((item) => item.purpose === purpose),
+                ]
+                : images;
+            removedDraftImageIds.clear();
+            renderVariantColorImageUploads(readRenderedVariants());
+            renderProductMediaPreview();
+            syncBuyerProductPreview();
+        });
+
         mediaGalleryThumbnails?.addEventListener('click', (event) => {
             const removeButton = event.target.closest('[data-product-media-remove]');
             if (removeButton && mediaGalleryThumbnails.contains(removeButton)) {
                 event.preventDefault();
+                removeButton.disabled = true;
                 const item = productMediaItems.find((media) => media.id === removeButton.dataset.mediaId);
                 if (item) removeProductMedia(item);
 
@@ -1272,21 +1352,6 @@ const initializeSellerPolish = () => {
                 normalizedColorKey(candidate) === normalizedColorKey(color)) === index);
         };
 
-        const savedImageForColor = (color) => {
-            const key = normalizedColorKey(color);
-            if (!key) return null;
-
-            return savedProductMedia.find((item) => item.kind === 'variant'
-                && (item.color_shared || item.legacy_color)
-                && normalizedColorKey(item.color) === key
-                && !removedProductImageIds.has(String(item.image_id || '')))
-                || savedProductMedia.find((item) => item.kind === 'variant'
-                    && !(item.color_shared || item.legacy_color)
-                    && normalizedColorKey(item.color) === key
-                    && !removedProductImageIds.has(String(item.image_id || '')))
-                || null;
-        };
-
         const renderVariantColorImageUploads = (variants) => {
             if (!variantColorImageInput || !variantColorImageUploads) return;
 
@@ -1294,11 +1359,23 @@ const initializeSellerPolish = () => {
             variantColorImageInput.disabled = !variantsEnabled;
             const colors = colorsForVariantImages(variants);
             const files = [...(variantColorImageInput.files || [])];
+            const draftImages = files.length
+                ? []
+                : savedProductMedia
+                    .filter((item) => item.kind === 'variant'
+                        && item.draft_image_id
+                        && item.purpose === 'variant_color'
+                        && !removedDraftImageIds.has(String(item.draft_image_id)))
+                    .sort((left, right) => Number(left.position || 0) - Number(right.position || 0));
+            const entries = [
+                ...files.map((file, index) => ({ kind: 'file', file, index })),
+                ...draftImages.map((image) => ({ kind: 'draft', image })),
+            ];
             const availableColors = new Set(colors.map(normalizedColorKey));
             variantColorImageUploads.replaceChildren();
 
             if (variantColorImageEmpty) {
-                variantColorImageEmpty.hidden = variantsEnabled && colors.length > 0 && files.length > 0;
+                variantColorImageEmpty.hidden = variantsEnabled && colors.length > 0 && entries.length > 0;
                 variantColorImageEmpty.textContent = !variantsEnabled
                     ? 'Choose With Variants and add a Color option to use color-specific images.'
                     : colors.length === 0
@@ -1311,12 +1388,15 @@ const initializeSellerPolish = () => {
             });
 
             const countsByColor = new Map();
-            files.forEach((file, index) => {
-                let color = variantImageColorAssignments.get(index) || '';
+            entries.forEach((entry) => {
+                const index = entry.index;
+                let color = entry.kind === 'draft'
+                    ? String(entry.image.color || '')
+                    : variantImageColorAssignments.get(index) || '';
                 const matchingColor = colors.find((candidate) => normalizedColorKey(candidate) === normalizedColorKey(color));
                 if (matchingColor) color = matchingColor;
-                if (!color && colors.length && !variantImageColorAssignments.has(index)) {
-                    const filename = file.name.toLocaleLowerCase().replace(/[^a-z0-9]+/g, '');
+                if (entry.kind === 'file' && !color && colors.length && !variantImageColorAssignments.has(index)) {
+                    const filename = entry.file.name.toLocaleLowerCase().replace(/[^a-z0-9]+/g, '');
                     const filenameMatch = colors.find((candidate) => filename.includes(
                         candidate.toLocaleLowerCase().replace(/[^a-z0-9]+/g, ''),
                     ));
@@ -1328,16 +1408,26 @@ const initializeSellerPolish = () => {
                     const key = normalizedColorKey(color);
                     countsByColor.set(key, (countsByColor.get(key) || 0) + 1);
                 }
+                entry.color = color;
+            });
 
-                const mediaId = `variant-color-upload:${index}`;
-                const savedImage = savedImageForColor(color);
-                const localImage = localMediaItem(mediaId, `${color || 'Unassigned'} variant image`, 'variant', file, {
-                    variant_id: null,
-                    variant_label: '',
-                    color,
-                    color_shared: Boolean(color),
-                    legacy_color: false,
-                });
+            entries.forEach((entry) => {
+                const isDraft = entry.kind === 'draft';
+                const index = entry.index;
+                const imageId = isDraft ? String(entry.image.draft_image_id) : '';
+                const file = entry.file;
+                const color = entry.color || '';
+                const mediaId = isDraft ? `draft-variant:${imageId}` : `variant-color-upload:${index}`;
+                const localImage = isDraft
+                    ? null
+                    : localMediaItem(mediaId, `${color || 'Unassigned'} variant image`, 'variant', file, {
+                        variant_id: null,
+                        variant_label: '',
+                        color,
+                        color_shared: Boolean(color),
+                        legacy_color: false,
+                    });
+                const savedImage = isDraft ? entry.image : null;
 
                 const row = document.createElement('div');
                 row.className = 'product-variant-image-upload-row';
@@ -1357,16 +1447,21 @@ const initializeSellerPolish = () => {
                 const copy = document.createElement('div');
                 copy.className = 'product-variant-image-copy';
                 const filename = document.createElement('strong');
-                filename.textContent = file.name;
+                filename.textContent = isDraft
+                    ? (entry.image.original_name || entry.image.label || 'Restored variant image')
+                    : file.name;
 
                 const assignmentLabel = document.createElement('label');
                 assignmentLabel.className = 'product-variant-image-assignment';
                 const assignmentText = document.createElement('span');
                 assignmentText.textContent = 'Use for color';
                 const colorSelect = document.createElement('select');
-                colorSelect.name = `variant_image_colors[${index}]`;
+                colorSelect.name = isDraft
+                    ? `draft_image_colors[${imageId}]`
+                    : `variant_image_colors[${index}]`;
                 colorSelect.dataset.variantImageColorSelect = '';
-                colorSelect.setAttribute('aria-label', `Color for variant image ${file.name}`);
+                if (isDraft) colorSelect.dataset.draftImageColorSelect = imageId;
+                colorSelect.setAttribute('aria-label', `Color for variant image ${filename.textContent}`);
 
                 const placeholder = document.createElement('option');
                 placeholder.value = '';
@@ -1388,14 +1483,38 @@ const initializeSellerPolish = () => {
                 });
                 colorSelect.value = color;
                 colorSelect.disabled = !variantsEnabled || colors.length === 0;
+
+                let finalColorInput = null;
+                if (isDraft) {
+                    finalColorInput = document.createElement('input');
+                    finalColorInput.type = 'hidden';
+                    finalColorInput.name = `variant_image_colors[${Number(entry.image.position || 0)}]`;
+                    finalColorInput.value = color;
+                    finalColorInput.dataset.draftImageFinalColor = imageId;
+                }
+
                 colorSelect.addEventListener('change', () => {
-                    variantImageColorAssignments.set(index, colorSelect.value);
+                    if (isDraft) {
+                        if (finalColorInput) finalColorInput.value = colorSelect.value;
+                        const savedImageEntry = savedProductMedia.find((item) => String(item.draft_image_id || '') === imageId);
+                        if (savedImageEntry) {
+                            savedImageEntry.color = colorSelect.value;
+                            savedImageEntry.color_shared = Boolean(colorSelect.value);
+                            savedImageEntry.label = colorSelect.value
+                                ? `${colorSelect.value} variant image`
+                                : 'Variant image';
+                        }
+                    } else {
+                        variantImageColorAssignments.set(index, colorSelect.value);
+                    }
+
                     renderVariantColorImageUploads(readRenderedVariants());
                     renderProductMediaPreview();
                     syncBuyerProductPreview();
-                    variantColorImageUploads
-                        .querySelectorAll('[data-variant-image-color-select]')[index]
-                        ?.focus();
+                    const focusSelector = isDraft
+                        ? `[data-draft-image-color-select="${imageId}"]`
+                        : `[data-variant-image-color-select]`;
+                    variantColorImageUploads.querySelector(focusSelector)?.focus();
                 });
 
                 const help = document.createElement('small');
@@ -1409,21 +1528,32 @@ const initializeSellerPolish = () => {
                 if (duplicateColor) help.classList.add('is-error');
 
                 assignmentLabel.append(assignmentText, colorSelect, help);
+                if (finalColorInput) assignmentLabel.appendChild(finalColorInput);
                 copy.append(filename, assignmentLabel);
 
                 const removeButton = document.createElement('button');
                 removeButton.type = 'button';
                 removeButton.className = 'product-variant-image-remove';
                 removeButton.textContent = 'Remove';
-                removeButton.setAttribute('aria-label', `Remove ${file.name} from variant images`);
-                removeButton.addEventListener('click', () => removeVariantColorImage(index));
+                removeButton.setAttribute('aria-label', `Remove ${filename.textContent} from variant images`);
+                removeButton.addEventListener('click', () => {
+                    if (isDraft) {
+                        removeButton.disabled = true;
+                        form.dispatchEvent(new CustomEvent('seller:draft-image-removed', {
+                            bubbles: true,
+                            detail: { imageId, purpose: 'variant_color' },
+                        }));
+                    } else {
+                        removeVariantColorImage(index);
+                    }
+                });
 
                 row.append(preview, copy, removeButton);
                 variantColorImageUploads.appendChild(row);
             });
 
             if (variantColorImageEmpty) {
-                variantColorImageEmpty.hidden = variantsEnabled && colors.length > 0 && files.length > 0;
+                variantColorImageEmpty.hidden = variantsEnabled && colors.length > 0 && entries.length > 0;
             }
         };
 
@@ -1439,6 +1569,7 @@ const initializeSellerPolish = () => {
                 if (index !== removedIndex) transfer.items.add(file);
             });
             variantColorImageInput.files = transfer.files;
+            syncProductFilePickerName(variantColorImageInput);
 
             variantImageColorAssignments.clear();
             [...(variantColorImageInput.files || [])].forEach((_, newIndex) => {
@@ -1450,6 +1581,10 @@ const initializeSellerPolish = () => {
             renderVariantColorImageUploads(readRenderedVariants());
             renderProductMediaPreview();
             syncBuyerProductPreview();
+            form.dispatchEvent(new CustomEvent('seller:draft-image-files-changed', {
+                bubbles: true,
+                detail: { purpose: 'variant_color' },
+            }));
         };
 
         const syncVariantRowImages = () => {
@@ -1610,6 +1745,11 @@ const initializeSellerPolish = () => {
             if (localFile) {
                 if (selected.kind === 'primary' && primaryImageInput) {
                     primaryImageInput.value = '';
+                    syncProductFilePickerName(primaryImageInput);
+                    form.dispatchEvent(new CustomEvent('seller:draft-image-files-changed', {
+                        bubbles: true,
+                        detail: { purpose: 'primary' },
+                    }));
                 } else if (selected.kind === 'gallery' && galleryImagesInput) {
                     const index = Number(selected.id.replace('gallery-', ''));
                     const transfer = new window.DataTransfer();
@@ -1617,6 +1757,11 @@ const initializeSellerPolish = () => {
                         if (fileIndex !== index) transfer.items.add(file);
                     });
                     galleryImagesInput.files = transfer.files;
+                    syncProductFilePickerName(galleryImagesInput);
+                    form.dispatchEvent(new CustomEvent('seller:draft-image-files-changed', {
+                        bubbles: true,
+                        detail: { purpose: 'gallery' },
+                    }));
                 } else if (selected.kind === 'variant') {
                     const index = Number(selected.id.replace('variant-color-upload:', ''));
                     removeVariantColorImage(index);
@@ -1629,6 +1774,22 @@ const initializeSellerPolish = () => {
                     mediaStatus.hidden = false;
                 }
 
+                return;
+            }
+
+            const draftImageId = String(selected.draft_image_id || '');
+            if (draftImageId) {
+                form.dispatchEvent(new CustomEvent('seller:draft-image-removed', {
+                    bubbles: true,
+                    detail: {
+                        imageId: draftImageId,
+                        purpose: selected.purpose || (selected.kind === 'variant' ? 'variant_color' : selected.kind),
+                    },
+                }));
+                if (mediaStatus) {
+                    mediaStatus.textContent = `${selected.label} is being removed from the saved draft.`;
+                    mediaStatus.hidden = false;
+                }
                 return;
             }
 

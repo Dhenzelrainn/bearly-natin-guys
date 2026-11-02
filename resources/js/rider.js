@@ -1,4 +1,5 @@
 import { isValidPhilippineMobile } from './registration-phone.js';
+import { restoreRegistrationDraft, setupRegistrationDraft } from './registration-draft.js';
 import './notification-center.js';
 import {
     acknowledgeConversation,
@@ -38,6 +39,407 @@ const unseenMessages = (existing = [], incoming = []) => {
 function toast(message) {
     const stack = document.querySelector('[data-toast-stack]'); if (!stack) return;
     const item = document.createElement('div'); item.className = 'toast'; item.innerHTML = `<i data-lucide="circle-check"></i><span>${escapeHtml(message)}</span>`; stack.append(item); refreshIcons(); setTimeout(() => item.remove(), 3200);
+}
+
+const riderAvailabilityLabels = {
+    available: 'Available',
+    offline: 'Off duty',
+};
+
+function setupRiderOperationalStatusRealtime() {
+    const body = document.body;
+    const accountAlert = document.querySelector('[data-rider-account-alert]');
+    const accountAlertMessage = accountAlert?.querySelector('[data-rider-account-alert-message]');
+
+    const accountStatusKey = (value) => String(value || '').trim().toLowerCase();
+    const availabilityStatusKey = (value) => {
+        const status = String(value || '').trim().toLowerCase();
+
+        return ['available', 'offline'].includes(status) ? status : 'offline';
+    };
+
+    const lockedMessage = (accountStatus) => accountStatus === 'deactivated'
+        ? 'Your Rider account is deactivated. You are Off duty and cannot become Available. Contact your Logistics provider for assistance.'
+        : 'Your Rider account is suspended. You are Off duty and cannot become Available while suspended. Contact your Logistics provider for next steps.';
+
+    const applyStatus = (accountStatusValue, availabilityStatusValue, announce = false) => {
+        const accountStatus = accountStatusKey(accountStatusValue) || 'active';
+        const availabilityStatus = availabilityStatusKey(availabilityStatusValue);
+        const isLocked = ['suspended', 'deactivated'].includes(accountStatus);
+        const effectiveAvailability = isLocked ? 'offline' : availabilityStatus;
+
+        body.dataset.riderAccountStatus = accountStatus;
+        body.dataset.riderAvailabilityStatus = effectiveAvailability;
+
+        if (accountAlert) {
+            accountAlert.hidden = !isLocked;
+
+            if (isLocked && accountAlertMessage) {
+                accountAlertMessage.textContent = lockedMessage(accountStatus);
+            }
+        }
+
+        document.querySelectorAll('[data-rider-availability-control]').forEach((control) => {
+            if (control.dataset.riderVerificationStatus
+                && control.dataset.riderVerificationStatus !== 'approved') {
+                return;
+            }
+
+            const dot = control.querySelector('[data-rider-availability-dot]');
+            const label = control.querySelector('[data-rider-availability-label]');
+            const help = control.querySelector('[data-rider-availability-help]');
+            const input = control.querySelector('[data-rider-availability-input]');
+            const submit = control.querySelector('[data-rider-availability-submit]');
+
+            control.dataset.accountStatus = accountStatus;
+            control.dataset.availabilityStatus = effectiveAvailability;
+            control.classList.toggle('is-locked', isLocked);
+
+            dot?.classList.toggle('is-available', effectiveAvailability === 'available');
+            dot?.classList.toggle('is-offline', effectiveAvailability === 'offline');
+            dot?.classList.remove('is-pending');
+
+            if (label) {
+                label.textContent = riderAvailabilityLabels[effectiveAvailability];
+            }
+
+            if (help) {
+                help.textContent = isLocked
+                    ? 'Availability is locked until Logistics changes your account status.'
+                    : effectiveAvailability === 'available'
+                        ? 'Visible for new pickup assignments.'
+                        : 'Hidden from new pickup assignments.';
+            }
+
+            if (input) {
+                input.value = isLocked
+                    ? 'offline'
+                    : effectiveAvailability === 'available'
+                        ? 'offline'
+                        : 'available';
+            }
+
+            if (submit) {
+                submit.disabled = isLocked;
+                submit.textContent = isLocked
+                    ? 'Availability locked'
+                    : effectiveAvailability === 'available'
+                        ? 'Go off duty'
+                        : 'Go available';
+
+                if (isLocked) {
+                    submit.setAttribute('aria-disabled', 'true');
+                    submit.title = 'Availability is locked while this account is not active.';
+                } else {
+                    submit.removeAttribute('aria-disabled');
+                    submit.removeAttribute('title');
+                }
+            }
+        });
+
+        document.querySelectorAll('[data-rider-availability-badge]').forEach((badge) => {
+            badge.dataset.accountStatus = accountStatus;
+            badge.dataset.status = effectiveAvailability;
+            badge.textContent = riderAvailabilityLabels[effectiveAvailability];
+            badge.classList.toggle('is-success', effectiveAvailability === 'available' && !isLocked);
+        });
+
+        if (announce) {
+            toast(isLocked
+                ? `Account status changed. You are now ${riderAvailabilityLabels[effectiveAvailability]}.`
+                : `Availability updated to ${riderAvailabilityLabels[effectiveAvailability]}.`);
+        }
+    };
+
+    applyStatus(
+        body.dataset.riderAccountStatus || 'active',
+        body.dataset.riderAvailabilityStatus || 'offline',
+    );
+
+    window.addEventListener('bearly:rider-operational-status-updated', (event) => {
+        const payload = event.detail || {};
+        const currentUserId = Number(body.dataset.realtimeUserId || 0);
+        const eventRiderUserId = Number(payload.rider_user_id || 0);
+
+        if (eventRiderUserId > 0 && currentUserId > 0 && eventRiderUserId !== currentUserId) {
+            return;
+        }
+
+        if (!payload.account_status || !payload.availability_status) return;
+
+        applyStatus(payload.account_status, payload.availability_status, true);
+    });
+}
+
+const RIDER_LOCATION_PREFERENCE_KEY = 'bearlyRiderLocationSharingV1';
+const RIDER_LOCATION_SEND_INTERVAL_MS = 30_000;
+const RIDER_LOCATION_HEARTBEAT_INTERVAL_MS = 45_000;
+
+function setupRiderLocationSharing() {
+    const body = document.body;
+    const control = document.querySelector('[data-rider-location-status]');
+    const toggle = control?.querySelector('[data-rider-location-toggle]');
+    const dot = control?.querySelector('[data-rider-location-dot]');
+    const label = control?.querySelector('[data-rider-location-label]');
+    const help = control?.querySelector('[data-rider-location-help]');
+
+    if (!control || !toggle) return;
+
+    const endpoint = body.dataset.riderLocationEndpoint || '';
+    const clearEndpoint = body.dataset.riderLocationClearEndpoint || '';
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    let watchId = null;
+    let heartbeatId = null;
+    let requestInFlight = false;
+    let clearInFlight = false;
+    let lastSentAt = 0;
+    let hasSharedLocation = false;
+    const isLocalRider = String(body.dataset.riderWorkType || 'local').toLowerCase() !== 'courier';
+
+    const sharingPreference = () => {
+        try {
+            return localStorage.getItem(RIDER_LOCATION_PREFERENCE_KEY) === 'enabled';
+        } catch {
+            return false;
+        }
+    };
+
+    const setSharingPreference = (enabled) => {
+        try {
+            localStorage.setItem(
+                RIDER_LOCATION_PREFERENCE_KEY,
+                enabled ? 'enabled' : 'disabled',
+            );
+        } catch {
+            // Location sharing still works for this page when storage is blocked.
+        }
+    };
+
+    const isAvailable = () => isLocalRider
+        && body.dataset.riderAvailabilityStatus === 'available'
+        && !['suspended', 'deactivated'].includes(
+            String(body.dataset.riderAccountStatus || 'active').toLowerCase(),
+        );
+
+    const setUi = (state, title, description, buttonText = 'Share live location', showButton = true) => {
+        control.classList.toggle('is-sharing', state === 'sharing');
+        control.classList.toggle('is-error', state === 'error');
+        dot?.classList.toggle('is-sharing', state === 'sharing');
+        dot?.classList.toggle('is-pending', state === 'pending');
+        dot?.classList.toggle('is-error', state === 'error');
+        dot?.classList.toggle('is-off', !['sharing', 'pending', 'error'].includes(state));
+        if (label) label.textContent = title;
+        if (help) help.textContent = description;
+        toggle.hidden = !showButton;
+        toggle.disabled = state === 'pending';
+        toggle.textContent = buttonText;
+    };
+
+    const formatUpdatedAt = () => new Intl.DateTimeFormat(undefined, {
+        hour: 'numeric',
+        minute: '2-digit',
+    }).format(new Date());
+
+    const clearRemoteLocation = async () => {
+        if (!clearEndpoint || clearInFlight) return;
+
+        clearInFlight = true;
+        try {
+            await fetch(clearEndpoint, {
+                method: 'DELETE',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+        } catch {
+            // The server freshness window remains the safety fallback.
+        } finally {
+            clearInFlight = false;
+        }
+    };
+
+    const stopWatcher = () => {
+        if (watchId !== null && navigator.geolocation) {
+            navigator.geolocation.clearWatch(watchId);
+        }
+        if (heartbeatId !== null) window.clearInterval(heartbeatId);
+        watchId = null;
+        heartbeatId = null;
+    };
+
+    const sendPosition = async (position) => {
+        if (!endpoint || requestInFlight || !isAvailable()) return;
+
+        const now = Date.now();
+        if (now - lastSentAt < RIDER_LOCATION_SEND_INTERVAL_MS) return;
+
+        const latitude = Number(position?.coords?.latitude);
+        const longitude = Number(position?.coords?.longitude);
+        const accuracy = Number(position?.coords?.accuracy);
+
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+
+        requestInFlight = true;
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    latitude,
+                    longitude,
+                    accuracy_meters: Number.isFinite(accuracy) ? accuracy : null,
+                }),
+            });
+
+            if (response.status === 409) {
+                stopWatcher();
+                setSharingPreference(false);
+                hasSharedLocation = false;
+                setUi('error', 'Location sharing stopped', 'Set your Rider status to Available before sharing again.');
+                return;
+            }
+
+            if (!response.ok) {
+                throw new Error('Location update failed.');
+            }
+
+            lastSentAt = Date.now();
+            hasSharedLocation = true;
+            const accuracyLabel = Number.isFinite(accuracy)
+                ? ` · ±${Math.round(accuracy)} m accuracy`
+                : '';
+            setUi(
+                'sharing',
+                'Location sharing is active',
+                `Last update ${formatUpdatedAt()}${accuracyLabel}. Logistics can use it for pickup recommendations.`,
+                'Stop sharing',
+                true,
+            );
+        } catch {
+            setUi(
+                'error',
+                hasSharedLocation ? 'Location update delayed' : 'Could not share location',
+                'Keep this Rider page open and check your connection or browser location permission.',
+                'Retry sharing',
+                true,
+            );
+        } finally {
+            requestInFlight = false;
+        }
+    };
+
+    const handlePositionError = (error) => {
+        if (error?.code === 1) {
+            stopWatcher();
+            setSharingPreference(false);
+            setUi(
+                'error',
+                'Location permission denied',
+                'Allow location access in your browser settings, then try again.',
+                'Try again',
+                true,
+            );
+            return;
+        }
+
+        setUi(
+            'error',
+            'Waiting for location',
+            'Your browser could not get a fresh position yet. We will keep trying while Available.',
+            'Stop sharing',
+            true,
+        );
+    };
+
+    const startWatcher = () => {
+        if (!isAvailable()) {
+            setUi('off', 'Location sharing is off', 'Set your Rider status to Available before sharing location.');
+            return;
+        }
+
+        if (!navigator.geolocation) {
+            setUi('error', 'Location is unavailable', 'This browser does not provide geolocation. GPS-aware recommendations will fall back to area and workload.', 'Try again', true);
+            return;
+        }
+
+        if (watchId !== null) return;
+
+        setUi('pending', 'Requesting location permission', 'Allow browser location access to share your latest position with your Logistics provider.', 'Starting…', true);
+        setSharingPreference(true);
+        watchId = navigator.geolocation.watchPosition(
+            (position) => { void sendPosition(position); },
+            handlePositionError,
+            {
+                enableHighAccuracy: false,
+                maximumAge: 30_000,
+                timeout: 15_000,
+            },
+        );
+        heartbeatId = window.setInterval(() => {
+            if (!isAvailable() || !navigator.geolocation) return;
+            navigator.geolocation.getCurrentPosition(
+                (position) => { void sendPosition(position); },
+                handlePositionError,
+                {
+                    enableHighAccuracy: false,
+                    maximumAge: 30_000,
+                    timeout: 15_000,
+                },
+            );
+        }, RIDER_LOCATION_HEARTBEAT_INTERVAL_MS);
+    };
+
+    const stopSharing = (clearRemote = true) => {
+        stopWatcher();
+        setSharingPreference(false);
+        hasSharedLocation = false;
+        if (clearRemote) void clearRemoteLocation();
+        setUi('off', 'Location sharing is off', isAvailable()
+            ? 'Share while Available so Logistics can recommend nearby pickups.'
+            : 'Set your Rider status to Available before sharing location.', 'Share live location', isAvailable());
+    };
+
+    const reconcileAvailability = () => {
+        if (!isLocalRider) {
+            stopWatcher();
+            void clearRemoteLocation();
+            setUi('off', 'Location sharing is not used', 'Courier runs do not use the local pickup recommendation GPS channel.', 'Share live location', false);
+            return;
+        }
+
+        if (!isAvailable()) {
+            stopWatcher();
+            void clearRemoteLocation();
+            setUi('off', 'Location sharing is off', 'Set your Rider status to Available before sharing location.', 'Share live location', false);
+            return;
+        }
+
+        if (watchId === null && sharingPreference()) startWatcher();
+        if (watchId === null && !sharingPreference()) {
+            setUi('off', 'Location sharing is off', 'Share while Available so Logistics can recommend nearby pickups.', 'Share live location', true);
+        }
+    };
+
+    toggle.addEventListener('click', () => {
+        if (watchId !== null) {
+            stopSharing();
+            return;
+        }
+
+        startWatcher();
+    });
+
+    window.addEventListener('bearly:rider-operational-status-updated', reconcileAvailability);
+    reconcileAvailability();
 }
 
 function setupShell() {
@@ -1131,13 +1533,16 @@ function setupRegistration() {
     const form = document.querySelector('[data-registration-form]');
     if (!form) return;
 
-    let step = 1;
+    restoreRegistrationDraft(form);
+    setupRegistrationDraft(form);
+    let step = Math.max(1, Math.min(3, Number(form.dataset.draftStep || 1)));
 
     const emailVerification = setupRegistrationEmail(form);
     const passwordUx = setupRegistrationPassword(form);
 
     setupMiddleInitial(form);
 
+    const region = form.querySelector('[data-region]');
     const province = form.querySelector('[data-province]');
     const city = form.querySelector('[data-city]');
     const barangay = form.querySelector('[data-barangay]');
@@ -1146,7 +1551,12 @@ function setupRegistration() {
     const postalChoices = form.querySelector('[data-postal-choices]');
     const postalHelp = form.querySelector('[data-postal-help]');
     const cityCodeField = form.elements.city_code;
+    const regionCodeField = form.elements.region_code;
     const postalManualField = form.elements.postal_manual;
+    const savedPostalCode = postalCode?.value || '';
+    const savedPostalManual = postalManualField?.value === '1';
+    const savedCityCode = cityCodeField?.value || '';
+    let restoringAddress = Boolean(savedPostalCode && savedCityCode);
     const logisticsPartner = form.elements.logistics_partner;
     const logisticsPartnerHelp = form.querySelector('[data-logistics-partner-help]');
 
@@ -1183,12 +1593,12 @@ function setupRegistration() {
 
         if (logisticsPartnerHelp) {
             logisticsPartnerHelp.textContent = !cityCode
-                ? 'Select your home municipality to find its approved Logistics partner.'
+                ? 'Select your home municipality to find an approved Logistics partner.'
                 : !eligibleCount
-                    ? 'No active Logistics partner serves this municipality yet.'
+                    ? 'No active Logistics partner serves this municipality. Choose another municipality to continue.'
                     : logisticsPartner.value
                         ? 'Selected Logistics partner serves your selected municipality.'
-                        : 'Select an approved Logistics partner serving your selected municipality.';
+                        : 'Choose an approved Logistics partner serving your selected municipality.';
         }
     };
 
@@ -1607,6 +2017,7 @@ function setupRegistration() {
 
     const show = (next) => {
         step = next;
+        form.dataset.currentStep = String(step);
 
         document
             .querySelectorAll('[data-form-step]')
@@ -1636,6 +2047,7 @@ function setupRegistration() {
             top: 0,
             behavior: 'smooth',
         });
+        form.dispatchEvent(new Event('registration:step'));
     };
 
     const validateStep = () => {
@@ -1690,6 +2102,45 @@ function setupRegistration() {
                     field.reportValidity();
                     field.focus();
                 }
+
+                return false;
+            }
+        }
+
+        if (step === 2) {
+            const cityCode = cityCodeField?.value || '';
+            const selectedPartner = logisticsPartner?.selectedOptions[0];
+            const selectedPartnerIsEligible = Boolean(
+                cityCode
+                && selectedPartner?.value
+                && selectedPartner.dataset.cityCode === cityCode
+                && !selectedPartner.disabled
+                && !logisticsPartner.disabled
+            );
+
+            if (!selectedPartnerIsEligible) {
+                const hasEligiblePartners = Boolean(
+                    cityCode
+                    && logisticsPartner
+                    && [...logisticsPartner.options].some((option) =>
+                        option.value
+                        && option.dataset.cityCode === cityCode
+                        && !option.disabled
+                        && !option.hidden
+                    )
+                );
+
+                if (logisticsPartnerHelp) {
+                    logisticsPartnerHelp.textContent = !cityCode
+                        ? city?.value
+                            ? 'We could not verify the selected municipality. Select it again to find an approved Logistics partner.'
+                            : 'Select your home municipality to find an approved Logistics partner.'
+                        : hasEligiblePartners
+                            ? 'Choose an approved Logistics partner serving your selected municipality.'
+                            : 'No active Logistics partner serves this municipality. Choose another municipality to continue.';
+                }
+
+                if (city) openSearchableSelect(city);
 
                 return false;
             }
@@ -1807,52 +2258,61 @@ function setupRegistration() {
         });
 
     const fallbackLocations = (url) => {
+        if (url.endsWith('/regions')) {
+            return [
+                {
+                    name: 'Region IV-A (CALABARZON)',
+                    code: '0400000000',
+                },
+            ];
+        }
+
         if (url.endsWith('/provinces')) {
             return [
                 {
                     name: 'Laguna',
-                    code: '043400000',
+                    code: '0403400000',
                 },
                 {
                     name: 'Batangas',
-                    code: '041000000',
+                    code: '0401000000',
                 },
                 {
                     name: 'Cavite',
-                    code: '042100000',
+                    code: '0402100000',
                 },
                 {
                     name: 'Quezon',
-                    code: '045600000',
+                    code: '0405600000',
                 },
             ];
         }
 
         if (
             url.includes(
-                '/provinces/043400000/'
+                '/provinces/0403400000/'
             )
         ) {
             return [
                 {
                     name: 'San Pablo City',
-                    code: '043426000',
+                    code: '0403424000',
                 },
                 {
                     name: 'Santa Cruz',
-                    code: '043428000',
+                    code: '0403426000',
                 },
                 {
                     name: 'Calauan',
-                    code: '043405000',
+                    code: '0403406000',
                 },
                 {
                     name: 'Pila',
-                    code: '043419000',
+                    code: '0403422000',
                 },
                 {
                     name: 'Bay',
-                    code: '043403000',
+                    code: '0403402000',
                 },
             ];
         }
@@ -1905,6 +2365,13 @@ function setupRegistration() {
                 .join('');
 
         select.disabled = false;
+        const oldValue = select.dataset.oldValue || '';
+        select.dataset.oldValue = '';
+        if (oldValue) {
+            const match = [...select.options].find((option) =>
+                option.value.toLocaleLowerCase() === oldValue.toLocaleLowerCase());
+            if (match) select.value = match.value;
+        }
         syncSearchableSelect(select);
     };
 
@@ -2191,11 +2658,92 @@ function setupRegistration() {
         }
     );
 
-    if (province && city && barangay) {
-        load(
-            '/api/psgc/provinces',
-            province,
-            'Select province'
+    if (region && province && city && barangay) {
+        const restoreAddressCascade = async () => {
+            await load(
+                '/api/psgc/regions',
+                region,
+                'Select region'
+            );
+
+            const regionCode = region.selectedOptions[0]?.dataset.code || '';
+            if (regionCodeField) regionCodeField.value = regionCode;
+            if (!regionCode) return;
+
+            await load(
+                `/api/psgc/regions/${regionCode}/provinces`,
+                province,
+                'Select province'
+            );
+
+            const provinceCode = province.selectedOptions[0]?.dataset.code || '';
+            if (!provinceCode) return;
+
+            await load(
+                `/api/psgc/provinces/${provinceCode}/cities`,
+                city,
+                'Select municipality / city'
+            );
+
+            const cityCode = city.selectedOptions[0]?.dataset.code || '';
+            if (!cityCode) return;
+
+            await load(
+                `/api/psgc/cities/${cityCode}/barangays`,
+                barangay,
+                'Select barangay'
+            );
+
+            await loadPostalCode();
+
+            if (restoringAddress) {
+                const selectedCityCode = city.selectedOptions[0]?.dataset.code || '';
+                if (selectedCityCode && selectedCityCode === savedCityCode) {
+                    postalCode.value = savedPostalCode;
+                    postalCode.readOnly = !savedPostalManual;
+                    postalManualField.value = savedPostalManual ? '1' : '0';
+                    cityCodeField.value = selectedCityCode;
+                }
+
+                restoringAddress = false;
+            }
+        };
+
+        void restoreAddressCascade();
+
+        region.addEventListener(
+            'change',
+            () => {
+                const code = region.selectedOptions[0]?.dataset.code || '';
+                if (regionCodeField) regionCodeField.value = code;
+
+                province.dataset.oldValue = '';
+                province.innerHTML =
+                    '<option value="">Select region first</option>';
+                province.disabled = true;
+
+                city.innerHTML =
+                    '<option value="">Select province first</option>';
+                city.disabled = true;
+
+                barangay.innerHTML =
+                    '<option value="">Select city first</option>';
+                barangay.disabled = true;
+
+                syncSearchableSelect(province);
+                syncSearchableSelect(city);
+                syncSearchableSelect(barangay);
+
+                resetPostal();
+
+                if (code) {
+                    load(
+                        `/api/psgc/regions/${code}/provinces`,
+                        province,
+                        'Select province'
+                    );
+                }
+            }
         );
 
         province.addEventListener(
@@ -2256,7 +2804,19 @@ function setupRegistration() {
                     );
                 }
 
-                loadPostalCode();
+                void loadPostalCode().finally(() => {
+                    if (!restoringAddress) return;
+
+                    const selectedCityCode = city.selectedOptions[0]?.dataset.code || '';
+                    if (selectedCityCode && selectedCityCode === savedCityCode) {
+                        postalCode.value = savedPostalCode;
+                        postalCode.readOnly = !savedPostalManual;
+                        postalManualField.value = savedPostalManual ? '1' : '0';
+                        cityCodeField.value = selectedCityCode;
+                    }
+
+                    restoringAddress = false;
+                });
             }
         );
 
@@ -2270,7 +2830,7 @@ function setupRegistration() {
 
     syncLogisticsPartner();
 
-    show(1);
+    show(step);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -2285,6 +2845,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setupSingleSubmitForms();
     setupDeliveryConfirmation();
     setupRiderEarningsRealtime();
+    setupRiderOperationalStatusRealtime();
+    setupRiderLocationSharing();
     setupRegistration();
     refreshIcons();
 });

@@ -12,6 +12,8 @@ use App\Services\AuditService;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
 use App\Services\PostalCodeLookup;
+use App\Services\PsgcAddressService;
+use App\Services\RegistrationDraftService;
 use App\Services\RegistrationLifecycleService;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\RedirectResponse;
@@ -37,12 +39,13 @@ class BearlyAuthController extends Controller
         return view('auth.login');
     }
 
-    public function showRegister(Request $request): View
+    public function showRegister(Request $request, RegistrationDraftService $drafts): View
     {
         $this->activeGoogleRegistration($request);
 
         return view('auth.register', [
             'sellerRegistrationCategories' => $this->sellerRegistrationCategories(),
+            'registrationDraft' => $drafts->forPage($request, 'buyer-seller'),
         ]);
     }
 
@@ -331,7 +334,7 @@ class BearlyAuthController extends Controller
             );
     }
 
-    public function register(Request $request): RedirectResponse
+    public function register(Request $request, RegistrationDraftService $drafts): RedirectResponse
     {
         $googleRegistration = $this->activeGoogleRegistration($request);
 
@@ -420,7 +423,9 @@ class BearlyAuthController extends Controller
             ],
             'phone_country' => ['required', 'string', 'size:2'],
             'city_code' => ['nullable', 'regex:/^[0-9]{6,10}$/D'],
+            'region_code' => ['nullable', 'regex:/^\d{10}$/D'],
             'postal_manual' => ['nullable', 'boolean'],
+            'region' => ['required', 'string', 'max:160'],
             'province' => ['required', 'string', 'max:100'],
             'city' => ['required', 'string', 'max:100'],
             'barangay' => ['required', 'string', 'max:100'],
@@ -466,6 +471,7 @@ class BearlyAuthController extends Controller
         }
 
         app(PostalCodeLookup::class)->validate($data);
+        $data = app(PsgcAddressService::class)->normalize($data);
 
         $isGoogleRegistration = $googleRegistration
             && $googleEmail !== ''
@@ -535,8 +541,10 @@ class BearlyAuthController extends Controller
                     'terms_version' => config('bearly-policies.version'),
                     'privacy_version' => config('bearly-policies.version'),
                     'role' => $data['role'],
-                    'status' => AccountStatus::Pending->value,
-                    'province' => $data['province'],
+                     'status' => AccountStatus::Pending->value,
+                     'region' => $data['region'],
+                     'region_code' => $data['region_code'] ?? null,
+                     'province' => $data['province'],
                     'city' => $data['city'],
                     'barangay' => $data['barangay'],
                     'street_address' => trim(
@@ -556,6 +564,8 @@ class BearlyAuthController extends Controller
                 $registrationAddress = [
                     'house_number' => $data['house_number'],
                     'street_name' => $data['street_name'],
+                    'region' => $data['region'],
+                    'region_code' => $data['region_code'] ?? null,
                     'barangay' => $data['barangay'],
                     'city' => $data['city'],
                     'province' => $data['province'],
@@ -605,6 +615,7 @@ class BearlyAuthController extends Controller
         }
 
         $verification->forget($request);
+        $drafts->forget($request, 'buyer-seller');
 
         $request->session()->forget([
             'google_registration',

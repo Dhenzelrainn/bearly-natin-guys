@@ -23,6 +23,10 @@
     };
 @endphp
 
+@php
+    $canManageStatus = $canManageStatus ?? strtolower((string) $profileRole) !== 'rider';
+@endphp
+
 <div class="modal-shell admin-user-profile-shell" data-modal="{{ $modalId }}" hidden>
     <button
         class="modal-backdrop"
@@ -145,6 +149,7 @@
         @include('admin.users._profile-status-actions', [
             'status' => $normalizedStatus,
             'allowedStatuses' => $allowedStatuses,
+            'canManageStatus' => $canManageStatus,
         ])
     </section>
 </div>

@@ -4,6 +4,9 @@
 @section('page-title', 'City / Line-haul Courier')
 
 @section('content')
+@php
+    $isCourierAvailable = $courierProfile->availability_status === 'available';
+@endphp
 <div class="page-header">
     <div>
         <p class="page-kicker">Logistics-verified work type</p>
@@ -11,13 +14,20 @@
         <p>Follow the manifest in order. Destination Logistics changes custody only after its authorized acceptance scan.</p>
     </div>
     <div class="page-actions">
-        <span class="status-badge {{ $courierProfile->availability_status === 'available' ? 'is-success' : '' }}">{{ ucfirst($courierProfile->availability_status) }}</span>
-        <form method="POST" action="{{ route('rider.availability.update') }}">
-            @csrf
-            @method('PATCH')
-            <input type="hidden" name="availability_status" value="{{ $courierProfile->availability_status === 'available' ? 'offline' : 'available' }}">
-            <button class="button" type="submit">{{ $courierProfile->availability_status === 'available' ? 'Go offline' : 'Set available' }}</button>
-        </form>
+        <div class="rider-availability-control" data-rider-availability-control data-rider-verification-status="approved">
+            <span
+                class="status-badge {{ $isCourierAvailable ? 'is-success' : '' }}"
+                data-rider-availability-badge
+                data-status="{{ $courierProfile->availability_status }}"
+                aria-live="polite"
+            >{{ $isCourierAvailable ? 'Available' : 'Off duty' }}</span>
+            <form method="POST" action="{{ route('rider.availability.update') }}" data-rider-availability-form>
+                @csrf
+                @method('PATCH')
+                <input type="hidden" name="availability_status" value="{{ $isCourierAvailable ? 'offline' : 'available' }}" data-rider-availability-input>
+                <button class="button button-small" type="submit" data-rider-availability-submit>{{ $isCourierAvailable ? 'Go off duty' : 'Set available' }}</button>
+            </form>
+        </div>
         <span class="status-badge is-success">Verified capacity: {{ $courierProfile->linehaul_parcel_capacity }} parcels</span>
     </div>
 </div>

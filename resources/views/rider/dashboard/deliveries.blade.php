@@ -39,7 +39,7 @@
     </div>
 </div>
 
-<section class="metric-strip">
+<section class="metric-strip rider-delivery-metric-strip">
     <article class="metric-item">
         <span class="metric-icon">
             <i data-lucide="package"></i>
@@ -111,6 +111,24 @@
 
             <span>
                 Shipment-level customer handoffs
+            </span>
+        </span>
+    </article>
+
+    <article class="metric-item">
+        <span class="metric-icon">
+            <i data-lucide="check-check"></i>
+        </span>
+
+        <span class="metric-copy">
+            <small>Completed today</small>
+
+            <strong>
+                {{ $metrics['completed_today'] }}
+            </strong>
+
+            <span>
+                Outbound shipment stops
             </span>
         </span>
     </article>

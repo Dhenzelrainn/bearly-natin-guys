@@ -6,6 +6,7 @@ use App\Enums\AccountStatus;
 use App\Enums\ParcelStatus;
 use App\Enums\ShipmentStatus;
 use App\Enums\UserRole;
+use App\Events\RiderOperationalStatusUpdated;
 use App\Models\Address;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
@@ -21,6 +22,7 @@ use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 class RiderPickupWorkflowTest extends TestCase
@@ -970,6 +972,8 @@ class RiderPickupWorkflowTest extends TestCase
 
     public function test_approved_rider_can_control_availability_and_logistics_only_lists_available_riders(): void
     {
+        Event::fake([RiderOperationalStatusUpdated::class]);
+
         $provider = $this->makeProvider('AVAILABILITY');
         $riderProfile = $this->makeRider(
             $provider,
@@ -983,8 +987,11 @@ class RiderPickupWorkflowTest extends TestCase
             ->actingAs($riderProfile->user)
             ->get(route('rider.dashboard.pickups'))
             ->assertOk()
-            ->assertSee('Offline')
-            ->assertSee('Go available');
+            ->assertSee('Off duty')
+            ->assertSee('Go available')
+            ->assertSee('data-rider-account-alert', false)
+            ->assertSee('data-rider-availability-form', false)
+            ->assertSee('data-rider-availability-submit', false);
 
         $this
             ->from(route('rider.dashboard.pickups'))
@@ -1002,6 +1009,16 @@ class RiderPickupWorkflowTest extends TestCase
                 'success',
                 'You are now available for new pickup assignments.'
             );
+
+        Event::assertDispatched(
+            RiderOperationalStatusUpdated::class,
+            fn (RiderOperationalStatusUpdated $event): bool => $event->broadcastWith()['rider_user_id']
+                === $riderProfile->user_id
+                && $event->broadcastWith()['account_status']
+                    === AccountStatus::Active->value
+                && $event->broadcastWith()['availability_status']
+                    === 'available',
+        );
 
         $this->assertDatabaseHas('rider_profiles', [
             'id' => $riderProfile->id,
@@ -1074,7 +1091,7 @@ class RiderPickupWorkflowTest extends TestCase
             ->actingAs($provider['user'])
             ->get(route('logistics.riders.index'))
             ->assertOk()
-            ->assertSee('Offline')
+            ->assertSee('Off duty')
             ->assertViewHas(
                 'riders',
                 function (array $riders) use (
@@ -1086,9 +1103,33 @@ class RiderPickupWorkflowTest extends TestCase
                     );
 
                     return $rider !== null
-                        && $rider['availability'] === 'Offline';
+                        && $rider['availability'] === 'Off duty';
                 }
             );
+    }
+
+    public function test_courier_dashboard_uses_live_availability_control_hooks(): void
+    {
+        $provider = $this->makeProvider('COURIER-AVAILABILITY');
+        $riderProfile = $this->makeRider($provider, 'COURIER-AVAILABILITY');
+        $riderProfile->update([
+            'work_type' => 'courier',
+            'courier_vehicle_verified_by' => $provider['user']->id,
+            'courier_vehicle_verified_at' => now(),
+            'linehaul_parcel_capacity' => 20,
+            'availability_status' => 'offline',
+        ]);
+
+        $this
+            ->actingAs($riderProfile->user)
+            ->get(route('rider.courier.dashboard'))
+            ->assertOk()
+            ->assertSee('Off duty')
+            ->assertSee('Set available')
+            ->assertSee('data-rider-availability-control', false)
+            ->assertSee('data-rider-availability-badge', false)
+            ->assertSee('data-rider-availability-form', false)
+            ->assertSee('data-rider-account-alert', false);
     }
 
     public function test_rider_cannot_set_availability_before_profile_approval_or_use_other_states(): void
@@ -1128,6 +1169,71 @@ class RiderPickupWorkflowTest extends TestCase
             'id' => $riderProfile->id,
             'availability_status' => 'offline',
             'verification_status' => 'approved',
+        ]);
+    }
+
+    public function test_available_rider_can_publish_location_and_off_duty_clears_it(): void
+    {
+        $provider = $this->makeProvider('LOCATION');
+        $riderProfile = $this->makeRider($provider, 'LOCATION');
+
+        $this->actingAs($riderProfile->user)
+            ->postJson(route('rider.location.update'), [
+                'latitude' => 14.5995,
+                'longitude' => 120.9842,
+                'accuracy_meters' => 12.4,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.latitude', 14.5995)
+            ->assertJsonPath('data.longitude', 120.9842)
+            ->assertJsonPath('data.accuracy_meters', 12.4)
+            ->assertJsonPath('message', 'Live location updated.');
+
+        $this->assertDatabaseHas('rider_locations', [
+            'rider_profile_id' => $riderProfile->id,
+            'latitude' => 14.5995,
+            'longitude' => 120.9842,
+        ]);
+
+        $this->actingAs($riderProfile->user)
+            ->from(route('rider.dashboard.pickups'))
+            ->patch(route('rider.availability.update'), [
+                'availability_status' => 'offline',
+            ])
+            ->assertRedirect(route('rider.dashboard.pickups'));
+
+        $this->assertDatabaseMissing('rider_locations', [
+            'rider_profile_id' => $riderProfile->id,
+        ]);
+    }
+
+    public function test_location_updates_require_an_approved_available_rider(): void
+    {
+        $provider = $this->makeProvider('LOCATION-GATE');
+        $riderProfile = $this->makeRider($provider, 'LOCATION-GATE');
+        $riderProfile->update(['availability_status' => 'offline']);
+
+        $this->actingAs($riderProfile->user)
+            ->postJson(route('rider.location.update'), [
+                'latitude' => 14.5995,
+                'longitude' => 120.9842,
+            ])
+            ->assertStatus(409);
+
+        $riderProfile->update([
+            'availability_status' => 'available',
+            'verification_status' => 'pending',
+        ]);
+
+        $this->actingAs($riderProfile->user)
+            ->postJson(route('rider.location.update'), [
+                'latitude' => 14.5995,
+                'longitude' => 120.9842,
+            ])
+            ->assertForbidden();
+
+        $this->assertDatabaseMissing('rider_locations', [
+            'rider_profile_id' => $riderProfile->id,
         ]);
     }
 

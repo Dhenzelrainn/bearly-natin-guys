@@ -57,10 +57,12 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `house_number` | `varchar(40)` | YES | — |  |
 | `street` | `varchar(180)` | NO | — |  |
 | `barangay` | `varchar(120)` | NO | — |  |
+| `region` | `varchar(160)` | YES | — |  |
 | `city_municipality` | `varchar(120)` | NO | — |  |
 | `province` | `varchar(120)` | NO | — |  |
 | `postal_code` | `varchar(10)` | YES | — |  |
 | `psgc_province_code` | `varchar(20)` | YES | — |  |
+| `psgc_region_code` | `varchar(20)` | YES | — |  |
 | `psgc_city_code` | `varchar(20)` | YES | — |  |
 | `psgc_barangay_code` | `varchar(20)` | YES | — |  |
 | `latitude` | `decimal(10,7)` | YES | — |  |
@@ -1788,6 +1790,32 @@ The additive `2026_10_30_000001_add_logistics_payout_destinations` migration add
 - `rider_profiles_plate_number_unique` (plate_number) — unique.
 - `rider_profiles_user_id_unique` (user_id) — unique.
 
+## `rider_locations` (added by `2026_11_02_000002_create_rider_locations_table`)
+
+Stores only the latest foreground local-Rider location. It is not a location
+history table; provider-scoped Logistics queries decide which eligible Riders
+may see the row. Rows older than three minutes are stale for recommendations.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `rider_profile_id` | `bigint unsigned` | NO | — | UNI |
+| `latitude` | `decimal(10,7)` | NO | — |  |
+| `longitude` | `decimal(10,7)` | NO | — |  |
+| `accuracy_meters` | `decimal(8,2)` | YES | — |  |
+| `last_seen_at` | `timestamp` | NO | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `rider_locations_last_seen_at_index` (last_seen_at) — index.
+- `rider_locations_rider_profile_id_unique` (rider_profile_id) — unique.
+
 ## `rider_vehicle_change_requests` (added by `2026_11_01_000001_add_courier_linehaul_workflows`)
 
 Stores proposed vehicle/work-type values and private document metadata until the Rider's sponsoring Logistics provider reviews the request. Approval updates the active Rider profile; rejection retains the request and review record.
@@ -2711,6 +2739,8 @@ setting row exists; it affects package estimates, not the fee.
 | `province` | `varchar(120)` | YES | — |  |
 | `city` | `varchar(120)` | YES | — |  |
 | `barangay` | `varchar(120)` | YES | — |  |
+| `region` | `varchar(160)` | YES | — |  |
+| `region_code` | `varchar(20)` | YES | — |  |
 | `street_address` | `varchar(255)` | YES | — |  |
 | `business_name` | `varchar(160)` | YES | — |  |
 | `business_category` | `varchar(120)` | YES | — |  |
@@ -2834,3 +2864,65 @@ setting row exists; it affects package estimates, not the fee.
 - `wishlists_product_id_foreign` (product_id) — index.
 - `wishlists_session_token_product_id_index` (session_token,product_id) — index.
 - `wishlists_user_id_product_id_unique` (user_id,product_id) — unique.
+
+## Temporary form draft tables
+
+These tables are added by `2026_11_02_000001_create_form_draft_tables.php`.
+
+### `registration_drafts`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `flow` | `varchar(24)` | NO | — |  |
+| `browser_token_hash` | `char(64)` | NO | — | MUL |
+| `payload` | `longtext` | NO | — |  |
+| `step` | `tinyint unsigned` | NO | 1 |  |
+| `expires_at` | `timestamp` | NO | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Indexes**
+
+- `registration_drafts_browser_flow_unique` (browser_token_hash,flow) — unique.
+- `registration_drafts_expires_at_index` (expires_at) — index.
+
+### `seller_product_drafts`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `store_id` | `bigint unsigned` | NO | — | UNI |
+| `payload` | `longtext` | NO | — |  |
+| `expires_at` | `timestamp` | NO | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `store_id` → `stores.id`; update NO ACTION, delete CASCADE.
+
+### `seller_product_draft_images`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `seller_product_draft_id` | `bigint unsigned` | NO | — | MUL |
+| `purpose` | `varchar(24)` | NO | — |  |
+| `disk` | `varchar(40)` | NO | local |  |
+| `path` | `varchar(500)` | NO | — |  |
+| `original_name` | `varchar(255)` | NO | — |  |
+| `mime_type` | `varchar(100)` | NO | — |  |
+| `size_bytes` | `bigint unsigned` | NO | — |  |
+| `position` | `smallint unsigned` | NO | 0 |  |
+| `color` | `varchar(120)` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `seller_product_draft_id` → `seller_product_drafts.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `seller_product_draft_images_order_idx` (seller_product_draft_id,purpose,position) — index.

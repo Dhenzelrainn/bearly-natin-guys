@@ -8,8 +8,45 @@
     @vite(['resources/css/rider.css','resources/css/messages-standard.css','resources/css/maps.css','resources/css/waybill-scanner.css','resources/js/messages-standard.js','resources/js/realtime.js','resources/js/waybill-scanner.js','resources/js/destination-map.js','resources/js/rider.js'])
     @include('partials.session-safety')
     @stack('styles')
+    <style>
+        /* Keep ops filters usable when an older Rider CSS bundle is cached. */
+        :root[data-theme="dark"] body.ops-body :is(.search-field, .zone-search-field) input:focus-visible {
+            outline: none !important;
+            outline-offset: 0 !important;
+            box-shadow: none !important;
+        }
+
+        :root[data-theme="dark"] body.ops-body select:not([multiple]):not([size]) {
+            appearance: none !important;
+            -webkit-appearance: none !important;
+            padding-right: 34px;
+            border-color: #4a3d34 !important;
+            background-color: #1b1714 !important;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23efbd71' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
+            background-position: right 12px center !important;
+            background-repeat: no-repeat !important;
+            background-size: 12px !important;
+            color: #f1e9e1 !important;
+            color-scheme: dark;
+        }
+
+        :root[data-theme="dark"] body.ops-body select:not([multiple]):not([size]):focus-visible {
+            border-color: #efbd71 !important;
+            outline: none !important;
+            box-shadow: 0 0 0 2px rgba(239, 189, 113, .22) !important;
+        }
+    </style>
 </head>
-<body class="ops-body" data-module="rider" data-realtime-user-id="{{ auth()->id() }}">
+<body
+    class="ops-body"
+    data-module="rider"
+    data-realtime-user-id="{{ auth()->id() }}"
+    data-rider-account-status="{{ auth()->user()?->status ?? 'active' }}"
+    data-rider-availability-status="{{ $riderAvailabilityStatus ?? 'offline' }}"
+    data-rider-work-type="{{ auth()->user()?->riderProfile?->work_type ?? 'local' }}"
+    data-rider-location-endpoint="{{ route('rider.location.update') }}"
+    data-rider-location-clear-endpoint="{{ route('rider.location.destroy') }}"
+>
 @include('partials.realtime-identity')
 <div class="ops-shell">
     <aside class="ops-sidebar" aria-label="Rider navigation">
@@ -45,6 +82,14 @@
             <div class="ops-topbar-left"><button class="icon-button mobile-menu" type="button" data-mobile-menu aria-label="Open navigation"><i data-lucide="menu"></i></button><h1>@yield('page-title','Rider Center')</h1></div>
             <div class="ops-topbar-actions">
                 @include('partials.theme-toggle')
+                <div class="rider-location-control" data-rider-location-status role="status" aria-live="polite">
+                    <span class="rider-location-dot is-off" data-rider-location-dot aria-hidden="true"></span>
+                    <span class="rider-location-copy">
+                        <strong data-rider-location-label>Location sharing is off</strong>
+                        <small data-rider-location-help>Share while Available so Logistics can recommend nearby pickups.</small>
+                    </span>
+                    <button class="button button-small" type="button" data-rider-location-toggle>Share live location</button>
+                </div>
                 <div class="popover-wrap" data-notification-center data-notification-skin="rider">
                     <button class="icon-button notification-trigger" type="button" data-popover-toggle="notifications" aria-label="Open notifications"><i data-lucide="bell"></i><span class="notification-dot" data-notification-badge="dot" hidden></span></button>
                     <div class="topbar-popover notification-popover" data-popover="notifications" hidden>
@@ -63,6 +108,16 @@
         </header>
         <main class="ops-content">
             @if(session('success') || session('job_status'))<div class="flash-banner is-success"><i data-lucide="circle-check"></i><span>{{ session('success') ?? session('job_status') }}</span><button type="button" data-dismiss><i data-lucide="x"></i></button></div>@endif
+            <div
+                class="flash-banner is-danger rider-account-live-alert"
+                data-rider-account-alert
+                role="alert"
+                aria-live="assertive"
+                hidden
+            >
+                <i data-lucide="shield-alert" aria-hidden="true"></i>
+                <span data-rider-account-alert-message></span>
+            </div>
             @yield('content')
         </main>
         <footer class="ops-footer"><span>© {{ date('Y') }} Bearly Marketplace</span><span>Rider operations preview</span></footer>

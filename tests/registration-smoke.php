@@ -58,7 +58,7 @@ check($state['code_hash'] !== $mail->code, 'Cached code is hashed');
 $service->check($request,'test@example.com',$mail->code);
 check(str_contains(view('emails.registration-code',['code'=>'123456'])->render(),'123456'),'Email template renders code');
 // Exercise registration controller with real validation, storage and a temporary DB.
-$data=['role'=>'buyer','first_name'=>'Test','last_name'=>'Buyer','middle_initial'=>'r','sex'=>'prefer_not_to_say','birthday'=>'2000-01-01','email'=>'test@example.com','contact_number'=>'09171234567','phone_country'=>'PH','province'=>'Laguna','city'=>'Pila','city_code'=>'0403422000','barangay'=>'Bulilan Norte','street_name'=>'Test Street','house_number'=>'1','postal_code'=>'4010','password'=>'Testing123','password_confirmation'=>'Testing123','terms'=>'1'];
+$data=['role'=>'buyer','first_name'=>'Test','last_name'=>'Buyer','middle_initial'=>'r','sex'=>'prefer_not_to_say','birthday'=>'2000-01-01','email'=>'test@example.com','contact_number'=>'09171234567','phone_country'=>'PH','region'=>'Region IV-A (CALABARZON)','region_code'=>'0400000000','province'=>'Laguna','city'=>'Pila','city_code'=>'0403422000','barangay'=>'Bulilan Norte','street_name'=>'Test Street','house_number'=>'1','postal_code'=>'4010','password'=>'Testing123','password_confirmation'=>'Testing123','terms'=>'1'];
 $files=['valid_id'=>Illuminate\Http\UploadedFile::fake()->create('id.pdf', 10, 'application/pdf')];
 $reg=Illuminate\Http\Request::create('/register','POST',$data,[],$files);$reg->setLaravelSession($session);
 $controller=app(App\Http\Controllers\Auth\BearlyAuthController::class);

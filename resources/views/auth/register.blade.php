@@ -13,7 +13,7 @@
 @php
 
     $googleRegistration = session('google_registration');
-    $registrationRole = old('role', 'buyer');
+    $registrationRole = old('role', $registrationDraft['fields']['role'] ?? 'buyer');
 
 @endphp
 
@@ -65,6 +65,12 @@
 
     data-postal-url="{{ route('postal.lookup') }}"
 
+    data-draft-save-url="{{ route('register.draft.save', 'buyer-seller') }}"
+
+    data-draft-step="{{ $registrationDraft['step'] ?? 1 }}"
+
+    data-has-old-input="{{ session()->hasOldInput() ? 'true' : 'false' }}"
+
     data-google-verified-email="{{ $googleRegistration['email'] ?? '' }}"
 
     novalidate
@@ -72,6 +78,8 @@
 >
 
     @csrf
+
+    <script type="application/json" data-registration-draft>@json($registrationDraft['fields'] ?? [])</script>
 
     @if ($errors->any())
 
@@ -410,9 +418,11 @@
 
             <div class="section-heading"><h2>Your address</h2><p>Enter your Philippine delivery address. International phone numbers are supported; overseas delivery addresses are not yet available.</p></div>
 
-            <div class="form-grid three" data-address-fields>
+            <div class="form-grid four" data-address-fields>
 
-                <label for="province">Province<select id="province" name="province" data-province-select data-searchable-address data-search-placeholder="Search province" data-old-value="{{ old('province') }}" required disabled><option value="">Loading provinces...</option></select></label>
+                <label for="region">Region<select id="region" name="region" data-region-select data-searchable-address data-search-placeholder="Search region" data-old-value="{{ old('region') }}" required disabled><option value="">Loading regions...</option></select></label>
+
+                <label for="province">Province<select id="province" name="province" data-province-select data-searchable-address data-search-placeholder="Search province" data-old-value="{{ old('province') }}" required disabled><option value="">Select region first</option></select></label>
 
                 <label for="city">City / Municipality<select id="city" name="city" data-city-select data-searchable-address data-search-placeholder="Search city" data-old-value="{{ old('city') }}" required disabled><option value="">Select province first</option></select></label>
 
@@ -434,7 +444,7 @@
 
             </div>
 
-            <div class="form-grid three"><label>Street name<input name="street_name" value="{{ old('street_name') }}" placeholder="Street or purok" required></label><label>House / Unit no.<input name="house_number" value="{{ old('house_number') }}" placeholder="House or unit no." required></label><div class="postal-field"><label for="postal-code">Postal code</label><input id="postal-code" name="postal_code" value="{{ old('postal_code') }}" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="e.g. 1000" aria-describedby="postal-help" required><label class="sr-only" for="postal-area">Postal area</label><select id="postal-area" data-postal-choices hidden></select><small id="postal-help" data-postal-help>Select your municipality to fill this in.</small><button type="button" class="text-button" data-postal-manual>Enter a different postal code</button><input type="hidden" name="city_code" value="{{ old('city_code') }}"><input type="hidden" name="postal_manual" value="{{ old('postal_manual', '0') }}"></div></div>
+            <div class="form-grid three"><label>Street name<input name="street_name" value="{{ old('street_name') }}" placeholder="Street or purok" required></label><label>House / Unit no.<input name="house_number" value="{{ old('house_number') }}" placeholder="House or unit no." required></label><div class="postal-field"><label for="postal-code">Postal code</label><input id="postal-code" name="postal_code" value="{{ old('postal_code') }}" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="e.g. 1000" aria-describedby="postal-help" required><label class="sr-only" for="postal-area">Postal area</label><select id="postal-area" data-postal-choices hidden></select><small id="postal-help" data-postal-help>Select your municipality to fill this in.</small><button type="button" class="text-button" data-postal-manual>Enter a different postal code</button><input type="hidden" name="region_code" value="{{ old('region_code') }}"><input type="hidden" name="city_code" value="{{ old('city_code') }}"><input type="hidden" name="postal_manual" value="{{ old('postal_manual', '0') }}"></div></div>
 
         </section>
 
@@ -668,6 +678,15 @@
             </div>
 
         </section>
+
+        <p class="info-box registration-draft-notice" role="status" aria-live="polite">
+            @if ($registrationDraft['has_draft'] ?? false)
+                Your saved registration was restored. Fields save on this browser for 7 days; passwords, codes, documents, and consent are not saved.
+            @else
+                Fields save on this browser for 7 days. Passwords, codes, documents, and consent are not saved.
+            @endif
+            <span data-registration-draft-status></span>
+        </p>
 
         <div class="form-actions">
 

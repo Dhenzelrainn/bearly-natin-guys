@@ -3,13 +3,25 @@
 namespace Tests\Feature\Logistics;
 
 use App\Enums\AccountStatus;
+use App\Enums\DeliveryAttemptOutcome;
+use App\Enums\ParcelStatus;
+use App\Enums\ShipmentStatus;
 use App\Enums\UserRole;
 use App\Models\Address;
+use App\Models\AuditLog;
+use App\Models\DispatchBatch;
 use App\Models\LogisticsProfile;
+use App\Models\Order;
+use App\Models\Parcel;
+use App\Models\SellerOrder;
+use App\Models\SellerProfile;
+use App\Models\Shipment;
+use App\Models\Store;
 use App\Models\RiderProfile;
 use App\Models\SortingCenter;
 use App\Models\SortingZone;
 use App\Models\User;
+use App\Models\Waybill;
 use App\Services\RegistrationLifecycleService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -306,7 +318,12 @@ class RiderManagementDataTest extends TestCase
             ->actingAs($provider['user'])
             ->get(route('logistics.riders.index'));
 
-        $response->assertOk();
+        $response
+            ->assertOk()
+            ->assertSee('value="active">Enabled', false)
+            ->assertSee('data-status="active"', false)
+            ->assertSee('data-availability="offline"', false)
+            ->assertSee('Off duty', false);
 
         $response->assertViewHas(
             'riders',
@@ -333,8 +350,120 @@ class RiderManagementDataTest extends TestCase
                     && $result['jobs'] === 0
                     && $result['rating'] === null
                     && $result['status']
-                        === 'Active';
+                        === 'Active'
+                    && $result['status_key']
+                        === AccountStatus::Active->value
+                    && $result['availability_status']
+                        === 'offline';
             }
+        );
+    }
+
+    public function test_rider_management_shows_owned_shipment_workload_metrics(): void
+    {
+        $provider = $this->makeLogisticsProvider(
+            'WORKLOAD',
+            'workload-provider@example.test',
+        );
+
+        $riderA = $this->makePendingRider(
+            $provider['user'],
+            'WORKLOAD-A',
+            'San Pablo City',
+        );
+        $riderB = $this->makePendingRider(
+            $provider['user'],
+            'WORKLOAD-B',
+            'San Pablo City',
+        );
+
+        foreach ([$riderA, $riderB] as $rider) {
+            $rider['application']->documents()->update([
+                'verification_status' => 'verified',
+                'verified_by' => $provider['user']->id,
+                'verified_at' => now(),
+                'rejection_reason' => null,
+            ]);
+
+            app(RegistrationLifecycleService::class)->approve(
+                $rider['user'],
+                $provider['user'],
+            );
+        }
+
+        $profileA = $riderA['user']->riderProfile()->firstOrFail();
+        $profileB = $riderB['user']->riderProfile()->firstOrFail();
+
+        $active = $this->makeWorkloadAssignment(
+            $provider,
+            $profileA,
+            'ACTIVE',
+            2,
+            ParcelStatus::OutForDelivery->value,
+        );
+
+        $completed = $this->makeWorkloadAssignment(
+            $provider,
+            $profileA,
+            'COMPLETED',
+            3,
+            ParcelStatus::Delivered->value,
+        );
+        $completedAt = now('Asia/Manila')
+            ->startOfDay()
+            ->addHours(9)
+            ->utc();
+
+        foreach ($completed['parcels'] as $parcel) {
+            $parcel->deliveryAttempts()->create([
+                'dispatch_batch_id' => $completed['batch']->id,
+                'rider_profile_id' => $profileA->id,
+                'attempt_no' => 1,
+                'outcome' => DeliveryAttemptOutcome::Delivered->value,
+                'attempted_at' => $completedAt,
+            ]);
+        }
+
+        $foreignRiderCompleted = $this->makeWorkloadAssignment(
+            $provider,
+            $profileB,
+            'FOREIGN',
+            1,
+            ParcelStatus::Delivered->value,
+        );
+        $foreignRiderCompleted['parcels']->firstOrFail()
+            ->deliveryAttempts()
+            ->create([
+                'dispatch_batch_id' => $foreignRiderCompleted['batch']->id,
+                'rider_profile_id' => $profileB->id,
+                'attempt_no' => 1,
+                'outcome' => DeliveryAttemptOutcome::Delivered->value,
+                'attempted_at' => $completedAt,
+            ]);
+
+        $response = $this
+            ->actingAs($provider['user'])
+            ->get(route('logistics.riders.index'));
+
+        $response
+            ->assertOk()
+            ->assertSeeText('Active jobs')
+            ->assertSeeText('Completed today');
+
+        $response->assertViewHas(
+            'riders',
+            function (array $riders) use ($profileA, $profileB): bool {
+                $rows = collect($riders)->keyBy('profile_id');
+                $rowA = $rows->get($profileA->id);
+                $rowB = $rows->get($profileB->id);
+
+                return $rowA !== null
+                    && $rowA['active_jobs'] === 1
+                    && $rowA['completed_today'] === 1
+                    && $rowB !== null
+                    && $rowB['active_jobs'] === 0
+                    && $rowB['completed_today'] === 1;
+            },
         );
     }
 
@@ -365,6 +494,155 @@ class RiderManagementDataTest extends TestCase
                 )
             )
             ->assertNotFound();
+    }
+
+    public function test_owning_logistics_can_update_local_rider_capacity_and_audit_it(): void
+    {
+        $provider = $this->makeLogisticsProvider(
+            'CAPACITY',
+            'capacity-provider@example.test',
+        );
+        $rider = $this->makePendingRider(
+            $provider['user'],
+            'CAPACITY',
+            'San Pablo City',
+        );
+
+        $rider['application']->documents()->update([
+            'verification_status' => 'verified',
+            'verified_by' => $provider['user']->id,
+            'verified_at' => now(),
+            'rejection_reason' => null,
+        ]);
+
+        app(RegistrationLifecycleService::class)->approve(
+            $rider['user'],
+            $provider['user'],
+        );
+
+        $profile = $rider['user']->riderProfile()->firstOrFail();
+        $profile->update([
+            'work_type' => 'local',
+            'parcel_capacity' => 12,
+        ]);
+
+        $this
+            ->actingAs($provider['user'])
+            ->patch(
+                route('logistics.riders.capacity.update', $rider['user']),
+                ['parcel_capacity' => 24],
+            )
+            ->assertRedirect(route('logistics.riders.show', $rider['user']))
+            ->assertSessionHas(
+                'success',
+                'Local Rider parcel capacity was updated.',
+            );
+
+        $this->assertSame(24, $profile->fresh()->parcel_capacity);
+
+        $audit = AuditLog::query()
+            ->where('action', 'rider.parcel_capacity_updated')
+            ->where('auditable_id', $profile->id)
+            ->latest('created_at')
+            ->firstOrFail();
+
+        $this->assertSame($provider['user']->id, $audit->actor_user_id);
+        $this->assertSame(12, $audit->old_values['parcel_capacity']);
+        $this->assertSame(24, $audit->new_values['parcel_capacity']);
+    }
+
+    public function test_logistics_cannot_lower_capacity_below_active_dispatch_load(): void
+    {
+        $provider = $this->makeLogisticsProvider(
+            'LOAD',
+            'capacity-load-provider@example.test',
+        );
+        $rider = $this->makePendingRider(
+            $provider['user'],
+            'LOAD',
+            'San Pablo City',
+        );
+
+        $rider['application']->documents()->update([
+            'verification_status' => 'verified',
+            'verified_by' => $provider['user']->id,
+            'verified_at' => now(),
+            'rejection_reason' => null,
+        ]);
+
+        app(RegistrationLifecycleService::class)->approve(
+            $rider['user'],
+            $provider['user'],
+        );
+
+        $profile = $rider['user']->riderProfile()->firstOrFail();
+        $profile->update([
+            'work_type' => 'local',
+            'parcel_capacity' => 5,
+        ]);
+
+        $this->makeWorkloadAssignment(
+            $provider,
+            $profile,
+            'CAPACITY-LOAD',
+            2,
+            ParcelStatus::Dispatched->value,
+        );
+
+        $this
+            ->actingAs($provider['user'])
+            ->patch(
+                route('logistics.riders.capacity.update', $rider['user']),
+                ['parcel_capacity' => 1],
+            )
+            ->assertSessionHasErrors('parcel_capacity');
+
+        $this->assertSame(5, $profile->fresh()->parcel_capacity);
+    }
+
+    public function test_logistics_cannot_update_a_foreign_rider_capacity(): void
+    {
+        $providerA = $this->makeLogisticsProvider(
+            'OWNED',
+            'capacity-owner@example.test',
+        );
+        $providerB = $this->makeLogisticsProvider(
+            'FOREIGN-B',
+            'capacity-foreign@example.test',
+        );
+        $rider = $this->makePendingRider(
+            $providerA['user'],
+            'OWNED-CAPACITY',
+            'San Pablo City',
+        );
+
+        $rider['application']->documents()->update([
+            'verification_status' => 'verified',
+            'verified_by' => $providerA['user']->id,
+            'verified_at' => now(),
+            'rejection_reason' => null,
+        ]);
+
+        app(RegistrationLifecycleService::class)->approve(
+            $rider['user'],
+            $providerA['user'],
+        );
+
+        $profile = $rider['user']->riderProfile()->firstOrFail();
+        $profile->update([
+            'work_type' => 'local',
+            'parcel_capacity' => 12,
+        ]);
+
+        $this
+            ->actingAs($providerB['user'])
+            ->patch(
+                route('logistics.riders.capacity.update', $rider['user']),
+                ['parcel_capacity' => 24],
+            )
+            ->assertNotFound();
+
+        $this->assertSame(12, $profile->fresh()->parcel_capacity);
     }
 
     /**
@@ -547,6 +825,114 @@ class RiderManagementDataTest extends TestCase
             'user',
             'application'
         );
+    }
+
+    /**
+     * @return array{batch: DispatchBatch, shipment: Shipment, parcels: \Illuminate\Support\Collection<int, Parcel>}
+     */
+    private function makeWorkloadAssignment(
+        array $provider,
+        RiderProfile $rider,
+        string $suffix,
+        int $parcelCount,
+        string $parcelStatus,
+    ): array {
+        $buyer = User::factory()->create([
+            'role' => UserRole::Buyer->value,
+            'status' => AccountStatus::Active->value,
+        ]);
+        $seller = User::factory()->create([
+            'role' => UserRole::Seller->value,
+            'status' => AccountStatus::Active->value,
+        ]);
+        $sellerProfile = SellerProfile::query()->create([
+            'user_id' => $seller->id,
+            'legal_business_name' => "Workload Seller {$suffix}",
+            'standing_status' => 'good_standing',
+        ]);
+        $store = Store::query()->create([
+            'seller_profile_id' => $sellerProfile->id,
+            'name' => "Workload Store {$suffix}",
+            'slug' => 'workload-store-'.strtolower($suffix),
+            'publication_status' => 'published',
+        ]);
+        $order = Order::query()->create([
+            'order_no' => "WORKLOAD-ORDER-{$suffix}",
+            'buyer_id' => $buyer->id,
+            'recipient_name' => "Workload Recipient {$suffix}",
+            'recipient_phone' => '09171234567',
+            'address_line' => 'Workload Street',
+            'barangay' => 'San Rafael',
+            'city_municipality' => 'San Pablo City',
+            'province' => 'Laguna',
+            'postal_code' => '4000',
+            'subtotal_minor' => 10000,
+            'total_minor' => 10000,
+            'status' => 'processing',
+            'payment_status' => 'paid',
+        ]);
+        $sellerOrder = SellerOrder::query()->create([
+            'seller_order_no' => "WORKLOAD-SO-{$suffix}",
+            'order_id' => $order->id,
+            'store_id' => $store->id,
+            'status' => 'ready_for_pickup',
+            'subtotal_minor' => 10000,
+            'total_minor' => 10000,
+        ]);
+        $shipment = Shipment::query()->create([
+            'shipment_no' => "WORKLOAD-SHIP-{$suffix}",
+            'seller_order_id' => $sellerOrder->id,
+            'logistics_profile_id' => $provider['profile']->id,
+            'status' => ShipmentStatus::OutForDelivery->value,
+            'shipping_fee_minor' => 0,
+            'cod_amount_minor' => 0,
+        ]);
+        $waybill = Waybill::query()->create([
+            'shipment_id' => $shipment->id,
+            'waybill_no' => "WORKLOAD-WB-{$suffix}",
+            'scan_token' => hash('sha256', "workload-scan-{$suffix}"),
+            'barcode_value' => "WORKLOAD-BARCODE-{$suffix}",
+            'piece_count' => $parcelCount,
+            'total_weight_kg' => 1.0,
+            'status' => 'generated',
+            'generated_at' => now(),
+        ]);
+        $parcels = collect();
+
+        for ($sequence = 1; $sequence <= $parcelCount; $sequence++) {
+            $parcels->push(Parcel::query()->create([
+                'shipment_id' => $shipment->id,
+                'waybill_id' => $waybill->id,
+                'parcel_no' => "WORKLOAD-PARCEL-{$suffix}-{$sequence}",
+                'piece_sequence' => $sequence,
+                'weight_kg' => 1.0,
+                'size_class' => 'small',
+                'status' => $parcelStatus,
+                'current_sorting_center_id' => $provider['center']->id,
+                'current_zone_id' => $rider->current_zone_id,
+                'last_event_at' => now(),
+            ]));
+        }
+        $batch = DispatchBatch::query()->create([
+            'batch_no' => "WORKLOAD-BATCH-{$suffix}",
+            'sorting_center_id' => $provider['center']->id,
+            'sorting_zone_id' => $rider->current_zone_id,
+            'rider_profile_id' => $rider->id,
+            'status' => 'dispatched',
+            'prepared_by' => $provider['user']->id,
+            'prepared_at' => now(),
+            'assigned_at' => now(),
+            'dispatched_at' => now(),
+        ]);
+
+        foreach ($parcels as $sequence => $parcel) {
+            $batch->parcels()->attach($parcel->id, [
+                'sequence' => $sequence + 1,
+                'loaded_at' => now(),
+            ]);
+        }
+
+        return compact('batch', 'shipment', 'parcels');
     }
 
     /** @return array{code: string, city: string, province: string, barangay: string, postal_code: string} */

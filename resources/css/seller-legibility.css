@@ -2454,6 +2454,8 @@
     border-color: transparent !important;
     background-color: transparent !important;
     box-shadow: none !important;
+    outline: none !important;
+    outline-offset: 0 !important;
     color: var(--theme-text);
 }
 
@@ -2769,6 +2771,18 @@
     color: #a8d5b0;
 }
 
+:root[data-theme="dark"] body.seller-body .seller-content .store-document-status > span:first-child {
+    border: 1px solid #806334;
+    background-color: #45331d !important;
+    color: #efbd71 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .store-document-status > span:first-child svg {
+    color: inherit !important;
+    fill: none;
+    stroke: currentColor;
+}
+
 :root[data-theme="dark"] body.seller-body .seller-content .product-status-tab.is-active {
     border-color: #806334;
     background: #3a2c20;
@@ -2907,8 +2921,8 @@
 }
 
 :root[data-theme="dark"] body.seller-body .seller-content .product-variant-images-field {
-    border-color: #806334;
-    background: #3a2c20 !important;
+    border: 0;
+    background: transparent !important;
     color: #f1e9e1;
 }
 
@@ -2929,6 +2943,18 @@
     color: #efbd71;
     font: inherit;
     cursor: pointer;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .product-file-picker {
+    border-color: #594737;
+    background: #211c18;
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .product-file-picker-button {
+    border-color: #806334;
+    background: #45331d;
+    color: #efbd71;
 }
 
 :root[data-theme="dark"] body.seller-body .seller-content .waybills-page .waybill-toolbar input[type="search"]::-webkit-search-cancel-button {
@@ -2965,6 +2991,94 @@
 ) {
     border-color: #72563e !important;
     background-color: #3a2c20 !important;
+}
+
+/* Variant editor surfaces need the same dark treatment as the surrounding card. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .variation-group, .variant-matrix-empty, .variant-matrix-table-wrap,
+    .variant-package-manager
+) {
+    border-color: #72563e !important;
+    background-color: #3a2c20 !important;
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .variation-group, .variant-matrix-empty, .variant-matrix-table-wrap,
+    .variant-package-manager
+) :is(strong, span, small, label) {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .variation-group > div small, .variation-group .seller-field small,
+    .variant-matrix-empty span, .variant-package-copy-panel small,
+    .variant-package-progress-copy small
+) {
+    color: #d5c2ad !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .variant-matrix-table-wrap, .variant-package-manager
+) :is(th, td, .variant-package-shared-panel, .variant-package-progress-panel, .variant-package-copy-panel) {
+    border-color: #594737;
+    background-color: #2b241f;
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .variant-matrix-table-wrap tbody tr {
+    background-color: #211c18;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .variant-package-progress-copy progress {
+    background: #594737;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .variant-package-progress-copy progress::-webkit-progress-bar {
+    background: #594737;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .variant-package-progress-copy progress::-webkit-progress-value,
+:root[data-theme="dark"] body.seller-body .seller-content .variant-package-progress-copy progress::-moz-progress-bar {
+    background: #e9b25b;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .variant-package-row > td {
+    border-bottom-color: #594737;
+    background-color: #211c18;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .variant-package-details > summary {
+    border: 1px solid #594737;
+    background-color: #2b241f;
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .variant-package-details[open] > summary {
+    background-color: #30241d;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .variant-package-details > summary span {
+    color: #d5c2ad;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .variant-package-details > summary span[data-state="incomplete"] {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .variant-package-details > summary span[data-state="complete"] {
+    color: #a8d5b0;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .variant-package-shared-note {
+    color: #d5c2ad;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .variant-package-row.has-incomplete-package > td,
+:root[data-theme="dark"] body.seller-body .seller-content .variant-package-row.has-package-server-error > td,
+:root[data-theme="dark"] body.seller-body .seller-content .variant-matrix-table tr.has-incomplete-package > td:first-child {
+    border-bottom-color: #72563e;
+    background-color: #2b241f !important;
 }
 
 :root[data-theme="dark"] body.seller-body .seller-content :is(
@@ -3154,6 +3268,160 @@
     border-color: var(--seller-border);
     background-color: #30241d;
     color: var(--theme-muted);
+}
+
+/* Product Discount form controls: keep legacy light promotion styles from leaking into dark mode. */
+:root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page :is(
+    .promotion-create-layout,
+    .promotion-create-card,
+    .promotion-input-shell,
+    .promotion-product-option,
+    .promotion-empty-state
+) {
+    border-color: #594737 !important;
+    background-color: #30241d !important;
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page .promotion-scope-notice {
+    border-color: #72563e !important;
+    background-color: #3a2c20 !important;
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page .promotion-create-card + .promotion-create-card {
+    border-top-color: #594737;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page :is(
+    .promotion-create-card-heading h2,
+    .promotion-create-card-heading p,
+    .promotion-field > span,
+    .promotion-product-copy strong,
+    .promotion-product-price strong,
+    .promotion-create-submit strong
+) {
+    color: #f1e9e1 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page :is(
+    .promotion-field small,
+    .promotion-field-optional,
+    .promotion-form-schedule-note,
+    .promotion-product-copy small,
+    .promotion-product-price > span,
+    .promotion-create-submit p
+) {
+    color: #d5c2ad !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page :is(
+    .promotion-field > input,
+    .promotion-field > select,
+    .promotion-field > textarea
+) {
+    border-color: #594737 !important;
+    background-color: #211c18 !important;
+    color: #f1e9e1 !important;
+    color-scheme: dark;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page .promotion-input-shell {
+    background-color: #211c18 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page .promotion-input-shell input {
+    background: transparent !important;
+    color: #f1e9e1 !important;
+    color-scheme: dark;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page .promotion-input-suffix {
+    border-left-color: #594737;
+    background-color: #3a2c20;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page :is(
+    .promotion-field > input[type="date"],
+    .promotion-field > input[type="time"]
+)::-webkit-calendar-picker-indicator {
+    filter: invert(82%) sepia(17%) saturate(560%) hue-rotate(352deg) brightness(93%);
+    opacity: .88;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page .promotion-scope-note-compact {
+    border: 1px solid #72563e;
+    background-color: #3a2c20;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page .promotion-scope-note-compact strong {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page .promotion-product-option:hover {
+    border-color: #806334 !important;
+    background-color: #3a2c20 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .promotion-create-page .promotion-product-price small {
+    color: #efbd71 !important;
+}
+
+/* Customer Feedback product placeholders should not retain the light thumbnail tile. */
+:root[data-theme="dark"] body.seller-body .seller-content .feedback-review-context > span {
+    border: 1px solid #806334;
+    background-color: #45331d !important;
+    color: #efbd71 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .feedback-review-context > span svg {
+    color: inherit !important;
+    fill: none;
+    stroke: currentColor;
+}
+
+/* Use the Bearly gold accent for message context chips instead of cream pills. */
+:root[data-theme="dark"] body.seller-body .seller-content .conversation-copy > span.conversation-chip,
+:root[data-theme="dark"] body.seller-body .seller-content .message-order-reference {
+    border-color: #d69b43 !important;
+    background: #efbd71 !important;
+    color: #2b1d16 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .conversation-copy > span.conversation-chip svg {
+    color: #2b1d16 !important;
+    stroke: currentColor;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .message-heading-actions .message-filter-tabs {
+    border-color: #594737 !important;
+    background: #30241d !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .message-heading-actions .message-filter-tabs button {
+    border-color: transparent !important;
+    background: transparent !important;
+    color: #c0b2a5 !important;
+    box-shadow: none;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .message-heading-actions .message-filter-tabs button:hover {
+    background: #45331d !important;
+    color: #f1e9e1 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .message-heading-actions .message-filter-tabs button.is-active {
+    border-color: #d69b43 !important;
+    background: #efbd71 !important;
+    color: #2b1d16 !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .28);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .message-heading-actions .message-filter-tabs b {
+    background: #efbd71 !important;
+    color: #2b1d16 !important;
 }
 
 @media print {

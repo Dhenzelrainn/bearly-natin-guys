@@ -36,6 +36,30 @@
         $application['can_manage_assignment']
         ?? false
     );
+
+    $canManageStatus = (bool) (
+        $application['can_manage_status']
+        ?? false
+    );
+
+    $canManageCapacity = (bool) (
+        $application['can_manage_capacity']
+        ?? false
+    );
+
+    $statusLabels = [
+        'active' => 'Active',
+        'suspended' => 'Suspended',
+        'deactivated' => 'Deactivated',
+    ];
+
+    $operationalSummary = $application['operational_summary'] ?? [
+        'unpicked_pickup_assignment_ids' => [],
+        'picked_up_pickup_assignment_ids' => [],
+        'dispatch_batch_ids' => [],
+        'refund_cash_payout_ids' => [],
+        'linehaul_run_ids' => [],
+    ];
 @endphp
 
 <div class="page-header">
@@ -111,6 +135,100 @@
         @endif
     </div>
 </div>
+
+@if($canManageStatus)
+    <section class="panel" aria-labelledby="rider-account-status-heading" style="margin-bottom:16px">
+        <div class="panel-header">
+            <div>
+                <p class="page-kicker">Account controls</p>
+                <h3 id="rider-account-status-heading">Manage Rider account status</h3>
+                <p>
+                    Status changes are owned by this Logistics provider. The Rider is currently
+                    <strong>{{ $statusLabels[$application['status_key']] ?? $application['status'] }}</strong>
+                    and availability will remain offline until the Rider chooses to go online again.
+                </p>
+            </div>
+            <span class="status-badge" data-status="{{ $application['status'] }}">
+                {{ $application['status'] }}
+            </span>
+        </div>
+
+        <div class="panel-body">
+            <div class="detail-list" aria-label="Rider operational work summary">
+                <div class="detail-item">
+                    <small>Unpicked pickup assignments</small>
+                    <strong>{{ count($operationalSummary['unpicked_pickup_assignment_ids']) }}</strong>
+                    <span>These are the only pickup assignments that will be cancelled when blocking the account.</span>
+                </div>
+                <div class="detail-item">
+                    <small>Picked-up assignments retained</small>
+                    <strong>{{ count($operationalSummary['picked_up_pickup_assignment_ids']) }}</strong>
+                    <span>Logistics can receive these parcels; the Rider ID and custody history stay attached.</span>
+                </div>
+                <div class="detail-item">
+                    <small>Other active work retained</small>
+                    <strong>{{ count($operationalSummary['dispatch_batch_ids']) + count($operationalSummary['refund_cash_payout_ids']) + count($operationalSummary['linehaul_run_ids']) }}</strong>
+                    <span>Dispatch, refund-cash, and Courier line-haul records are not auto-reassigned.</span>
+                </div>
+            </div>
+
+            <form
+                method="POST"
+                action="{{ route('logistics.riders.status.update', $application['user_id']) }}"
+                class="field-grid"
+                style="margin-top:20px"
+            >
+                @csrf
+                @method('PATCH')
+
+                <div class="field">
+                    <label for="rider-account-status">New account status <span aria-hidden="true">*</span></label>
+                    <select id="rider-account-status" name="status" required>
+                        <option value="">Choose a status</option>
+                        @foreach($application['allowed_statuses'] as $targetStatus)
+                            <option value="{{ $targetStatus }}" @selected(old('status') === $targetStatus)>
+                                {{ $statusLabels[$targetStatus] ?? ucwords(str_replace('_', ' ', $targetStatus)) }}
+                            </option>
+                        @endforeach
+                    </select>
+                    @error('status')<small role="alert">{{ $message }}</small>@enderror
+                </div>
+
+                <div class="field span-2">
+                    <label for="rider-account-status-reason">Reason <span aria-hidden="true">*</span></label>
+                    <textarea
+                        id="rider-account-status-reason"
+                        name="reason"
+                        rows="4"
+                        minlength="5"
+                        maxlength="1000"
+                        required
+                        aria-describedby="rider-account-status-help"
+                    >{{ old('reason') }}</textarea>
+                    <small id="rider-account-status-help">
+                        Explain the operational or compliance reason. This is saved with the actor,
+                        old/new status, and affected assignment/job IDs.
+                    </small>
+                    @error('reason')<small role="alert">{{ $message }}</small>@enderror
+                </div>
+
+                <div class="form-actions span-2">
+                    <button class="button button-primary" type="submit">
+                        <i data-lucide="shield-check"></i>
+                        Confirm status change
+                    </button>
+                </div>
+            </form>
+        </div>
+    </section>
+@elseif(($application['status_key'] ?? null) === 'active')
+    <section class="panel" aria-labelledby="rider-status-readiness-heading" style="margin-bottom:16px">
+        <div class="panel-body">
+            <strong id="rider-status-readiness-heading">Rider status controls are unavailable.</strong>
+            <p>This Rider must have an approved Rider profile before Logistics can manage account status.</p>
+        </div>
+    </section>
+@endif
 
 <div class="content-grid">
     <section class="panel">
@@ -197,6 +315,17 @@
                         </div>
 
                         <div class="detail-item">
+                            <small>{{ ($application['is_local_work'] ?? true) ? 'Local parcel capacity' : 'Verified line-haul capacity' }}</small>
+                            <strong>
+                                @if(($application['is_local_work'] ?? true))
+                                    {{ $application['parcel_capacity'] ? $application['parcel_capacity'].' parcels' : 'Not configured' }}
+                                @else
+                                    {{ $application['linehaul_parcel_capacity'] ? $application['linehaul_parcel_capacity'].' parcels' : 'Not verified' }}
+                                @endif
+                            </strong>
+                        </div>
+
+                        <div class="detail-item">
                             <small>Plate number</small>
                             <strong>{{ $application['plate'] }}</strong>
                         </div>
@@ -236,6 +365,17 @@
                     </div>
 
                     <div class="detail-item">
+                        <small>{{ ($application['is_local_work'] ?? true) ? 'Local parcel capacity' : 'Verified line-haul capacity' }}</small>
+                        <strong>
+                            @if(($application['is_local_work'] ?? true))
+                                {{ $application['parcel_capacity'] ? $application['parcel_capacity'].' parcels' : 'Not configured' }}
+                            @else
+                                {{ $application['linehaul_parcel_capacity'] ? $application['linehaul_parcel_capacity'].' parcels' : 'Not verified' }}
+                            @endif
+                        </strong>
+                    </div>
+
+                    <div class="detail-item">
                         <small>Plate number</small>
                         <strong>{{ $application['plate'] }}</strong>
                     </div>
@@ -252,6 +392,65 @@
                 </div>
             @endif
         </section>
+
+        @if($canManageCapacity)
+            <section class="panel" aria-labelledby="rider-parcel-capacity-heading">
+                <div class="panel-header">
+                    <div>
+                        <p class="page-kicker">Dispatch control</p>
+                        <h3 id="rider-parcel-capacity-heading">Local parcel capacity</h3>
+                        <p>
+                            Set the maximum number of active parcels this Rider may receive during delivery assignment.
+                            Capacity is managed by this Logistics provider.
+                        </p>
+                    </div>
+                    <span class="status-badge {{ $application['parcel_capacity'] ? 'is-success' : 'is-warning' }}">
+                        {{ $application['parcel_capacity'] ? 'Configured' : 'Needs setup' }}
+                    </span>
+                </div>
+
+                <form
+                    class="panel-body"
+                    method="POST"
+                    action="{{ route('logistics.riders.capacity.update', $application['user_id']) }}"
+                >
+                    @csrf
+                    @method('PATCH')
+
+                    <div class="field-grid">
+                        <div class="field">
+                            <label for="rider-parcel-capacity">
+                                Maximum active parcels <span aria-hidden="true">*</span>
+                            </label>
+                            <input
+                                id="rider-parcel-capacity"
+                                type="number"
+                                name="parcel_capacity"
+                                min="1"
+                                max="1000"
+                                step="1"
+                                required
+                                value="{{ old('parcel_capacity', $application['parcel_capacity']) }}"
+                                aria-describedby="rider-parcel-capacity-help"
+                            >
+                            <small id="rider-parcel-capacity-help">
+                                Use a verified whole-parcel limit from 1 to 1000. The limit cannot be lowered below the Rider’s current active load.
+                            </small>
+                            @error('parcel_capacity')
+                                <small role="alert">{{ $message }}</small>
+                            @enderror
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button class="button button-primary" type="submit">
+                            <i data-lucide="save"></i>
+                            Save capacity
+                        </button>
+                    </div>
+                </form>
+            </section>
+        @endif
 
         <section class="panel">
             <div class="panel-header">

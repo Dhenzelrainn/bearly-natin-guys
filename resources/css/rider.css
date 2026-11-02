@@ -1,6 +1,12 @@
 @import "./logistics.css";
 
+.rider-delivery-metric-strip{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media(max-width:1400px){.rider-delivery-metric-strip{grid-template-columns:repeat(3,minmax(0,1fr))}.rider-delivery-metric-strip .metric-item{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.rider-delivery-metric-strip .metric-item:nth-child(3n){border-right:0}.rider-delivery-metric-strip .metric-item:nth-child(n+4){border-bottom:0}}
+@media(max-width:1100px){.rider-delivery-metric-strip{grid-template-columns:repeat(2,minmax(0,1fr))}.rider-delivery-metric-strip .metric-item{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.rider-delivery-metric-strip .metric-item:nth-child(even){border-right:0}.rider-delivery-metric-strip .metric-item:last-child{grid-column:1/-1;justify-content:center;border:0}}
+@media(max-width:600px){.rider-delivery-metric-strip{grid-template-columns:1fr}.rider-delivery-metric-strip .metric-item{border-right:0!important;border-bottom:1px solid var(--line)!important}.rider-delivery-metric-strip .metric-item:last-child{grid-column:auto;justify-content:flex-start;border:0!important}}
+
 .topbar-divider{width:1px;height:34px;background:var(--line)}
+.rider-location-control{display:flex;min-width:0;max-width:310px;align-items:center;gap:8px;padding:6px 8px 6px 9px;border:1px solid var(--line);border-radius:9px;background:#fff}.rider-location-dot{width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:#9b928b}.rider-location-dot.is-sharing{background:var(--green);box-shadow:0 0 0 3px rgba(62,145,86,.12)}.rider-location-dot.is-pending{background:var(--amber)}.rider-location-dot.is-error{background:var(--red)}.rider-location-copy{display:grid;min-width:0;gap:1px}.rider-location-copy strong,.rider-location-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rider-location-copy strong{color:var(--ink);font-size:10px;line-height:1.35}.rider-location-copy small{color:var(--muted);font-size:8px;line-height:1.35}.rider-location-control .button{flex:0 0 auto;white-space:nowrap}.rider-location-control button:focus-visible{outline:3px solid rgba(223,152,37,.55);outline-offset:2px}.rider-location-control.is-sharing{border-color:#cde4d5;background:var(--green-soft)}.rider-location-control.is-error{border-color:#efc4c1;background:var(--red-soft)}
 .rider-availability{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid #cde4d5;border-radius:8px;background:var(--green-soft);color:var(--green);font-size:11px;font-weight:600}.rider-availability:before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
 .rider-dashboard-actions{align-items:center;flex-wrap:wrap;gap:9px}.rider-availability-control{display:flex;min-width:0;align-items:center;justify-content:space-between;gap:14px;padding:7px 9px 7px 12px;border:1px solid var(--line);border-radius:9px;background:#fff}.rider-availability-copy{display:grid;grid-template-columns:9px minmax(0,1fr);align-items:center;gap:9px;min-width:0}.rider-availability-copy>span:last-child{display:grid;min-width:0}.rider-availability-copy strong{color:var(--ink);font-size:11px;line-height:1.4}.rider-availability-copy small{color:var(--muted);font-size:9px;line-height:1.4}.rider-availability-dot{width:8px;height:8px;border-radius:50%;background:#9b928b}.rider-availability-dot.is-available{background:var(--green)}.rider-availability-dot.is-pending{background:var(--amber)}.rider-availability-control form{flex:0 0 auto;margin:0}.rider-availability-control .button{white-space:nowrap}.rider-availability-control button:focus-visible{outline:3px solid rgba(223,152,37,.55);outline-offset:2px}
 .alert-feed{display:grid;gap:0}.alert-row{display:grid;grid-template-columns:38px minmax(0,1fr) auto;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}.alert-row:last-child{border-bottom:0}.alert-row>span:first-child{width:36px;height:36px;display:grid;place-items:center;border-radius:9px;background:var(--gold-soft);color:var(--brown-700)}.alert-row svg{width:18px}.alert-row strong,.alert-row small{display:block}.alert-row strong{font-size:12px}.alert-row small{margin-top:3px;color:var(--muted);font-size:10px}.alert-row time{color:var(--muted);font-size:9px}
@@ -27,6 +33,22 @@ body[data-module="rider"] .registration-address-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 14px 16px;
     margin-top: 16px;
+}
+
+body[data-module="rider"] .registration-draft-notice {
+    margin: 0 0 16px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--gold);
+    border-radius: 8px;
+    background: #fff9ef;
+    color: var(--ink);
+    font-size: 11px;
+}
+
+body[data-module="rider"] .registration-draft-notice span {
+    display: block;
+    color: var(--muted);
 }
 
 body[data-module="rider"] .refund-cash-card {
@@ -1304,4 +1326,69 @@ body[data-module="rider"] .history-detail-modal .activity-item {
 .notification-view-all svg {
     width: 14px;
     height: 14px;
+}
+
+.rider-availability-control.is-locked {
+    border-color: #efc4c1;
+    background: var(--red-soft);
+}
+
+.rider-availability-control.is-locked .rider-availability-dot {
+    background: var(--red);
+}
+
+.rider-availability-control button:disabled {
+    cursor: not-allowed;
+    opacity: .62;
+}
+
+.rider-account-live-alert {
+    margin-bottom: 18px;
+}
+
+.rider-account-live-alert[hidden] {
+    display: none !important;
+}
+
+:root[data-theme="dark"] body.ops-body .rider-account-live-alert {
+    border-color: #79443d;
+    background: #452521;
+    color: #ffaaa2;
+}
+
+:root[data-theme="dark"] body.ops-body .rider-location-control {
+    border-color: #4a3d34;
+    background: #1b1714;
+}
+
+:root[data-theme="dark"] body.ops-body .rider-location-control.is-sharing {
+    border-color: #416b4c;
+    background: #213126;
+}
+
+:root[data-theme="dark"] body.ops-body .rider-location-control.is-error {
+    border-color: #79443d;
+    background: #452521;
+}
+
+@media (max-width: 900px) {
+    .rider-location-control {
+        max-width: 245px;
+    }
+
+    .rider-location-copy small {
+        display: none;
+    }
+}
+
+@media (max-width: 600px) {
+    .rider-location-control {
+        max-width: none;
+        flex: 1 1 100%;
+        order: 3;
+    }
+
+    .rider-location-copy {
+        flex: 1;
+    }
 }

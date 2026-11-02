@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\InternationalPhone;
 use App\Services\MobileEmailVerificationService;
 use App\Services\PostalCodeLookup;
+use App\Services\PsgcAddressService;
 use App\Services\RegistrationLifecycleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -207,6 +208,11 @@ class MobileRegistrationController extends Controller
                 'regex:/^[0-9]{6,10}$/D',
             ],
 
+            'region_code' => [
+                'nullable',
+                'regex:/^\d{10}$/D',
+            ],
+
             'postal_manual' => [
                 'nullable',
                 'boolean',
@@ -216,6 +222,12 @@ class MobileRegistrationController extends Controller
                 'required',
                 'string',
                 'max:100',
+            ],
+
+            'region' => [
+                'required',
+                'string',
+                'max:160',
             ],
 
             'city' => [
@@ -279,6 +291,7 @@ class MobileRegistrationController extends Controller
         */
 
         $postalCodes->validate($data);
+        $data = app(PsgcAddressService::class)->normalize($data);
 
         /*
         |--------------------------------------------------------------------------
@@ -322,9 +335,11 @@ class MobileRegistrationController extends Controller
                 'terms_accepted_at' => now(),
                 'terms_version' => config('bearly-policies.version'),
                 'privacy_version' => config('bearly-policies.version'),
-                'role' => UserRole::Buyer->value,
-                'status' => AccountStatus::Pending->value,
-                'province' => $data['province'],
+                 'role' => UserRole::Buyer->value,
+                 'status' => AccountStatus::Pending->value,
+                 'region' => $data['region'],
+                 'region_code' => $data['region_code'] ?? null,
+                 'province' => $data['province'],
                 'city' => $data['city'],
                 'barangay' => $data['barangay'],
                 'street_address' => trim($data['house_number'].' '.$data['street_name']).', '.$data['postal_code'],
@@ -335,9 +350,11 @@ class MobileRegistrationController extends Controller
             ]);
 
             return $lifecycle->activateBuyer($user, [
-                'house_number' => $data['house_number'],
-                'street_name' => $data['street_name'],
-                'barangay' => $data['barangay'],
+                 'house_number' => $data['house_number'],
+                 'street_name' => $data['street_name'],
+                 'region' => $data['region'],
+                 'region_code' => $data['region_code'] ?? null,
+                 'barangay' => $data['barangay'],
                 'city' => $data['city'],
                 'province' => $data['province'],
                 'postal_code' => $data['postal_code'],

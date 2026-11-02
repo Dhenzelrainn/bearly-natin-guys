@@ -145,6 +145,10 @@ class MobileRegistrationIntegrityTest extends TestCase
             $this->assertSame('+639171234567', $address->phone);
             $this->assertSame('12', $address->house_number);
             $this->assertSame('Bearly Street', $address->street);
+            $this->assertSame('Region IV-A (CALABARZON)', $user->region);
+            $this->assertSame('0400000000', $user->region_code);
+            $this->assertSame('Region IV-A (CALABARZON)', $address->region);
+            $this->assertSame('0400000000', $address->psgc_region_code);
             $this->assertSame('City of San Pablo', $address->city_municipality);
             $this->assertSame('0403424000', $address->psgc_city_code);
             $this->assertDatabaseMissing('account_applications', ['user_id' => $user->id]);
@@ -166,6 +170,26 @@ class MobileRegistrationIntegrityTest extends TestCase
         } finally {
             Carbon::setTestNow();
         }
+    }
+
+    public function test_mobile_buyer_registration_rejects_a_region_that_does_not_match_the_selected_city(): void
+    {
+        $email = 'mismatched-mobile-region@example.test';
+        $verificationId = $this->verifyMobileEmail($email);
+        $payload = $this->buyerData([
+            'email' => $email,
+            'verification_id' => $verificationId,
+            'region' => 'Region I (Ilocos Region)',
+            'region_code' => '0100000000',
+        ]);
+
+        $this->postJson('/api/mobile/register/buyer', $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('region');
+
+        $this->assertDatabaseMissing('users', [
+            'email' => $payload['email'],
+        ]);
     }
 
     public function test_mobile_buyer_registration_rejects_missing_or_unverified_email_proof(): void
@@ -196,6 +220,8 @@ class MobileRegistrationIntegrityTest extends TestCase
             'verification_id' => str_repeat('a', 64),
             'contact_number' => '09171234567',
             'phone_country' => 'PH',
+            'region' => 'Region IV-A (CALABARZON)',
+            'region_code' => '0400000000',
             'province' => 'Laguna',
             'city' => 'City of San Pablo',
             'city_code' => '0403424000',
@@ -208,5 +234,27 @@ class MobileRegistrationIntegrityTest extends TestCase
             'password_confirmation' => 'Password123',
             'terms' => '1',
         ], $overrides);
+    }
+
+    private function verifyMobileEmail(string $email): string
+    {
+        $verificationId = (string) $this->postJson('/api/mobile/register/email/send', [
+            'email' => $email,
+        ])->assertOk()->json('verification_id');
+        $code = null;
+
+        Mail::assertSent(RegistrationCode::class, function (RegistrationCode $mail) use (&$code, $email): bool {
+            $code = $mail->code;
+
+            return $mail->hasTo($email);
+        });
+
+        $this->postJson('/api/mobile/register/email/verify', [
+            'email' => $email,
+            'code' => $code,
+            'verification_id' => $verificationId,
+        ])->assertOk();
+
+        return $verificationId;
     }
 }

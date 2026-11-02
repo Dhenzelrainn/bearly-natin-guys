@@ -169,9 +169,21 @@
                     data-email-send="{{ route('register.email.send') }}"
                     data-email-check="{{ route('register.email.check') }}"
                     data-postal-url="{{ route('postal.lookup') }}"
+                    data-draft-save-url="{{ route('register.draft.save', 'logistics') }}"
+                    data-draft-step="{{ $registrationDraft['step'] ?? 1 }}"
+                    data-has-old-input="{{ session()->hasOldInput() ? 'true' : 'false' }}"
                     novalidate
                 >
                     @csrf
+                    <script type="application/json" data-registration-draft>@json($registrationDraft['fields'] ?? [])</script>
+                    <p class="registration-draft-notice" role="status" aria-live="polite">
+                        @if ($registrationDraft['has_draft'] ?? false)
+                            Your saved application was restored. Fields save on this browser for 7 days; passwords, codes, documents, and consent are not saved.
+                        @else
+                            Fields save on this browser for 7 days. Passwords, codes, documents, and consent are not saved.
+                        @endif
+                        <span data-registration-draft-status></span>
+                    </p>
 
                     <section class="form-step" data-form-step="1">
                         <div class="field-grid three">
@@ -523,19 +535,38 @@
 
                         <div class="registration-address-grid">
                             <div class="field location-field">
+                                <label for="logistics-region">
+                                    Region <span>*</span>
+                                </label>
+                                <select
+                                    id="logistics-region"
+                                    name="region"
+                                    data-old-value="{{ old('region') }}"
+                                    data-region
+                                    data-location-select="region"
+                                    data-searchable-location
+                                    data-search-placeholder="Search region"
+                                    required
+                                >
+                                    <option value="">Loading regions…</option>
+                                </select>
+                            </div>
+
+                            <div class="field location-field">
                                 <label for="logistics-province">
                                     Province <span>*</span>
                                 </label>
 <select
                                     id="logistics-province"
                                     name="province"
+                                    data-old-value="{{ old('province') }}"
                                     data-province
                                     data-location-select="province"
                                     data-searchable-location
                                     data-search-placeholder="Search province"
                                     required
                                 >
-                                    <option value="">Loading provinces…</option>
+                                    <option value="">Select region first</option>
                                 </select>
                             </div>
 
@@ -546,6 +577,7 @@
 <select
                                     id="logistics-city"
                                     name="municipality"
+                                    data-old-value="{{ old('municipality') }}"
                                     data-city
                                     data-location-select="city"
                                     data-searchable-location
@@ -564,6 +596,7 @@
 <select
                                     id="logistics-barangay"
                                     name="barangay"
+                                    data-old-value="{{ old('barangay') }}"
                                     data-barangay
                                     data-location-select="barangay"
                                     data-searchable-location
@@ -603,6 +636,11 @@
                                     Select a municipality to fill this automatically.
                                 </small>
 
+                                <input
+                                    type="hidden"
+                                    name="region_code"
+                                    value="{{ old('region_code') }}"
+                                >
                                 <input
                                     type="hidden"
                                     name="city_code"

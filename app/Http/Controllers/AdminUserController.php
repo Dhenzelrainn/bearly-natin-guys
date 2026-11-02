@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -75,6 +76,12 @@ class AdminUserController extends Controller
         User $user,
         UserAccountStatusService $statusService,
     ): JsonResponse|RedirectResponse {
+        abort_if(
+            $user->role === UserRole::Rider->value,
+            403,
+            'Rider account status is managed by the owning Logistics provider.'
+        );
+
         $allowedTargets = collect($statusService->transitions())->flatten()->unique()->all();
         $validated = $request->validate([
             'status' => ['required', Rule::in($allowedTargets)],
@@ -129,8 +136,14 @@ class AdminUserController extends Controller
             ->groupBy('status')
             ->pluck('aggregate', 'status');
 
-        $users = $baseQuery
-            ->with(['roles', 'sellerProfile.store', 'logisticsProfile', 'riderProfile'])
+        $userQuery = $baseQuery
+            ->with([
+                'roles',
+                'sellerProfile.store',
+                'sellerProfile.approvedCategory',
+                'logisticsProfile',
+                'riderProfile',
+            ])
             ->withCount('buyerOrders')
             ->when($search !== '', fn (Builder $query) => $query->where(function (Builder $query) use ($search): void {
                 $query->where('name', 'like', "%{$search}%")
@@ -140,19 +153,31 @@ class AdminUserController extends Controller
             }))
             ->when(in_array($role, $managedRoles, true), fn (Builder $query) => $query->where('role', $role))
             ->when(in_array($status, $managedStatuses, true), fn (Builder $query) => $query->where('status', $status))
-            ->latest('created_at')
-            ->paginate(10)
-            ->withQueryString();
+            ->latest('created_at');
 
-        $users->through(fn (User $user): array => $this->directoryRecord($user, $statusService = app(UserAccountStatusService::class)));
+        $statusService = app(UserAccountStatusService::class);
+        $mapUser = fn (User $user): array => $this->directoryRecord($user, $statusService);
+
+        if ($fixedRole === null) {
+            // The All Users controls filter rows in the browser, so load the
+            // complete directory instead of paginating rows the UI cannot reach.
+            $users = $userQuery->get()->map($mapUser);
+        } else {
+            $users = $userQuery->paginate(10)->withQueryString();
+            $users->through($mapUser);
+        }
 
         $roleLabel = $fixedRole ? ucfirst($fixedRole) : 'User';
         $view = $fixedRole === UserRole::Logistics->value ? 'logistics' : ($fixedRole ? $fixedRole.'s' : 'index');
+        $categoryOptions = $fixedRole === UserRole::Seller->value
+            ? $this->sellerCategoryOptions($baseQuery)
+            : collect();
 
         return view('admin.users.'.$view, [
             'admin' => $this->adminSummary($request),
             'topNotifications' => [],
             'users' => $users,
+            'categoryOptions' => $categoryOptions,
             'role' => $fixedRole,
             'roleLabel' => $roleLabel,
             'filters' => compact('search', 'role', 'status'),
@@ -187,7 +212,7 @@ class AdminUserController extends Controller
             'joined' => $user->created_at?->format('M j, Y') ?? '—',
             'status' => ucfirst($user->status),
             'orders' => (int) $user->buyer_orders_count,
-            'category' => $user->business_category ?: '—',
+            'category' => $this->sellerCategoryName($user) ?? '—',
             'products' => $store?->products()->count() ?? 0,
             'riders' => $logistics?->riders()->count() ?? 0,
             'vehicle' => $rider?->vehicle_type ?: '—',
@@ -195,10 +220,36 @@ class AdminUserController extends Controller
             'center' => $rider?->logisticsProfile?->display_name ?: '—',
             'deliveries' => $rider?->deliveryAttempts()->where('outcome', 'delivered')->count()
                 ?? $logistics?->shipments()->where('status', 'delivered')->count() ?? 0,
-            'active_batches' => $rider?->pickupAssignments()->whereIn('status', ['assigned','accepted','arrived'])->count() ?? 0,
-            'earnings' => ($rider?->earnings()->whereIn('status',['posted','paid'])->sum('amount_minor') ?? 0) / 100,
+            'active_batches' => $rider?->pickupAssignments()->whereIn('status', ['assigned', 'accepted', 'arrived'])->count() ?? 0,
+            'earnings' => ($rider?->earnings()->whereIn('status', ['posted', 'paid'])->sum('amount_minor') ?? 0) / 100,
             'allowed_statuses' => $statusService->transitions()[$user->status] ?? [],
+            'can_manage_status' => $user->role !== UserRole::Rider->value,
         ];
+    }
+
+    /**
+     * Return categories represented by the managed Seller accounts, including
+     * Sellers that are on a later pagination page.
+     *
+     * @return Collection<int, string>
+     */
+    private function sellerCategoryOptions(Builder $sellerQuery): Collection
+    {
+        return (clone $sellerQuery)
+            ->with('sellerProfile.approvedCategory:id,name')
+            ->get(['id', 'business_category'])
+            ->map(fn (User $user): ?string => $this->sellerCategoryName($user))
+            ->filter(fn (?string $category): bool => filled($category))
+            ->unique()
+            ->sortBy(fn (string $category): string => mb_strtolower($category))
+            ->values();
+    }
+
+    private function sellerCategoryName(User $user): ?string
+    {
+        $category = $user->sellerProfile?->approvedCategory?->name ?: $user->business_category;
+
+        return filled($category) ? $category : null;
     }
 
     private function adminSummary(Request $request): array

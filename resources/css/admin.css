@@ -6877,6 +6877,16 @@ table {
     outline-offset: 2px;
 }
 
+/* Search wrappers own their focus treatment; prevent the global Admin focus
+   rule from painting a second rectangle around the inner search input. */
+.admin-body :is(
+    .admin-search, .field-with-icon, .registration-search, .table-search
+ ) input[type="search"]:focus-visible {
+    outline: none;
+    outline-offset: 0;
+    box-shadow: none;
+}
+
 /* Keep the messaging composer visible while long conversations scroll. */
 .messaging-shell {
     height: min(680px, calc(100vh - 300px));

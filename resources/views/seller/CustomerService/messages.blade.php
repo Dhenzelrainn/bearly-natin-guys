@@ -1,6 +1,53 @@
 @extends('layouts.seller')
 @section('title', 'Messages')
 @section('page-title', 'Customer Service')
+
+@push('styles')
+    <style>
+        /* Keep message context chips gold if a cached deployment serves old Seller CSS. */
+        :root[data-theme="dark"] body.seller-body .seller-content .conversation-copy > span.conversation-chip,
+        :root[data-theme="dark"] body.seller-body .seller-content .message-order-reference {
+            border-color: #d69b43 !important;
+            background: #efbd71 !important;
+            color: #2b1d16 !important;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .conversation-copy > span.conversation-chip svg {
+            color: #2b1d16 !important;
+            stroke: currentColor;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .message-heading-actions .message-filter-tabs {
+            border-color: #594737 !important;
+            background: #30241d !important;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .message-heading-actions .message-filter-tabs button {
+            border-color: transparent !important;
+            background: transparent !important;
+            color: #c0b2a5 !important;
+            box-shadow: none;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .message-heading-actions .message-filter-tabs button:hover {
+            background: #45331d !important;
+            color: #f1e9e1 !important;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .message-heading-actions .message-filter-tabs button.is-active {
+            border-color: #d69b43 !important;
+            background: #efbd71 !important;
+            color: #2b1d16 !important;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .28);
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .message-heading-actions .message-filter-tabs b {
+            background: #efbd71 !important;
+            color: #2b1d16 !important;
+        }
+    </style>
+@endpush
+
 @section('content')
 @php($hasConversations = $conversations !== [])
 @php($activeProduct = $activeThread['conversation']['product'] ?? null)

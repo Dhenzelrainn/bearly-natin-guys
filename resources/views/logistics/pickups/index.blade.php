@@ -158,6 +158,45 @@
                 </section>
             </div>
 
+            @if($pickup['status_key'] === 'verified')
+                <section
+                    class="pickup-info-card pickup-live-map-card"
+                    data-pickup-live-map-panel
+                    data-pickup-map-endpoint="{{ route('logistics.pickups.locations', $pickup['database_id']) }}"
+                    data-pickup-map-tile-url="{{ config('maps.tile_url') }}"
+                    data-pickup-map-attribution="{{ config('maps.tile_attribution') }}"
+                    data-pickup-map-select-target="#pickup-rider-{{ $pickup['database_id'] }}"
+                    aria-labelledby="pickup-live-map-{{ $pickup['database_id'] }}"
+                >
+                    <div class="pickup-section-heading pickup-live-map-heading">
+                        <span class="pickup-card-icon"><i data-lucide="map-pinned" aria-hidden="true"></i></span>
+                        <div class="pickup-live-map-heading-copy">
+                            <h4 id="pickup-live-map-{{ $pickup['database_id'] }}">Live pickup map</h4>
+                            <p>Fresh locations from your available local Riders. Click a Rider marker or list item to select them for manual assignment.</p>
+                        </div>
+                        <span class="pickup-map-sync" data-pickup-map-sync aria-live="polite">Waiting for map</span>
+                    </div>
+
+                    <div class="pickup-live-map-layout">
+                        <div class="pickup-live-map-wrap">
+                            <div class="pickup-live-map" data-pickup-live-map aria-label="Pickup and available Rider locations on OpenStreetMap"></div>
+                            <p class="pickup-map-status" data-pickup-map-status role="status">Loading fresh Rider locations…</p>
+                        </div>
+                        <aside class="pickup-live-map-sidebar" aria-label="Live pickup map legend and Riders">
+                            <div class="pickup-map-legend">
+                                <span><i class="pickup-map-legend-dot is-pickup" aria-hidden="true"></i>Pickup</span>
+                                <span><i class="pickup-map-legend-dot is-rider" aria-hidden="true"></i>Fresh Rider</span>
+                            </div>
+                            <div class="pickup-map-rider-list" data-pickup-map-riders>
+                                <p class="pickup-map-empty">Loading fresh Rider locations…</p>
+                            </div>
+                        </aside>
+                    </div>
+
+                    <p class="pickup-map-note">Only the latest fresh location is shown. Stale or unavailable GPS falls back to Sorting Zone, workload, and manual selection.</p>
+                </section>
+            @endif
+
             <section class="pickup-info-card pickup-manifest-card" aria-labelledby="pickup-manifest-{{ $pickup['database_id'] }}">
                 <div class="pickup-section-heading">
                     <span class="pickup-card-icon"><i data-lucide="package" aria-hidden="true"></i></span>
@@ -263,18 +302,47 @@
                 @elseif($pickup['status_key'] === 'verified')
                     <form id="assign-pickup-{{ $pickup['database_id'] }}" method="POST" action="{{ route('logistics.pickups.assign', $pickup['database_id']) }}">
                         @csrf
+                        @php($pickupRiders = $pickup['rider_recommendations'] ?? [])
+                        @php($recommendedRider = collect($pickupRiders)->firstWhere('is_recommended', true))
+                        @if($recommendedRider)
+                            <div class="pickup-rider-recommendation" role="status">
+                                <span class="pickup-rider-recommendation-icon"><i data-lucide="sparkles" aria-hidden="true"></i></span>
+                                <span>
+                                    <strong>Suggested Rider: {{ $recommendedRider['name'] }}</strong>
+                                    <small>
+                                        {{ $recommendedRider['recommendation_reason'] }}.
+                                        @if($recommendedRider['distance_label'])
+                                            Based on a fresh Rider location update.
+                                        @elseif($recommendedRider['area_match'])
+                                            Using the Rider's assigned Sorting Zone as the fallback.
+                                        @else
+                                            GPS is missing or stale, so active workload is used as the fallback.
+                                        @endif
+                                        Logistics still confirms the assignment and may choose another Rider.
+                                    </small>
+                                </span>
+                            </div>
+                        @endif
                         <label class="pickup-rider-select" for="pickup-rider-{{ $pickup['database_id'] }}">Pickup Rider
                             <select id="pickup-rider-{{ $pickup['database_id'] }}" name="rider_profile_id" required>
                                 <option value="">Select available Rider</option>
-                                @foreach($availableRiders as $rider)
-                                    <option value="{{ $rider['id'] }}">{{ $rider['name'] }} · {{ $rider['vehicle'] }}@if($rider['plate']) · {{ $rider['plate'] }}@endif · {{ $rider['location'] }}</option>
+                                @foreach($pickupRiders as $rider)
+                                    <option value="{{ $rider['id'] }}" @selected($loop->first)>
+                                        {{ $rider['name'] }} · {{ $rider['vehicle'] }}@if($rider['plate']) · {{ $rider['plate'] }}@endif
+                                        @if($rider['distance_label']) · {{ $rider['distance_label'] }}
+                                        @elseif($rider['area_match']) · Same service area
+                                        @elseif($rider['location_state'] === 'stale') · GPS stale
+                                        @else · GPS unavailable
+                                        @endif
+                                        · {{ $rider['active_jobs'] }} active {{ $rider['active_jobs'] === 1 ? 'job' : 'jobs' }}
+                                    </option>
                                 @endforeach
                             </select>
                         </label>
                         <label class="pickup-assignment-note" for="pickup-note-{{ $pickup['database_id'] }}">Assignment note <small>(optional)</small>
                             <textarea id="pickup-note-{{ $pickup['database_id'] }}" name="notes" maxlength="1000" placeholder="Access or collection instructions"></textarea>
                         </label>
-                        <button class="button button-primary" type="submit" @disabled(count($availableRiders) === 0) @if(count($availableRiders) === 0) title="No available approved Rider can be assigned." @endif>Assign Rider &amp; schedule pickup</button>
+                        <button class="button button-primary" type="submit" @disabled(count($pickupRiders) === 0) @if(count($pickupRiders) === 0) title="No available approved Rider can be assigned." @endif>Assign Rider &amp; schedule pickup</button>
                     </form>
                 @endif
             </div>

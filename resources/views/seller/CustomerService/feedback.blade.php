@@ -1,6 +1,24 @@
 @extends('layouts.seller')
 @section('title', 'Customer Feedback')
 @section('page-title', 'Customer Service')
+
+@push('styles')
+    <style>
+        /* Keep the product placeholder icon visible if a cached deployment serves old Seller CSS. */
+        :root[data-theme="dark"] body.seller-body .seller-content .feedback-review-context > span {
+            border: 1px solid #806334;
+            background-color: #45331d !important;
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .feedback-review-context > span svg {
+            color: inherit !important;
+            fill: none;
+            stroke: currentColor;
+        }
+    </style>
+@endpush
+
 @section('content')
 <section class="customer-feedback-page" data-feedback-workspace>
     <header class="customer-service-heading"><div><span class="section-kicker">Post-delivery reviews</span><h2>Customer Feedback</h2><p>Review product ratings and respond to buyers after completed orders.</p></div></header>

@@ -22,10 +22,13 @@ use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
 use App\Services\DispatchService;
+use App\Services\RiderDeliveryRecommendationService;
+use App\Services\RiderLocationService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Tests\TestCase;
 
@@ -1827,6 +1830,286 @@ class DispatchWorkflowTest extends TestCase
         app(DispatchService::class)->dispatchZone($zone, $rider, $this->logisticsA);
     }
 
+    public function test_dispatch_recommends_a_clearly_nearest_fresh_gps_candidate_from_another_zone(): void
+    {
+        $targetZone = $this->makeZone($this->centerA, 'GPS-TARGET');
+        $nearbyZone = $this->makeZone($this->centerA, 'GPS-NEAR');
+        $farZone = $this->makeZone($this->centerA, 'GPS-FAR');
+        $latitude = 14.1000000;
+        $longitude = 121.1000000;
+        $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $targetZone,
+            'GPS-TARGET',
+            1,
+            $latitude,
+            $longitude,
+        );
+
+        $nearRider = $this->makeRider($this->profileA, $this->centerA, $nearbyZone, 'GPS-NEAR', 10);
+        $farRider = $this->makeRider($this->profileA, $this->centerA, $farZone, 'GPS-FAR', 10);
+        $locations = app(RiderLocationService::class);
+        $locations->record($nearRider, 14.1010000, 121.1000000, 8);
+        $locations->record($farRider, 14.1100000, 121.1000000, 8);
+
+        $response = $this->actingAs($this->logisticsA)
+            ->get(route('logistics.dispatch.index'))
+            ->assertOk()
+            ->assertSee('Nearby-zone fallback')
+            ->assertSee('Closest estimate')
+            ->assertSee('Approx.')
+            ->assertDontSee('14.1000000');
+
+        $target = $response->viewData('zones')->firstWhere('id', $targetZone->id);
+        $this->assertCount(0, $target['riders']);
+        $this->assertSame('nearest_estimate', $target['proximity_status']);
+        $this->assertSame($nearRider->id, $target['nearby_riders'][0]['id']);
+        $this->assertTrue($target['nearby_riders'][0]['is_recommended']);
+        $this->assertFalse($target['nearby_riders'][1]['is_recommended']);
+        $this->assertGreaterThan(0, $target['nearby_riders'][0]['distance_km']);
+        $this->assertSame($nearbyZone->id, $target['nearby_riders'][0]['zone_id']);
+    }
+
+    public function test_dispatch_does_not_claim_a_nearest_rider_when_any_candidate_gps_is_unusable(): void
+    {
+        $targetZone = $this->makeZone($this->centerA, 'GPS-QUALITY-TARGET');
+        $nearbyZone = $this->makeZone($this->centerA, 'GPS-QUALITY-NEAR');
+        $staleZone = $this->makeZone($this->centerA, 'GPS-QUALITY-STALE');
+        $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $targetZone,
+            'GPS-QUALITY-TARGET',
+            1,
+            14.1000000,
+            121.1000000,
+        );
+
+        $nearRider = $this->makeRider($this->profileA, $this->centerA, $nearbyZone, 'GPS-QUALITY-NEAR', 10);
+        $staleRider = $this->makeRider($this->profileA, $this->centerA, $staleZone, 'GPS-QUALITY-STALE', 10);
+        $locations = app(RiderLocationService::class);
+        $locations->record($nearRider, 14.1010000, 121.1000000, 10);
+        $staleLocation = $locations->record($staleRider, 14.1020000, 121.1000000, 10);
+        $staleLocation->update(['last_seen_at' => now()->subMinutes(4)]);
+
+        $firstResponse = $this->actingAs($this->logisticsA)->get(route('logistics.dispatch.index'))->assertOk();
+        $target = $firstResponse->viewData('zones')->firstWhere('id', $targetZone->id);
+        $this->assertSame('rider_gps_incomplete', $target['proximity_status']);
+        $this->assertFalse(collect($target['nearby_riders'])->contains(fn (array $rider): bool => $rider['is_recommended']));
+        $this->assertNull(collect($target['nearby_riders'])->firstWhere('id', $staleRider->id)['distance_km']);
+
+        $staleLocation->update(['last_seen_at' => now(), 'accuracy_meters' => 150]);
+        $secondResponse = $this->actingAs($this->logisticsA)->get(route('logistics.dispatch.index'))->assertOk();
+        $target = $secondResponse->viewData('zones')->firstWhere('id', $targetZone->id);
+        $this->assertSame('rider_gps_incomplete', $target['proximity_status']);
+        $this->assertFalse(collect($target['nearby_riders'])->contains(fn (array $rider): bool => $rider['is_recommended']));
+        $this->assertSame('low_accuracy', collect($target['nearby_riders'])->firstWhere('id', $staleRider->id)['gps_accuracy_state']);
+
+        $locations->clear($staleRider);
+        $missingResponse = $this->actingAs($this->logisticsA)->get(route('logistics.dispatch.index'))->assertOk();
+        $target = $missingResponse->viewData('zones')->firstWhere('id', $targetZone->id);
+        $missingCandidate = collect($target['nearby_riders'])->firstWhere('id', $staleRider->id);
+        $this->assertSame('rider_gps_incomplete', $target['proximity_status']);
+        $this->assertSame('GPS missing', $missingCandidate['gps_status_label']);
+        $this->assertNull($missingCandidate['distance_km']);
+        $this->assertFalse(collect($target['nearby_riders'])->contains(fn (array $rider): bool => $rider['is_recommended']));
+
+        $locations->record($staleRider, 14.0990000, 121.1000000, 10);
+        $tieResponse = $this->actingAs($this->logisticsA)->get(route('logistics.dispatch.index'))->assertOk();
+        $target = $tieResponse->viewData('zones')->firstWhere('id', $targetZone->id);
+        $this->assertSame('gps_estimate_tie', $target['proximity_status']);
+        $this->assertFalse(collect($target['nearby_riders'])->contains(fn (array $rider): bool => $rider['is_recommended']));
+
+        $locations->record($staleRider, 91.0000000, 121.1000000, 10);
+        $invalidResponse = $this->actingAs($this->logisticsA)->get(route('logistics.dispatch.index'))->assertOk();
+        $target = $invalidResponse->viewData('zones')->firstWhere('id', $targetZone->id);
+        $invalidCandidate = collect($target['nearby_riders'])->firstWhere('id', $staleRider->id);
+        $this->assertSame('rider_gps_incomplete', $target['proximity_status']);
+        $this->assertSame('GPS coordinates invalid', $invalidCandidate['gps_status_label']);
+        $this->assertNull($invalidCandidate['distance_km']);
+        $this->assertFalse(collect($target['nearby_riders'])->contains(fn (array $rider): bool => $rider['is_recommended']));
+    }
+
+    public function test_missing_destination_pin_on_any_stop_suppresses_all_distances(): void
+    {
+        $targetZone = $this->makeZone($this->centerA, 'GPS-PIN-TARGET');
+        $nearbyZone = $this->makeZone($this->centerA, 'GPS-PIN-NEAR');
+        $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $targetZone,
+            'GPS-PIN-SAVED',
+            1,
+            14.1000000,
+            121.1000000,
+        );
+        $this->makeReadyShipmentFor($this->profileA, $this->centerA, $targetZone, 'GPS-PIN-MISSING');
+        $rider = $this->makeRider($this->profileA, $this->centerA, $nearbyZone, 'GPS-PIN-RIDER', 10);
+        app(RiderLocationService::class)->record($rider, 14.1010000, 121.1000000, 10);
+
+        $response = $this->actingAs($this->logisticsA)
+            ->get(route('logistics.dispatch.index'))
+            ->assertOk()
+            ->assertSee('At least one delivery address has no saved map pin. Distances are hidden');
+
+        $target = $response->viewData('zones')->firstWhere('id', $targetZone->id);
+        $candidate = collect($target['nearby_riders'])->firstWhere('id', $rider->id);
+        $this->assertSame('destination_pin_missing', $target['proximity_status']);
+        $this->assertNull($candidate['distance_km']);
+        $this->assertNull($candidate['distance_label']);
+        $this->assertFalse($candidate['is_recommended']);
+    }
+
+    public function test_nearby_zone_dispatch_requires_a_reason_and_records_the_one_time_override(): void
+    {
+        $targetZone = $this->makeZone($this->centerA, 'OVERFLOW-TARGET');
+        $homeZone = $this->makeZone($this->centerA, 'OVERFLOW-HOME');
+        $record = $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $targetZone,
+            'OVERFLOW-TARGET',
+            1,
+            14.1000000,
+            121.1000000,
+        );
+        $rider = $this->makeRider($this->profileA, $this->centerA, $homeZone, 'OVERFLOW-RIDER', 10);
+        $start = now()->addDay()->format('Y-m-d\\TH:i');
+        $end = now()->addDay()->addHour()->format('Y-m-d\\TH:i');
+        $endpoint = route('logistics.dispatch.store', $targetZone);
+
+        $this->actingAs($this->logisticsA)->post($endpoint, [
+            'rider_profile_id' => $rider->id,
+            'planned_window_start' => $start,
+            'planned_window_end' => $end,
+        ])->assertSessionHasErrors('assignment_reason');
+
+        $this->assertDatabaseCount('dispatch_batches', 0);
+        $this->assertSame(ParcelStatus::Sorted->value, $record['parcel']->fresh()->status);
+
+        $this->actingAs($this->logisticsA)->post($endpoint, [
+            'rider_profile_id' => $rider->id,
+            'planned_window_start' => $start,
+            'planned_window_end' => $end,
+            'assignment_reason' => 'No eligible Rider in the destination zone.',
+        ])->assertRedirect(route('logistics.dispatch.index'));
+
+        $batch = DispatchBatch::query()->sole();
+        $this->assertSame('nearby_zone', $batch->assignment_mode);
+        $this->assertSame($homeZone->id, (int) $batch->rider_zone_id);
+        $this->assertSame('No eligible Rider in the destination zone.', $batch->assignment_reason);
+        $this->assertArrayNotHasKey('assignment_reason', $batch->toArray());
+        $this->assertSame($homeZone->id, (int) $rider->fresh()->current_zone_id);
+
+        $event = ShipmentEvent::query()
+            ->where('shipment_id', $record['shipment']->id)
+            ->where('event_type', 'parcel_dispatched')
+            ->sole();
+        $this->assertSame('nearby_zone', $event->metadata['assignment_mode']);
+        $this->assertSame($targetZone->id, (int) $event->metadata['target_sorting_zone_id']);
+        $this->assertSame($targetZone->code, $event->metadata['target_sorting_zone_code']);
+        $this->assertSame($homeZone->id, (int) $event->metadata['rider_zone_id']);
+        $this->assertSame($homeZone->code, $event->metadata['rider_zone_code']);
+        $this->assertSame('No eligible Rider in the destination zone.', $event->metadata['assignment_reason']);
+    }
+
+    public function test_nearby_zone_dispatch_rejects_a_rider_from_another_sorting_center(): void
+    {
+        $targetZone = $this->makeZone($this->centerA, 'CROSS-CENTER-TARGET');
+        $foreignZone = $this->makeZone($this->centerB, 'CROSS-CENTER-HOME');
+        $rider = $this->makeRider($this->profileA, $this->centerA, $foreignZone, 'CROSS-CENTER-RIDER', 10);
+        $this->makeReadyShipmentFor($this->profileA, $this->centerA, $targetZone, 'CROSS-CENTER-TARGET');
+
+        $this->expectException(ConflictHttpException::class);
+        app(DispatchService::class)->dispatchZone(
+            $targetZone,
+            $rider,
+            $this->logisticsA,
+            now()->addDay(),
+            now()->addDay()->addHour(),
+            'Emergency overflow coverage.',
+        );
+    }
+
+    public function test_pickup_only_rider_cannot_receive_a_delivery_dispatch(): void
+    {
+        $zone = $this->makeZone($this->centerA, 'PICKUP-ONLY-DELIVERY-BLOCK');
+        $rider = $this->makeRider(
+            $this->profileA,
+            $this->centerA,
+            $zone,
+            'PICKUP-ONLY-DELIVERY-BLOCK',
+            10,
+        );
+        $rider->update(['specialization' => 'pickup_only']);
+        $record = $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $zone,
+            'PICKUP-ONLY-DELIVERY-BLOCK',
+        );
+
+        try {
+            app(DispatchService::class)->dispatchZone(
+                $zone,
+                $rider,
+                $this->logisticsA,
+                now()->addDay(),
+                now()->addDay()->addHour(),
+            );
+            $this->fail('A pickup-only Rider must not receive a delivery batch.');
+        } catch (ConflictHttpException) {
+            $this->assertSame(ParcelStatus::Sorted->value, $record['parcel']->fresh()->status);
+            $this->assertDatabaseCount('dispatch_batches', 0);
+        }
+    }
+
+    public function test_delivery_schedule_conflicts_reject_overlap_and_allow_adjacent_windows(): void
+    {
+        $zone = $this->makeZone($this->centerA, 'WINDOW-CONFLICT');
+        $rider = $this->makeRider($this->profileA, $this->centerA, $zone, 'WINDOW-CONFLICT', 10);
+        $rider->update(['specialization' => 'delivery_only']);
+        $first = $this->makeReadyShipmentFor($this->profileA, $this->centerA, $zone, 'WINDOW-FIRST');
+        $start = now()->addDay()->startOfHour();
+        $end = $start->copy()->addHour();
+
+        $firstBatch = app(DispatchService::class)->dispatchZone(
+            $zone,
+            $rider,
+            $this->logisticsA,
+            $start,
+            $end,
+        );
+        $this->assertSame($start->toDateTimeString(), $firstBatch->planned_window_start?->toDateTimeString());
+        $this->assertSame($end->toDateTimeString(), $firstBatch->planned_window_end?->toDateTimeString());
+
+        $second = $this->makeReadyShipmentFor($this->profileA, $this->centerA, $zone, 'WINDOW-SECOND');
+        $adjacentBatch = app(DispatchService::class)->dispatchZone(
+            $zone,
+            $rider,
+            $this->logisticsA,
+            $end->copy(),
+            $end->copy()->addHour(),
+        );
+        $this->assertNotSame($firstBatch->id, $adjacentBatch->id);
+
+        $overlap = $this->makeReadyShipmentFor($this->profileA, $this->centerA, $zone, 'WINDOW-OVERLAP');
+        try {
+            app(DispatchService::class)->dispatchZone(
+                $zone,
+                $rider,
+                $this->logisticsA,
+                $start->copy()->addMinutes(30),
+                $end->copy()->addMinutes(30),
+            );
+            $this->fail('An overlapping planned delivery window must be rejected.');
+        } catch (ConflictHttpException) {
+            $this->assertSame(ParcelStatus::Sorted->value, $overlap['parcel']->fresh()->status);
+            $this->assertSame(2, DispatchBatch::query()->count());
+        }
+    }
+
     public function test_logistics_cannot_dispatch_from_another_providers_zone(): void
     {
         $foreignZone = $this->makeZone(
@@ -1923,7 +2206,7 @@ class DispatchWorkflowTest extends TestCase
             );
     }
 
-    public function test_rider_must_belong_to_the_dispatch_zone(): void
+    public function test_nearby_zone_dispatch_without_a_reason_is_rejected(): void
     {
         $zoneA = $this->makeZone(
             $this->centerA,
@@ -1943,9 +2226,7 @@ class DispatchWorkflowTest extends TestCase
             10
         );
 
-        $this->expectException(
-            ConflictHttpException::class
-        );
+        $this->expectException(ValidationException::class);
 
         app(DispatchService::class)
             ->dispatchZone(
@@ -2630,7 +2911,9 @@ class DispatchWorkflowTest extends TestCase
         SortingCenter $center,
         SortingZone $zone,
         string $suffix,
-        int $parcelCount = 1
+        int $parcelCount = 1,
+        ?float $deliveryLatitude = null,
+        ?float $deliveryLongitude = null,
     ): array {
         $buyer = User::factory()->create([
             'role' =>
@@ -2702,6 +2985,10 @@ class DispatchWorkflowTest extends TestCase
 
             'postal_code' =>
                 '4000',
+
+            'delivery_latitude' => $deliveryLatitude,
+
+            'delivery_longitude' => $deliveryLongitude,
 
             'subtotal_minor' =>
                 10000,
@@ -2901,6 +3188,12 @@ class DispatchWorkflowTest extends TestCase
             ->assertOk()
             ->assertSee($ownZone->code)
             ->assertSee($ownRider->user->name)
+            ->assertSee('class="data-table dispatch-board-table"', false)
+            ->assertSee('class="dispatch-assignment-form"', false)
+            ->assertSee('Planned start')
+            ->assertSee('Planned end')
+            ->assertSee('name="planned_window_start"', false)
+            ->assertSee('name="planned_window_end"', false)
             ->assertSee('1 parcel does not match this zone')
             ->assertViewHas(
                 'metrics',
@@ -2911,6 +3204,7 @@ class DispatchWorkflowTest extends TestCase
             ->assertViewHas(
                 'zones',
                 fn ($zones) => $zones->first()['routing_issues'] === 1
+                    && $zones->firstWhere('id', $ownZone->id)['nearby_riders']->isEmpty()
             )
             ->assertDontSee($foreignZone->code)
             ->assertDontSee($foreignRider->user->name)
@@ -2959,6 +3253,8 @@ class DispatchWorkflowTest extends TestCase
                 [
                     'rider_profile_id' =>
                         $rider->id,
+                    'planned_window_start' => now()->addDay()->format('Y-m-d\TH:i'),
+                    'planned_window_end' => now()->addDay()->addHour()->format('Y-m-d\TH:i'),
                 ]
             )
             ->assertRedirect(
@@ -2978,6 +3274,9 @@ class DispatchWorkflowTest extends TestCase
             'dispatched',
             $batch->status
         );
+        $this->assertSame('zone_match', $batch->assignment_mode);
+        $this->assertSame($zone->id, (int) $batch->rider_zone_id);
+        $this->assertNull($batch->assignment_reason);
 
         $this->assertDatabaseHas(
             'dispatch_batch_parcels',
@@ -3115,6 +3414,8 @@ class DispatchWorkflowTest extends TestCase
                 [
                     'rider_profile_id' =>
                         $foreignRider->id,
+                    'planned_window_start' => now()->addDay()->format('Y-m-d\TH:i'),
+                    'planned_window_end' => now()->addDay()->addHour()->format('Y-m-d\TH:i'),
                 ]
             )
             ->assertForbidden();

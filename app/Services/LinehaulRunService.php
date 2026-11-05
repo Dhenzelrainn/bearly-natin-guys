@@ -18,6 +18,8 @@ use App\Models\ShipmentTransfer;
 use App\Models\SortingCenter;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -26,6 +28,7 @@ class LinehaulRunService
 {
     public function __construct(
         private readonly ShipmentHandoffService $handoffs,
+        private readonly CourierDailyEarningService $courierDaily,
     ) {}
 
     /**
@@ -328,6 +331,20 @@ class LinehaulRunService
 
     public function courierRunsFor(RiderProfile $profile)
     {
+        return $this->courierRunsQueryFor($profile)
+            ->limit(50)
+            ->get();
+    }
+
+    public function courierRunHistoryFor(RiderProfile $profile): LengthAwarePaginator
+    {
+        return $this->courierRunsQueryFor($profile)
+            ->paginate(20)
+            ->withQueryString();
+    }
+
+    private function courierRunsQueryFor(RiderProfile $profile): Builder
+    {
         return LinehaulRun::query()
             ->where('courier_rider_profile_id', $profile->id)
             ->with([
@@ -340,8 +357,7 @@ class LinehaulRunService
                 'events.actor',
             ])
             ->latest('assigned_at')
-            ->limit(50)
-            ->get();
+            ->latest('id');
     }
 
     public function recordDestinationAcceptance(LinehaulRun $run, User $actor): void
@@ -380,6 +396,8 @@ class LinehaulRunService
         $this->event($lockedRun, 'completed', 'arrived', 'completed', $actor, null, [
             'destination_acceptance_required' => true,
         ], $now);
+
+        $this->courierDaily->reconcileRun($lockedRun);
     }
 
     private function transitionForCourier(

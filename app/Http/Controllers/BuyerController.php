@@ -17,6 +17,7 @@ use App\Models\Wishlist;
 use App\Services\BuyerCatalogService;
 use App\Services\BuyerOrderConfirmationService;
 use App\Services\CampaignService;
+use App\Services\CheckoutService;
 use App\Services\ConversationService;
 use App\Services\InternationalPhone;
 use App\Services\PostalCodeLookup;
@@ -249,7 +250,7 @@ class BuyerController extends Controller
         ]);
     }
 
-    public function purchaseData(Request $request, BuyerCatalogService $catalog, BuyerOrderConfirmationService $confirmation): JsonResponse
+    public function purchaseData(Request $request, BuyerCatalogService $catalog, BuyerOrderConfirmationService $confirmation, CheckoutService $checkout): JsonResponse
     {
         $orders = Order::query()
             ->where('buyer_id', $request->user()->id)
@@ -263,7 +264,7 @@ class BuyerController extends Controller
             ])
             ->latest('id')
             ->get()
-            ->map(fn (Order $order) => $this->purchasePayload($order, $catalog, $confirmation))
+            ->map(fn (Order $order) => $this->purchasePayload($order, $catalog, $confirmation, $checkout))
             ->values();
 
         return response()->json([
@@ -273,7 +274,7 @@ class BuyerController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function purchasePayload(Order $order, BuyerCatalogService $catalog, BuyerOrderConfirmationService $confirmation): array
+    private function purchasePayload(Order $order, BuyerCatalogService $catalog, BuyerOrderConfirmationService $confirmation, CheckoutService $checkout): array
     {
         $sellerOrders = $order->sellerOrders;
         $active = $sellerOrders->reject(fn ($sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Cancelled->value);
@@ -333,9 +334,8 @@ class BuyerController extends Controller
         $deliveryState = $this->purchaseDeliveryState($order);
         $deliveredAt = $this->purchaseDeliveredAt($order);
         $canConfirm = $confirmation->canConfirm($order);
-        $canCancel = $order->status === 'processing'
-            && $active->isNotEmpty()
-            && $active->every(fn ($sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Pending->value);
+        $cancellationState = $checkout->buyerCancellationState($order);
+        $canCancel = $cancellationState['can_cancel'];
 
         return [
             'id' => (string) $order->order_no,
@@ -376,6 +376,7 @@ class BuyerController extends Controller
             'server' => true,
             'can_confirm' => $canConfirm,
             'can_cancel' => $canCancel,
+            'cancel_unavailable_message' => $cancellationState['unavailable_message'],
             'confirm_url' => $canConfirm ? route('checkout.confirm-receipt', $order->id) : null,
             'cancel_url' => $canCancel ? route('checkout.cancel', $order->id) : null,
             'details_url' => route('checkout.confirmation', $order->order_no),

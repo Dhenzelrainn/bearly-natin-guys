@@ -20,6 +20,8 @@ use Illuminate\Validation\ValidationException;
 
 class SellerFulfillmentService
 {
+    private const MAX_WAYBILL_PIECES = 65_535;
+
     public function __construct(
         private readonly PostalCodeLookup $postalCodes,
     ) {}
@@ -169,7 +171,7 @@ class SellerFulfillmentService
             'waybill_no' => $waybillNo,
             'scan_token' => Str::random(64),
             'barcode_value' => $waybillNo,
-            'piece_count' => 1,
+            'piece_count' => count($snapshot['pieces']),
             'total_weight_kg' => $snapshot['weight'],
             'length_cm' => $snapshot['length'],
             'width_cm' => $snapshot['width'],
@@ -179,21 +181,23 @@ class SellerFulfillmentService
             'generated_at' => $now,
         ]);
 
-        $parcel = Parcel::query()->create([
-            'shipment_id' => $shipment->id,
-            'waybill_id' => $waybill->id,
-            'parcel_no' => $this->number('PCL'),
-            'piece_sequence' => 1,
-            'weight_kg' => $snapshot['weight'],
-            'length_cm' => $snapshot['length'],
-            'width_cm' => $snapshot['width'],
-            'height_cm' => $snapshot['height'],
-            'status' => ParcelStatus::Created->value,
-            'last_event_at' => $now,
-        ]);
+        $parcels = collect($snapshot['pieces'])
+            ->values()
+            ->map(fn (array $piece, int $index): Parcel => Parcel::query()->create([
+                'shipment_id' => $shipment->id,
+                'waybill_id' => $waybill->id,
+                'parcel_no' => $this->number('PCL'),
+                'piece_sequence' => $index + 1,
+                'weight_kg' => $piece['weight'],
+                'length_cm' => $piece['length'],
+                'width_cm' => $piece['width'],
+                'height_cm' => $piece['height'],
+                'status' => ParcelStatus::Created->value,
+                'last_event_at' => $now,
+            ]));
 
         $shipment->events()->create([
-            'parcel_id' => $parcel->id,
+            'parcel_id' => $parcels->first()?->id,
             'event_type' => 'waybill_generated',
             'from_status' => null,
             'to_status' => ShipmentStatus::Pending->value,
@@ -203,6 +207,7 @@ class SellerFulfillmentService
             'metadata' => [
                 'seller_order_id' => $sellerOrder->id,
                 'waybill_no' => $waybillNo,
+                'piece_count' => $parcels->count(),
             ],
             'occurred_at' => $now,
         ]);
@@ -250,10 +255,24 @@ class SellerFulfillmentService
             409,
             'Download, print, and confirm the waybill in Fulfillment → Waybills before marking this order ready for pickup.',
         );
+        $parcels = $shipment->parcels()
+            ->orderBy('piece_sequence')
+            ->lockForUpdate()
+            ->get();
+
         abort_unless(
-            $shipment->parcels()->exists(),
+            $parcels->isNotEmpty(),
             409,
-            'The parcel record for this order is missing. Contact support before marking it ready.',
+            'The parcel records for this order are missing. Contact support before marking it ready.',
+        );
+
+        $expectedPieceSequences = range(1, (int) $waybill->piece_count);
+        abort_unless(
+            $parcels->count() === (int) $waybill->piece_count
+                && $parcels->every(fn (Parcel $parcel): bool => (int) $parcel->waybill_id === (int) $waybill->id)
+                && $parcels->pluck('piece_sequence')->map(fn ($sequence): int => (int) $sequence)->all() === $expectedPieceSequences,
+            409,
+            'The waybill piece count or parcel links do not match the registered parcel records. Contact support before marking it ready.',
         );
 
         if ($shipment->status === ShipmentStatus::ReadyForPickup->value) {
@@ -269,7 +288,7 @@ class SellerFulfillmentService
         $now = now();
         $shipment->update(['status' => ShipmentStatus::ReadyForPickup->value]);
         $shipment->events()->create([
-            'parcel_id' => $shipment->parcels()->value('id'),
+            'parcel_id' => $parcels->first()?->id,
             'event_type' => 'shipment_ready_for_pickup',
             'from_status' => ShipmentStatus::Pending->value,
             'to_status' => ShipmentStatus::ReadyForPickup->value,
@@ -286,7 +305,15 @@ class SellerFulfillmentService
         return $shipment->load(['waybill', 'parcels']);
     }
 
-    /** @return array{weight: float, length: float, width: float, height: float} */
+    /**
+     * @return array{
+     *     weight: float,
+     *     length: float,
+     *     width: float,
+     *     height: float,
+     *     pieces: list<array{weight: float, length: float, width: float, height: float}>
+     * }
+     */
     private function packageSnapshot(SellerOrder $sellerOrder): array
     {
         $quote = (array) $sellerOrder->shipping_quote;
@@ -305,27 +332,109 @@ class SellerFulfillmentService
         $width = $dimensions['width'] ?? null;
         $height = $dimensions['height'] ?? null;
 
-        if (
-            ! is_numeric($weight)
-            || (float) $weight <= 0
-            || ! is_numeric($length)
-            || (float) $length <= 0
-            || ! is_numeric($width)
-            || (float) $width <= 0
-            || ! is_numeric($height)
-            || (float) $height <= 0
-        ) {
+        if (! $this->isPositiveFiniteNumber($weight)
+            || ! $this->isPositiveFiniteNumber($length)
+            || ! $this->isPositiveFiniteNumber($width)
+            || ! $this->isPositiveFiniteNumber($height)) {
             throw ValidationException::withMessages([
                 'order_ids' => "Shipping package details are missing for {$sellerOrder->seller_order_no}. Refresh the order before starting preparation.",
             ]);
         }
 
-        return [
+        $snapshot = [
             'weight' => (float) $weight,
             'length' => (float) $length,
             'width' => (float) $width,
             'height' => (float) $height,
         ];
+
+        $packageItems = $quote['package_items'] ?? null;
+
+        if ($packageItems === null) {
+            // Legacy quote snapshots did not persist per-unit packaging.
+            // Preserve their existing single-parcel behavior without reading
+            // mutable Product Variant data.
+            $snapshot['pieces'] = [$snapshot];
+
+            return $snapshot;
+        }
+
+        if (! is_array($packageItems) || ! array_is_list($packageItems) || $packageItems === []) {
+            throw ValidationException::withMessages([
+                'order_ids' => "Saved per-item package details are invalid for {$sellerOrder->seller_order_no}. Contact support before starting preparation.",
+            ]);
+        }
+
+        $pieces = [];
+        $pieceCount = 0;
+
+        foreach ($packageItems as $item) {
+            if (! is_array($item)) {
+                throw ValidationException::withMessages([
+                    'order_ids' => "Saved per-item package details are invalid for {$sellerOrder->seller_order_no}. Contact support before starting preparation.",
+                ]);
+            }
+
+            $quantity = filter_var($item['quantity'] ?? null, FILTER_VALIDATE_INT);
+            $weight = $item['package_weight_kg'] ?? null;
+            $dimensions = $item['package_dimensions_cm'] ?? null;
+
+            if ($quantity === false || $quantity < 1
+                || ! is_numeric($weight) || ! is_finite((float) $weight) || (float) $weight <= 0
+                || ! is_array($dimensions)) {
+                throw ValidationException::withMessages([
+                    'order_ids' => "Saved per-item package details are incomplete for {$sellerOrder->seller_order_no}. Contact support before starting preparation.",
+                ]);
+            }
+
+            $length = $dimensions['length'] ?? null;
+            $width = $dimensions['width'] ?? null;
+            $height = $dimensions['height'] ?? null;
+
+            if (! $this->isPositiveFiniteNumber($length)
+                || ! $this->isPositiveFiniteNumber($width)
+                || ! $this->isPositiveFiniteNumber($height)) {
+                throw ValidationException::withMessages([
+                    'order_ids' => "Saved per-item package dimensions are incomplete for {$sellerOrder->seller_order_no}. Contact support before starting preparation.",
+                ]);
+            }
+
+            if ($pieceCount > self::MAX_WAYBILL_PIECES - $quantity) {
+                throw ValidationException::withMessages([
+                    'order_ids' => "{$sellerOrder->seller_order_no} exceeds the maximum supported Waybill piece count.",
+                ]);
+            }
+
+            $pieceCount += $quantity;
+
+            for ($unit = 0; $unit < $quantity; $unit++) {
+                $pieces[] = [
+                    'weight' => round((float) $weight, 3),
+                    'length' => (float) $length,
+                    'width' => (float) $width,
+                    'height' => (float) $height,
+                ];
+            }
+        }
+
+        $orderQuantity = (int) $sellerOrder->items()->sum('quantity');
+
+        if ($pieceCount !== $orderQuantity) {
+            throw ValidationException::withMessages([
+                'order_ids' => "Saved package quantities do not match Seller Order {$sellerOrder->seller_order_no}. Contact support before starting preparation.",
+            ]);
+        }
+
+        $snapshot['pieces'] = $pieces;
+
+        return $snapshot;
+    }
+
+    private function isPositiveFiniteNumber(mixed $value): bool
+    {
+        return is_numeric($value)
+            && is_finite((float) $value)
+            && (float) $value > 0;
     }
 
     private function canonicalCityCode(Address $address): string

@@ -21,6 +21,7 @@ class RiderPickupService
 {
     public function __construct(
         private readonly NotificationService $notifications,
+        private readonly RiderPickupEarningService $pickupEarnings,
     ) {}
 
     public function acceptPickup(
@@ -365,6 +366,14 @@ class RiderPickupService
                         ->values()
                         ->all(),
                     $rider,
+                    $pickedUpAt,
+                );
+
+                $this->pickupEarnings->recordForPickup(
+                    $assignment,
+                    $parcels->filter(
+                        fn ($parcel) => $parcel->shipment?->purpose === 'outbound'
+                    ),
                     $pickedUpAt,
                 );
 

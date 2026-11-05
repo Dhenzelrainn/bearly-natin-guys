@@ -109,7 +109,12 @@
                 @php
                     $mapAddress = $job['map_address'] ?? [];
                     $hasMapCoordinates = is_numeric($job['latitude'] ?? null)
-                        && is_numeric($job['longitude'] ?? null);
+                        && is_numeric($job['longitude'] ?? null)
+                        && (float) $job['latitude'] >= -90
+                        && (float) $job['latitude'] <= 90
+                        && (float) $job['longitude'] >= -180
+                        && (float) $job['longitude'] <= 180;
+                    $canShowPickupRoute = in_array($job['status_raw'], ['accepted', 'arrived'], true);
                     $osmLink = $hasMapCoordinates
                         ? 'https://www.openstreetmap.org/?mlat='.rawurlencode($job['latitude'])
                             .'&mlon='.rawurlencode($job['longitude'])
@@ -134,6 +139,11 @@
                         data-map-postal="{{ $mapAddress['postal'] ?? '' }}"
                         data-map-status-target="#pickup-map-status"
                         data-map-osm-link-target="#pickup-osm-link"
+                        data-pickup-route-endpoint="{{ $canShowPickupRoute && $hasMapCoordinates
+                            ? route('rider.orders.pickup.route', $job['id'])
+                            : '' }}"
+                        data-pickup-route-enabled="{{ $canShowPickupRoute ? 'true' : 'false' }}"
+                        data-pickup-route-status-target="#pickup-route-status"
                         aria-label="Pickup location on OpenStreetMap"
                     ></div>
 
@@ -165,6 +175,26 @@
                         ? 'Pickup location pinned on OpenStreetMap.'
                         : 'Locating the pickup address on OpenStreetMap.' }}
                 </p>
+
+                <p id="pickup-route-status" class="destination-map-status" role="status" aria-live="polite">
+                    @if($canShowPickupRoute)
+                        {{ $hasMapCoordinates
+                            ? 'Share your live location to display the road route to this pickup.'
+                            : 'A saved pickup map pin is required to calculate a road route.' }}
+                    @elseif($job['status_raw'] === 'assigned')
+                        Accept this pickup assignment and share your live location to display a road route.
+                    @else
+                        Road routing is available after accepting the assignment and ends when pickup is confirmed.
+                    @endif
+                </p>
+
+                @if($canShowPickupRoute)
+                    <div class="pickup-route-legend" aria-label="Pickup map legend">
+                        <span><i class="pickup-route-legend-key is-road" aria-hidden="true"></i>Road route</span>
+                        <span><i class="pickup-route-legend-key is-rider" aria-hidden="true"></i>Your shared location</span>
+                        <span><i data-lucide="map-pin" aria-hidden="true"></i>Pickup point</span>
+                    </div>
+                @endif
 
                 <a
                     id="pickup-osm-link"

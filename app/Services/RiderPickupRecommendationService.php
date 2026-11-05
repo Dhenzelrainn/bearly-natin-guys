@@ -37,10 +37,12 @@ class RiderPickupRecommendationService
         $now ??= now();
         $workloadMetrics ??= $this->workload->metricsForRiders($riders, $now);
         $target = $this->pickupTarget($pickup);
-        $hasUsableGps = $target['latitude'] !== null
-            && $target['longitude'] !== null
+        $hasUsableGps = $this->locations->hasValidCoordinatePair(
+            $target['latitude'],
+            $target['longitude'],
+        )
             && $riders->contains(
-                fn (RiderProfile $rider): bool => $this->locations->isFresh(
+                fn (RiderProfile $rider): bool => $this->locations->isUsableForProximity(
                     $rider->liveLocation,
                     $now,
                 )
@@ -61,8 +63,13 @@ class RiderPickupRecommendationService
                     $location,
                     $now,
                 );
-                $distanceKm = $locationState === 'fresh'
-                    ? $this->distanceKm(
+                $gpsQuality = $this->locations->accuracyState($location);
+                $locationUsable = $this->locations->isUsableForProximity(
+                    $location,
+                    $now,
+                );
+                $distanceKm = $locationUsable
+                    ? $this->locations->distanceKm(
                         $target['latitude'],
                         $target['longitude'],
                         $location?->latitude,
@@ -81,10 +88,12 @@ class RiderPickupRecommendationService
                     'completed_today' => (int) ($workload['completed_today'] ?? 0),
                     'area_match' => $areaMatch,
                     'location_state' => $locationState,
-                    'latitude' => $locationState === 'fresh'
+                    'gps_quality' => $gpsQuality,
+                    'location_usable' => $locationUsable,
+                    'latitude' => $locationUsable
                         ? $location?->latitude
                         : null,
-                    'longitude' => $locationState === 'fresh'
+                    'longitude' => $locationUsable
                         ? $location?->longitude
                         : null,
                     'last_seen_at' => $location?->last_seen_at?->toIso8601String(),
@@ -186,33 +195,6 @@ class RiderPickupRecommendationService
                 $rider->currentZone->destination_rules,
                 $destination,
             );
-    }
-
-    private function distanceKm(
-        ?float $fromLatitude,
-        ?float $fromLongitude,
-        ?float $toLatitude,
-        ?float $toLongitude,
-    ): ?float {
-        if (
-            $fromLatitude === null
-            || $fromLongitude === null
-            || $toLatitude === null
-            || $toLongitude === null
-        ) {
-            return null;
-        }
-
-        $latitudeDelta = deg2rad($toLatitude - $fromLatitude);
-        $longitudeDelta = deg2rad($toLongitude - $fromLongitude);
-        $fromLatitudeRadians = deg2rad($fromLatitude);
-        $toLatitudeRadians = deg2rad($toLatitude);
-        $a = sin($latitudeDelta / 2) ** 2
-            + cos($fromLatitudeRadians)
-                * cos($toLatitudeRadians)
-                * sin($longitudeDelta / 2) ** 2;
-
-        return 6371 * 2 * atan2(sqrt($a), sqrt(1 - $a));
     }
 
     private function distanceLabel(?float $distanceKm): ?string

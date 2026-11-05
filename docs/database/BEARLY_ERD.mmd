@@ -207,8 +207,13 @@ erDiagram
         timestamp dispatched_at
         timestamp completed_at
         timestamp cancelled_at
+        timestamp planned_window_start
+        timestamp planned_window_end
         timestamp created_at
         timestamp updated_at
+        varchar assignment_mode
+        bigint rider_zone_id
+        text assignment_reason
     }
     dispute_events {
         bigint id PK
@@ -403,6 +408,9 @@ erDiagram
         varchar city_municipality
         varchar province
         varchar postal_code
+        varchar psgc_city_code
+        decimal delivery_latitude
+        decimal delivery_longitude
         char currency
         bigint subtotal_minor
         bigint shipping_fee_minor
@@ -1311,6 +1319,7 @@ erDiagram
     rider_profiles ||--|{ dispatch_batches : rider_profile_id
     sorting_centers ||--|{ dispatch_batches : sorting_center_id
     sorting_zones ||--o{ dispatch_batches : sorting_zone_id
+    sorting_zones ||--o{ dispatch_batches : rider_zone_id
     users ||--o{ dispute_events : actor_user_id
     disputes ||--|{ dispute_events : dispute_id
     disputes ||--|{ dispute_evidence : dispute_id

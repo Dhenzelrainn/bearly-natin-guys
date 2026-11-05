@@ -91,6 +91,9 @@ if (userId > 0 && key) {
             .listen('.rider.operational-status-updated', (payload) => {
                 window.dispatchEvent(new CustomEvent('bearly:rider-operational-status-updated', { detail: payload }));
             })
+            .listen('.rider.location-updated', (payload) => {
+                window.dispatchEvent(new CustomEvent('bearly:rider-location-updated', { detail: payload }));
+            })
             .listen('.message.created', (payload) => {
                 window.dispatchEvent(new CustomEvent('bearly:message-created', { detail: payload }));
 

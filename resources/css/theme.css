@@ -2415,6 +2415,10 @@ html[data-theme-transition] body * {
     color: var(--theme-text);
 }
 
+:root[data-theme="dark"] body.seller-body .pickups-page .fulfillment-modal .modal-actions {
+    background: transparent;
+}
+
 :root[data-theme="dark"] body:is(.bh, .bc, .seller-body, .admin-body, .ops-body, .auth-body, .bearly-public, .bearly-landing, .notification-center-body, .announcement-page) :is(.modal-header, .modal-heading, .modal-body, .modal-footer, .modal-actions, .dialog-head, .dialog-actions, .drawer-header, .drawer-footer) :is(h1, h2, h3, strong, label) {
     color: var(--theme-text);
 }
@@ -3036,6 +3040,13 @@ html[data-theme-transition] body * {
 :root[data-theme="dark"] body.profile-page.bh #purchases-panel .order-seller-progress-row strong,
 :root[data-theme="dark"] body.profile-page.bh #purchases-panel .order-seller-progress-row span:last-child {
     color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.profile-page.bh #purchases-panel .order-cancel-note {
+    border-color: #72563e;
+    border-left-color: #d69b43;
+    background: #44331d;
+    color: #f3d397;
 }
 
 :root[data-theme="dark"] body.profile-page.bh #purchases-panel .order-status {
@@ -4918,6 +4929,19 @@ html[data-theme-transition] body * {
         background: var(--theme-surface);
         color: var(--theme-text);
         box-shadow: 0 18px 48px rgba(0, 0, 0, .28);
+    }
+
+    :root[data-theme="dark"] body.registration-body[data-module="rider"] .registration-draft-notice,
+    :root[data-theme="dark"] body.registration-body[data-module="logistics"] .registration-draft-notice {
+        border-color: var(--theme-border);
+        border-left-color: var(--theme-accent);
+        background: var(--theme-surface-soft);
+        color: var(--theme-text);
+    }
+
+    :root[data-theme="dark"] body.registration-body[data-module="rider"] .registration-draft-notice > span,
+    :root[data-theme="dark"] body.registration-body[data-module="logistics"] .registration-draft-notice > span {
+        color: var(--theme-muted);
     }
 
     :root[data-theme="dark"] body.registration-body .registration-main {

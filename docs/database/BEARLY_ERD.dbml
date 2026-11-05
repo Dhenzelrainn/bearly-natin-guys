@@ -223,8 +223,13 @@ Table dispatch_batches {
   dispatched_at timestamp
   completed_at timestamp
   cancelled_at timestamp
+  planned_window_start timestamp
+  planned_window_end timestamp
   created_at timestamp
   updated_at timestamp
+  assignment_mode varchar(24)
+  rider_zone_id bigint
+  assignment_reason text
 }
 
 Table dispute_events {
@@ -453,6 +458,9 @@ Table orders {
   city_municipality varchar(120) [not null]
   province varchar(120) [not null]
   postal_code varchar(10)
+  psgc_city_code varchar(20)
+  delivery_latitude decimal(10,7)
+  delivery_longitude decimal(10,7)
   currency char(3) [not null]
   subtotal_minor bigint [not null]
   shipping_fee_minor bigint [not null]
@@ -830,6 +838,9 @@ Table shipping_settlements {
   shipment_id bigint [not null, unique]
   return_request_id bigint [unique]
   logistics_profile_id bigint [not null]
+  settlement_mode varchar(24)
+  origin_logistics_profile_id bigint
+  origin_logistics_share_minor bigint [not null, default: 0]
   rider_profile_id bigint [not null]
   delivery_attempt_id bigint [not null]
   zone_level smallint [not null]
@@ -856,6 +867,26 @@ Table shipping_settlements {
   remitted_to_provider varchar(120)
   remitted_to_account_name varchar(160)
   remitted_to_last4 char(4)
+}
+
+Table shipping_settlement_origin_remittances {
+  id bigint [pk, increment, not null]
+  shipping_settlement_id bigint [not null, unique]
+  logistics_profile_id bigint [not null]
+  amount_minor bigint [not null]
+  status varchar(24) [not null]
+  logistics_payout_account_id bigint
+  remittance_method varchar(30)
+  remittance_reference varchar(150)
+  remitted_on date
+  remitted_at timestamp
+  remitted_by bigint
+  remittance_reason text
+  remitted_to_provider varchar(120)
+  remitted_to_account_name varchar(160)
+  remitted_to_last4 char(4)
+  created_at timestamp
+  updated_at timestamp
 }
 
 Table seller_refund_recoveries {
@@ -1523,6 +1554,7 @@ Ref: dispatch_batches.prepared_by > users.id
 Ref: dispatch_batches.rider_profile_id > rider_profiles.id
 Ref: dispatch_batches.sorting_center_id > sorting_centers.id
 Ref: dispatch_batches.sorting_zone_id > sorting_zones.id
+Ref: dispatch_batches.rider_zone_id > sorting_zones.id
 Ref: dispute_events.actor_user_id > users.id
 Ref: dispute_events.dispute_id > disputes.id
 Ref: dispute_evidence.dispute_id > disputes.id
@@ -1674,12 +1706,17 @@ Ref: shipments.origin_address_id > addresses.id
 Ref: shipments.seller_order_id > seller_orders.id
 Ref: shipping_settlements.delivery_attempt_id > delivery_attempts.id
 Ref: shipping_settlements.logistics_profile_id > logistics_profiles.id
+Ref: shipping_settlements.origin_logistics_profile_id > logistics_profiles.id
 Ref: shipping_settlements.logistics_payout_account_id > logistics_payout_accounts.id
 Ref: shipping_settlements.remitted_by > users.id
 Ref: shipping_settlements.return_request_id > return_requests.id
 Ref: shipping_settlements.rider_profile_id > rider_profiles.id
 Ref: shipping_settlements.seller_order_id > seller_orders.id
 Ref: shipping_settlements.shipment_id > shipments.id
+Ref: shipping_settlement_origin_remittances.shipping_settlement_id > shipping_settlements.id
+Ref: shipping_settlement_origin_remittances.logistics_profile_id > logistics_profiles.id
+Ref: shipping_settlement_origin_remittances.logistics_payout_account_id > logistics_payout_accounts.id
+Ref: shipping_settlement_origin_remittances.remitted_by > users.id
 Ref: sorting_centers.address_id > addresses.id
 Ref: sorting_centers.logistics_profile_id > logistics_profiles.id
 Ref: sorting_zones.sorting_center_id > sorting_centers.id

@@ -138,16 +138,24 @@
                 <div class="store-profile-section">
                     <div class="store-profile-section-heading">
                         <span class="store-profile-section-icon" aria-hidden="true"><i data-lucide="map-pin"></i></span>
-                        <div><h3>Pickup Map Pin</h3><p>Coordinates supplement your registered pickup address and are used only as a navigation aid.</p></div>
+                        <div><h3>Pickup Map Pin</h3><p>Open this page at your pickup location and detect your device location. Review the reported accuracy, then save the pin.</p></div>
                     </div>
                     @if ($pickupAddress)
                         <div data-seller-pickup-map-form data-action="{{ route('seller.store.pickup.coordinates') }}">
-                            <div class="address-map" data-seller-pickup-map data-latitude="{{ $pickupAddress->latitude ?? '' }}" data-longitude="{{ $pickupAddress->longitude ?? '' }}" data-map-tile-url="{{ config('maps.tile_url') }}" data-map-attribution="{{ config('maps.tile_attribution') }}"></div>
+                            <div id="seller-pickup-map" class="address-map" data-seller-pickup-map data-latitude="{{ $pickupAddress->latitude ?? '' }}" data-longitude="{{ $pickupAddress->longitude ?? '' }}" data-map-tile-url="{{ config('maps.tile_url') }}" data-map-attribution="{{ config('maps.tile_attribution') }}"></div>
                             <input type="hidden" name="latitude" value="{{ $pickupAddress->latitude ?? '' }}">
                             <input type="hidden" name="longitude" value="{{ $pickupAddress->longitude ?? '' }}">
-                            <p class="address-map-status" data-pickup-map-status>Click or drag the pin, then save it explicitly.</p>
-                            <button class="seller-primary-button" type="button" data-save-pickup-pin>Save Pickup Pin</button>
-                            <button class="address-map-clear" type="button" data-clear-pickup-pin @if ($pickupAddress->latitude === null || $pickupAddress->longitude === null) hidden @endif>Clear pin</button>
+                            <p id="pickup-map-status" class="address-map-status" data-pickup-map-status role="status" aria-live="polite">Tap the map to place a pin, or detect this device's location. Drag the pin to adjust it, then save.</p>
+                            <div class="address-map-picker-actions store-pickup-pin-actions">
+                                <button class="address-map-location" type="button" data-detect-pickup-location aria-describedby="pickup-map-status">
+                                    <i data-lucide="locate-fixed" aria-hidden="true"></i>Detect my current location
+                                </button>
+                                <button class="address-map-location address-map-manual" type="button" data-place-pickup-pin-manually aria-controls="seller-pickup-map" aria-describedby="pickup-map-status" aria-pressed="false">
+                                    <i data-lucide="map-pin" aria-hidden="true"></i>Place pin manually
+                                </button>
+                                <button class="seller-primary-button" type="button" data-save-pickup-pin>Save Pickup Pin</button>
+                                <button class="address-map-clear" type="button" data-clear-pickup-pin @if ($pickupAddress->latitude === null || $pickupAddress->longitude === null) hidden @endif>Clear pin</button>
+                            </div>
                         </div>
                     @else
                         <p class="form-alert">No registered pickup address is available for a map pin.</p>

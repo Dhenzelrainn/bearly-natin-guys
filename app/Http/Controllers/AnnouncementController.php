@@ -49,7 +49,7 @@ class AnnouncementController extends Controller
         $dashboardUrl = match ($recipientRole) {
             'seller' => route('seller.dashboard'),
             'logistics' => route('logistics.dashboard'),
-            'rider' => route('rider.dashboard.deliveries'),
+            'rider' => route('rider.dashboard'),
             default => route('home'),
         };
 

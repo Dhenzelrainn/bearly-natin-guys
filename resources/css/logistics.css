@@ -6,6 +6,9 @@
 @media(max-width:820px){.ops-sidebar{transform:translateX(-100%)}.ops-main,.sidebar-collapsed .ops-main{margin-left:0}.sidebar-open .ops-sidebar{transform:translateX(0)}.ops-overlay{position:fixed;inset:0;z-index:35;border:0;background:rgba(22,14,10,.5)}.sidebar-open .ops-overlay{display:block}.ops-collapse{display:none}.mobile-menu{display:grid}.ops-topbar{padding:0 18px}.ops-content{padding:22px 18px}.profile-copy{display:none}.page-header{flex-direction:column}.page-actions{width:100%}.registration-card{grid-template-columns:1fr}.registration-aside{padding:24px}.step-list{grid-template-columns:repeat(3,1fr);gap:5px}.step-marker{display:grid;justify-items:center;text-align:center}.step-marker small{display:none}.chat-shell{grid-template-columns:220px 1fr}.ops-footer{padding:15px 18px}}
 @media(max-width:600px){.ops-topbar-left h1{font-size:17px}.topbar-eyebrow{display:none}.ops-topbar-actions>a.icon-button{display:none}.metric-strip{grid-template-columns:1fr}.metric-item{border-right:0;border-bottom:1px solid var(--line)!important}.metric-item:last-child{border-bottom:0!important}.page-header h2{font-size:24px}.field-grid,.field-grid.three{grid-template-columns:1fr}.field.span-2{grid-column:auto}.page-actions .button{flex:1}.table-toolbar>*{width:100%}.filter-select{width:100%}.quick-actions{grid-template-columns:1fr}.chat-shell{height:auto;grid-template-columns:1fr}.chat-sidebar{max-height:260px;border-right:0;border-bottom:1px solid var(--line)}.chat-main{min-height:480px}.registration-main{padding:22px}.registration-aside h1{font-size:22px}.detail-list{grid-template-columns:1fr}.topbar-popover{position:fixed;top:70px;left:12px;right:12px;width:auto}.ops-footer{display:none}.breakdown-row{grid-template-columns:100px 1fr 45px}}
 
+/* Align range actions with their date controls, not the taller label-and-input fields. */
+.date-range-toolbar{align-items:flex-end}
+
 /* The Sorting Center has five metrics, unlike the shared four-metric layout. */
 .sorting-metric-strip{grid-template-columns:repeat(5,minmax(0,1fr))}
 @media(max-width:1400px){.sorting-metric-strip{grid-template-columns:repeat(3,minmax(0,1fr))}.sorting-metric-strip .metric-item{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.sorting-metric-strip .metric-item:nth-child(3n){border-right:0}.sorting-metric-strip .metric-item:nth-child(n+4){border-bottom:0}}
@@ -67,6 +70,9 @@
 .rider-zone-help{display:block;margin-top:6px;color:var(--muted);font-size:11px}
 @media(max-width:900px){.zone-management-grid{grid-template-columns:1fr}}
 @media(max-width:600px){.zone-management-grid{gap:18px;padding:0 14px 14px}.zone-create-form{padding:14px}.zone-barangay-list{grid-template-columns:1fr;max-height:200px}.sorting-zone-select{min-width:0}}
+#ready-to-send .manifest-actions{align-items:center;flex-wrap:wrap;row-gap:10px}
+#ready-to-send .manifest-availability-note{max-width:70ch;margin-right:auto;color:var(--muted);font-size:11px;font-weight:500;line-height:1.45;text-align:left;white-space:normal}
+@media(max-width:760px){#ready-to-send .manifest-actions{flex-direction:column;align-items:stretch}#ready-to-send .manifest-availability-note{max-width:none;margin-right:0}#ready-to-send .manifest-actions .button{width:100%}}
 
 /* Compact current/archive zone management. */
 .zone-create-details{margin:0 20px 18px;border:1px solid var(--line);border-radius:9px;background:#fffdfa}
@@ -1093,6 +1099,7 @@ body[data-module="logistics"] .refund-ack-document-footer span:last-child {
 .pickup-request-modal-body {
     display: grid;
     align-content: start;
+    grid-auto-rows: max-content;
     gap: 14px;
     min-height: 0;
     flex: 1 1 auto;
@@ -1637,6 +1644,7 @@ body[data-module="logistics"] .refund-ack-document-footer span:last-child {
 
 .pickup-live-map-card {
     overflow: hidden;
+    min-height: 420px;
 }
 
 .pickup-live-map-heading {
@@ -1679,6 +1687,7 @@ body[data-module="logistics"] .refund-ack-document-footer span:last-child {
     display: grid;
     grid-template-columns: minmax(0, 1.65fr) minmax(225px, .85fr);
     gap: 12px;
+    min-height: 310px;
     min-width: 0;
 }
 
@@ -1687,8 +1696,13 @@ body[data-module="logistics"] .refund-ack-document-footer span:last-child {
     min-width: 0;
 }
 
+.pickup-live-map-wrap {
+    min-height: 310px;
+}
+
 .pickup-live-map {
     height: 310px;
+    min-height: 310px;
     overflow: hidden;
     border: 1px solid #dcd1c7;
     border-radius: 9px;
@@ -1709,6 +1723,14 @@ body[data-module="logistics"] .refund-ack-document-footer span:last-child {
 .pickup-map-status {
     min-height: 15px;
     margin: 7px 0 0;
+}
+
+.pickup-map-status[data-state="warning"] {
+    padding: 7px 9px;
+    border-left: 3px solid var(--amber);
+    border-radius: 0 6px 6px 0;
+    color: var(--ink);
+    background: var(--amber-soft);
 }
 
 .pickup-map-note {
@@ -1757,6 +1779,14 @@ body[data-module="logistics"] .refund-ack-document-footer span:last-child {
     background: var(--green);
 }
 
+.pickup-map-legend-line {
+    display: block;
+    width: 17px;
+    height: 0;
+    flex: 0 0 17px;
+    border-top: 3px dashed #c76500;
+}
+
 .pickup-map-rider-list {
     display: grid;
     align-content: start;
@@ -1793,6 +1823,11 @@ body[data-module="logistics"] .refund-ack-document-footer span:last-child {
     background: var(--green);
 }
 
+.pickup-map-rider-dot.is-unavailable {
+    border: 1px solid var(--amber);
+    background: var(--amber-soft);
+}
+
 .pickup-map-rider-button {
     display: grid;
     width: 100%;
@@ -1820,8 +1855,12 @@ body[data-module="logistics"] .refund-ack-document-footer span:last-child {
 
 .pickup-map-rider-button small {
     color: var(--muted);
-    font-size: 9px;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    font-size: 10px;
     line-height: 1.4;
+    text-overflow: clip;
+    white-space: normal;
 }
 
 .pickup-map-empty {
@@ -1946,10 +1985,16 @@ body[data-module="logistics"] .refund-ack-document-footer span:last-child {
 
     .pickup-live-map-layout {
         grid-template-columns: 1fr;
+        min-height: 260px;
+    }
+
+    .pickup-live-map-wrap {
+        min-height: 260px;
     }
 
     .pickup-live-map {
         height: 260px;
+        min-height: 260px;
     }
 
     .pickup-live-map-sidebar {
@@ -2275,6 +2320,34 @@ body[data-module="logistics"] .cash-custody-table .cash-action-form {
 
 .dispatch-zone-coverage{overflow-wrap:anywhere;color:var(--muted)}
 .dispatch-routing-warning{display:block;margin-top:5px;color:var(--amber);font-size:11px;line-height:1.4}
+
+body[data-module="logistics"] .dispatch-board-table{min-width:1120px;table-layout:fixed}
+body[data-module="logistics"] .dispatch-board-table th:nth-child(1){width:19%}
+body[data-module="logistics"] .dispatch-board-table th:nth-child(2){width:12%}
+body[data-module="logistics"] .dispatch-board-table th:nth-child(3){width:10%}
+body[data-module="logistics"] .dispatch-board-table th:nth-child(4){width:35%}
+body[data-module="logistics"] .dispatch-board-table th:nth-child(5){width:13%}
+body[data-module="logistics"] .dispatch-board-table th:nth-child(6){width:11%}
+body[data-module="logistics"] .dispatch-board-table td:nth-child(4){white-space:normal}
+body[data-module="logistics"] .dispatch-board-wrap:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+body[data-module="logistics"] .dispatch-assignment-form{display:grid;min-width:0;gap:10px;white-space:normal}
+body[data-module="logistics"] .dispatch-assignment-rider,
+body[data-module="logistics"] .dispatch-window-field{display:grid;min-width:0;gap:5px}
+body[data-module="logistics"] .dispatch-assignment-form label{color:var(--muted);font-size:10px;font-weight:600;line-height:1.35;white-space:normal}
+body[data-module="logistics"] .dispatch-assignment-rider .filter-select{width:100%;min-width:0;max-width:100%}
+body[data-module="logistics"] .dispatch-window-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;min-width:0}
+body[data-module="logistics"] .dispatch-window-field input{width:100%;min-width:0;max-width:100%;height:39px;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font-size:12px}
+body[data-module="logistics"] .dispatch-window-field [role="alert"]{display:block;color:var(--red);font-size:10px;line-height:1.35;white-space:normal}
+body[data-module="logistics"] .dispatch-proximity-count{display:block;margin-top:4px;color:var(--muted);font-size:11px}
+body[data-module="logistics"] .dispatch-overflow-details{display:grid;gap:5px;padding:9px;border:1px solid var(--amber);border-radius:8px;background:var(--amber-soft)}
+body[data-module="logistics"] .dispatch-overflow-details label{color:var(--ink);font-size:11px;font-weight:650;line-height:1.4}
+body[data-module="logistics"] .dispatch-overflow-details label span{color:var(--muted);font-weight:500}
+body[data-module="logistics"] .dispatch-overflow-details textarea{width:100%;min-height:58px;resize:vertical;padding:8px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);font:inherit;font-size:12px}
+body[data-module="logistics"] .dispatch-overflow-details textarea:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+body[data-module="logistics"] .dispatch-overflow-details small{color:var(--muted);font-size:11px;line-height:1.4}
+body[data-module="logistics"] .dispatch-overflow-details [role="alert"]{color:var(--red)}
+body[data-module="logistics"] .dispatch-proximity-note{margin:0;color:var(--muted);font-size:11px;line-height:1.45;white-space:normal}
+body[data-module="logistics"] .dispatch-overflow-details .dispatch-proximity-note{color:var(--ink)}
 
 .order-item-preview-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;min-width:0}
 .order-item-preview{display:flex;min-width:0;align-items:center;gap:9px}
@@ -3112,4 +3185,89 @@ body[data-module="logistics"] .cash-remittance-select[aria-current="page"] {
 .notification-popover .popover-footer svg {
     width: 15px;
     height: 15px;
+}
+
+:root[data-theme="dark"] body.ops-body .pickup-manifest-wrap {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+}
+
+:root[data-theme="dark"] body.ops-body .pickup-manifest-products-row > td,
+:root[data-theme="dark"] body.ops-body .pickup-activity-list li {
+    border-color: var(--theme-border);
+    background: var(--theme-surface-soft);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.ops-body .manifest-shipment-group {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.ops-body .pickup-manifest-table tbody + tbody,
+:root[data-theme="dark"] body.ops-body .manifest-shipment-parcels {
+    border-top-color: var(--theme-border);
+}
+
+:root[data-theme="dark"] body.ops-body .pickup-manifest-table td {
+    border-color: var(--theme-border);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.ops-body .pickup-section-heading :is(h4, p),
+:root[data-theme="dark"] body.ops-body .pickup-manifest-summary strong,
+:root[data-theme="dark"] body.ops-body .pickup-manifest-reference-cell strong,
+:root[data-theme="dark"] body.ops-body .pickup-reference-line code,
+:root[data-theme="dark"] body.ops-body .pickup-manifest-cod,
+:root[data-theme="dark"] body.ops-body .pickup-manifest-products-label,
+:root[data-theme="dark"] body.ops-body .pickup-activity-copy > strong,
+:root[data-theme="dark"] body.ops-body .order-item-preview-copy strong {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.ops-body .pickup-section-heading p,
+:root[data-theme="dark"] body.ops-body .pickup-manifest-summary small,
+:root[data-theme="dark"] body.ops-body .pickup-reference-help,
+:root[data-theme="dark"] body.ops-body .pickup-reference-line > span,
+:root[data-theme="dark"] body.ops-body .pickup-manifest-reference-cell small,
+:root[data-theme="dark"] body.ops-body .pickup-activity-copy p,
+:root[data-theme="dark"] body.ops-body .pickup-activity-list time,
+:root[data-theme="dark"] body.ops-body .order-item-preview-copy small,
+:root[data-theme="dark"] body.ops-body .order-item-preview-empty,
+:root[data-theme="dark"] body.ops-body .order-item-preview-placeholder {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.ops-body .pickup-manifest-summary {
+    border: 1px solid var(--theme-border);
+    background: var(--theme-surface-soft);
+}
+
+:root[data-theme="dark"] body.ops-body .pickup-manifest-wrap .order-item-preview-image {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+}
+
+:root[data-theme="dark"] body.ops-body .pickup-manifest-sequence {
+    color: var(--theme-accent) !important;
+}
+
+:root[data-theme="dark"] body.ops-body .pickup-parcel-status {
+    background: var(--theme-surface);
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.ops-body .pickup-activity-list::before {
+    background: var(--theme-border);
+}
+
+:root[data-theme="dark"] body.ops-body .pickup-activity-marker {
+    border-color: var(--theme-muted);
+    background: var(--theme-surface);
+}
+
+:root[data-theme="dark"] body.ops-body .pickup-activity-list li:first-child .pickup-activity-marker {
+    border-color: var(--theme-accent);
+    background: var(--theme-accent-soft);
 }

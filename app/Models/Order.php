@@ -9,6 +9,19 @@ class Order extends Model
 {
     protected $guarded = [];
 
+    protected $hidden = [
+        'delivery_latitude',
+        'delivery_longitude',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'delivery_latitude' => 'float',
+            'delivery_longitude' => 'float',
+        ];
+    }
+
     public function buyer()
     {
         return $this->belongsTo(User::class, 'buyer_id');

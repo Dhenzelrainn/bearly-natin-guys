@@ -13,8 +13,10 @@ use App\Models\SortingZone;
 use App\Models\User;
 use App\Notifications\WorkflowNotification;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class DispatchService
@@ -22,6 +24,7 @@ class DispatchService
     public function __construct(
         private readonly SortingZoneMatcher $zoneMatcher,
         private readonly NotificationService $notifications,
+        private readonly RiderAssignmentEligibilityService $eligibility,
     ) {}
 
     /**
@@ -31,12 +34,18 @@ class DispatchService
     public function dispatchZone(
         SortingZone $zone,
         RiderProfile $rider,
-        User $actor
+        User $actor,
+        ?Carbon $plannedWindowStart = null,
+        ?Carbon $plannedWindowEnd = null,
+        ?string $assignmentReason = null,
     ): DispatchBatch {
         return DB::transaction(function () use (
             $zone,
             $rider,
-            $actor
+            $actor,
+            $plannedWindowStart,
+            $plannedWindowEnd,
+            $assignmentReason,
         ): DispatchBatch {
             $logisticsProfileId = $actor->logisticsProfile?->id;
 
@@ -115,14 +124,43 @@ class DispatchService
                 );
             }
 
-            if (
-                (int) $rider->current_zone_id
-                    !== (int) $zone->id
-            ) {
+            $riderZone = $rider->current_zone_id
+                ? SortingZone::query()
+                    ->with('sortingCenter')
+                    ->lockForUpdate()
+                    ->find($rider->current_zone_id)
+                : null;
+
+            if (! $riderZone
+                || $riderZone->status !== 'active'
+                || (int) $riderZone->sorting_center_id !== (int) $center->id
+                || (int) $riderZone->sortingCenter?->logistics_profile_id !== (int) $logisticsProfileId) {
                 throw new ConflictHttpException(
-                    'The rider is not assigned to this Sorting Zone.'
+                    'The rider must belong to an active zone in this Sorting Center.'
                 );
             }
+
+            $assignmentMode = (int) $riderZone->id === (int) $zone->id
+                ? 'zone_match'
+                : 'nearby_zone';
+            $assignmentReason = trim((string) $assignmentReason);
+
+            if ($assignmentMode === 'nearby_zone'
+                && (mb_strlen($assignmentReason) < 5 || mb_strlen($assignmentReason) > 1000)) {
+                throw ValidationException::withMessages([
+                    'assignment_reason' => 'Provide a reason of 5 to 1,000 characters for a nearby-zone assignment.',
+                ]);
+            }
+
+            if ($assignmentMode === 'zone_match') {
+                $assignmentReason = '';
+            }
+
+            $this->eligibility->assertDeliveryEligible(
+                $rider,
+                $plannedWindowStart,
+                $plannedWindowEnd,
+            );
 
             /*
              * A nullable capacity means dispatch capacity has not been
@@ -249,6 +287,11 @@ class DispatchService
                 'prepared_at' => $now,
                 'assigned_at' => $now,
                 'dispatched_at' => $now,
+                'planned_window_start' => $plannedWindowStart,
+                'planned_window_end' => $plannedWindowEnd,
+                'assignment_mode' => $assignmentMode,
+                'rider_zone_id' => $riderZone->id,
+                'assignment_reason' => $assignmentReason !== '' ? $assignmentReason : null,
             ]);
 
             $pivotData = [];
@@ -285,6 +328,12 @@ class DispatchService
                     'metadata' => [
                         'dispatch_batch_id' => $batch->id,
                         'rider_profile_id' => $rider->id,
+                        'assignment_mode' => $assignmentMode,
+                        'target_sorting_zone_id' => $zone->id,
+                        'target_sorting_zone_code' => $zone->code,
+                        'rider_zone_id' => $riderZone->id,
+                        'rider_zone_code' => $riderZone->code,
+                        'assignment_reason' => $assignmentReason !== '' ? $assignmentReason : null,
                     ],
                     'occurred_at' => $now,
                 ]);
@@ -336,6 +385,12 @@ class DispatchService
                     'metadata' => [
                         'dispatch_batch_id' => $batch->id,
                         'rider_profile_id' => $rider->id,
+                        'assignment_mode' => $assignmentMode,
+                        'target_sorting_zone_id' => $zone->id,
+                        'target_sorting_zone_code' => $zone->code,
+                        'rider_zone_id' => $riderZone->id,
+                        'rider_zone_code' => $riderZone->code,
+                        'assignment_reason' => $assignmentReason !== '' ? $assignmentReason : null,
                     ],
                     'occurred_at' => $now,
                 ]);

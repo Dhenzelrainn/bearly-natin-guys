@@ -6316,6 +6316,30 @@ svg {
     transform: translateY(0);
 }
 
+.seller-toast[data-state="success"] {
+    border-color: #b6d8c2;
+    color: #2f6247;
+    background: #f0faf3;
+}
+
+.seller-toast[data-state="error"] {
+    border-color: #e3b8b2;
+    color: #8a342e;
+    background: #fff3f1;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-toast[data-state="success"] {
+    border-color: #386146;
+    color: #a8d5b0;
+    background: #1e3828;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-toast[data-state="error"] {
+    border-color: #79443d;
+    color: #ffaaa2;
+    background: #34211e;
+}
+
 /* Small desktop */
 
 @media (max-width: 1180px) {
@@ -7539,6 +7563,89 @@ svg {
     color: var(--seller-muted);
     font-size: 12px;
     line-height: 1.5;
+}
+
+.store-profile-page .store-pickup-pin-actions {
+    justify-content: flex-start;
+    margin-top: 10px;
+}
+
+.store-profile-page .store-pickup-pin-actions .address-map-location,
+.store-profile-page .store-pickup-pin-actions .seller-primary-button {
+    min-height: 42px;
+}
+
+.store-profile-page .store-pickup-pin-actions .address-map-location svg {
+    width: 16px;
+    height: 16px;
+}
+
+.store-profile-page .store-pickup-pin-actions .address-map-manual {
+    border-color: var(--seller-line);
+    color: var(--seller-brown-800);
+    background: #fff;
+}
+
+.store-profile-page .store-pickup-pin-actions .address-map-manual:hover,
+.store-profile-page .store-pickup-pin-actions .address-map-manual[aria-pressed="true"] {
+    border-color: var(--seller-gold-dark);
+    background: #fff2df;
+}
+
+.store-profile-page .store-pickup-pin-actions .address-map-manual:focus-visible {
+    outline: 2px solid var(--seller-gold-dark);
+    outline-offset: 2px;
+}
+
+.store-profile-page .address-map.is-placing-pin .leaflet-grab,
+.store-profile-page .address-map.is-placing-pin .leaflet-interactive {
+    cursor: crosshair;
+}
+
+.store-profile-page .store-pickup-pin-actions .address-map-clear {
+    min-height: 42px;
+    margin-top: 0;
+    padding: 8px;
+}
+
+.store-profile-page .address-map-status[data-state="success"] {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: center;
+    margin-top: 10px;
+    padding: 8px 11px;
+    border: 1px solid #b6d8c2;
+    border-radius: 8px;
+    color: #2f6247;
+    background: #f0faf3;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.store-profile-page .address-map-status[data-state="error"] {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: center;
+    margin-top: 10px;
+    padding: 8px 11px;
+    border: 1px solid #e3b8b2;
+    border-radius: 8px;
+    color: #8a342e;
+    background: #fff3f1;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+:root[data-theme="dark"] body.seller-body .store-profile-page .address-map-status[data-state="success"] {
+    border-color: #386146;
+    color: #a8d5b0;
+    background: #1e3828;
+}
+
+:root[data-theme="dark"] body.seller-body .store-profile-page .address-map-status[data-state="error"] {
+    border-color: #79443d;
+    color: #ffaaa2;
+    background: #34211e;
 }
 
 .store-profile-page .form-alert {

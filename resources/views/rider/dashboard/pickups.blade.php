@@ -42,8 +42,8 @@
                         <strong data-rider-availability-label>{{ $isRiderAvailable ? 'Available' : 'Off duty' }}</strong>
                         <small id="rider-availability-help" data-rider-availability-help>
                             {{ $isRiderAvailable
-                                ? 'Visible for new pickup assignments.'
-                                : 'Hidden from new pickup assignments.' }}
+                                ? 'Logistics can send you new local pickup and delivery assignments.'
+                                : 'Paused: Logistics will not send new local assignments.' }}
                         </small>
                     @else
                         <strong>Awaiting approval</strong>
@@ -68,7 +68,7 @@
                         aria-describedby="rider-availability-help"
                         data-rider-availability-submit
                     >
-                        {{ $isRiderAvailable ? 'Go off duty' : 'Go available' }}
+                        {{ $isRiderAvailable ? 'Pause new assignments' : 'Accept new assignments' }}
                     </button>
                 </form>
             @endif
@@ -83,6 +83,46 @@
         </a>
     </div>
 </div>
+
+<section class="panel" style="margin-bottom:20px" aria-labelledby="local-rider-attendance-heading">
+    <div class="panel-header">
+        <div>
+            <p class="page-kicker">Shift records</p>
+            <h3 id="local-rider-attendance-heading">Attendance record</h3>
+            <p>Check-in/out records your shift only. It does not change assignment availability or Local Rider per-job earnings. Times are shown in PHT (UTC+8).</p>
+        </div>
+        <a class="button button-small" href="{{ route('rider.attendance.history') }}">
+            <i data-lucide="clock-4" aria-hidden="true"></i>
+            View attendance history
+        </a>
+    </div>
+    <div class="panel-body">
+        <div class="attention-item">
+            <i data-lucide="clock-4" aria-hidden="true"></i>
+            <span>
+                <strong>{{ $currentShift ? 'Shift in progress' : 'No open shift' }}</strong>
+                <small>
+                    @if($currentShift)
+                        Checked in {{ $currentShift->checkedInAtPht()?->format('M j, Y · g:i A') }} {{ \App\Models\RiderShift::TIMEZONE_LABEL }}.
+                    @else
+                        You are not currently checked in. Record attendance independently from accepting new assignments.
+                    @endif
+                </small>
+            </span>
+            @if($currentShift)
+                <form method="POST" action="{{ route('rider.attendance.check-out') }}">
+                    @csrf
+                    <button class="button button-secondary button-small" type="submit">Check out</button>
+                </form>
+            @else
+                <form method="POST" action="{{ route('rider.attendance.check-in') }}">
+                    @csrf
+                    <button class="button button-small" type="submit">Check in</button>
+                </form>
+            @endif
+        </div>
+    </div>
+</section>
 
 <section class="metric-strip">
     <article class="metric-item">

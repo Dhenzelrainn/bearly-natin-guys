@@ -17,6 +17,11 @@
 <main class="checkout-shell">
     <a class="checkout-back" href="{{ route('home') }}"><span class="material-symbols-outlined">arrow_back</span> Continue Shopping</a>
     @if (session('success'))<p class="checkout-success" role="status">{{ session('success') }}</p>@endif
+    @if (session('warning'))
+        <p class="checkout-warning checkout-cancellation-note" role="status">{{ session('warning') }}</p>
+    @elseif ($cancelUnavailableMessage)
+        <p class="checkout-warning checkout-cancellation-note" role="status">{{ $cancelUnavailableMessage }}</p>
+    @endif
     <section class="checkout-card confirmation-card">
         <span class="material-symbols-outlined" aria-hidden="true">{{ $order->status === 'cancelled' ? 'cancel' : ($order->status === 'fulfilled' ? 'verified' : 'check_circle') }}</span>
         <h1>{{ $order->status === 'cancelled' ? 'Order cancelled' : ($order->status === 'fulfilled' ? 'Order completed' : 'Order placed') }}</h1>
@@ -135,7 +140,7 @@
         </form>
     @endif
 
-    @if ($order->status === 'processing' && $order->sellerOrders->isNotEmpty() && $order->sellerOrders->every(fn ($sellerOrder) => $sellerOrder->status === 'pending'))
+    @if ($canCancelOrder ?? false)
         <form method="post" action="{{ route('checkout.cancel', $order->id) }}" class="checkout-cancel-form">
             @csrf
             <input type="hidden" name="reason" value="Buyer requested cancellation">

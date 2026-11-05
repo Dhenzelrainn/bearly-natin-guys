@@ -129,4 +129,187 @@ document.querySelectorAll('[data-destination-map]').forEach((element) => {
     }
 
     window.setTimeout(() => map.invalidateSize(), 0);
+
+    const routeEndpoint = element.dataset.pickupRouteEndpoint?.trim();
+    const routeStatusTarget = () => targetElement(element, 'pickupRouteStatusTarget');
+    const setRouteStatus = (message) => {
+        const status = routeStatusTarget();
+        if (status) status.textContent = message;
+    };
+
+    if (element.dataset.pickupRouteEnabled !== 'true' || !routeEndpoint) return;
+
+    const ROUTE_REFRESH_INTERVAL_MS = 15_000;
+    let sharingActive = false;
+    let locationUsable = false;
+    let routeLayer = null;
+    let riderMarker = null;
+    let refreshTimer = null;
+    let expiryTimer = null;
+    let requestController = null;
+    let hasFittedRoute = false;
+
+    const removeRouteLayers = () => {
+        if (expiryTimer !== null) window.clearTimeout(expiryTimer);
+        expiryTimer = null;
+
+        if (routeLayer) map.removeLayer(routeLayer);
+        if (riderMarker) map.removeLayer(riderMarker);
+        routeLayer = null;
+        riderMarker = null;
+    };
+
+    const stopRouteUpdates = (message) => {
+        sharingActive = false;
+        if (refreshTimer !== null) window.clearInterval(refreshTimer);
+        refreshTimer = null;
+        requestController?.abort();
+        requestController = null;
+        removeRouteLayers();
+        setRouteStatus(message);
+    };
+
+    const refreshRoute = async () => {
+        if (!sharingActive || !locationUsable || requestController) return;
+
+        const controller = new AbortController();
+        requestController = controller;
+
+        try {
+            const response = await fetch(routeEndpoint, {
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                signal: controller.signal,
+            });
+            const payload = await response.json().catch(() => ({}));
+
+            if (!sharingActive || !locationUsable || requestController !== controller) return;
+            if (!response.ok) {
+                throw new Error(payload.message || 'The road route is unavailable right now.');
+            }
+
+            const data = payload.data || {};
+            const riderCoordinates = coordinatePair(data.rider?.latitude, data.rider?.longitude);
+            const lastSeenAt = Date.parse(data.rider?.last_seen_at || '');
+            const staleAfterSeconds = Number(data.stale_after_seconds);
+            const millisecondsUntilStale = lastSeenAt + (staleAfterSeconds * 1000) - Date.now();
+
+            if (!riderCoordinates
+                || !Number.isFinite(lastSeenAt)
+                || !Number.isFinite(staleAfterSeconds)
+                || staleAfterSeconds <= 0
+                || millisecondsUntilStale <= 0
+                || millisecondsUntilStale > staleAfterSeconds * 1000) {
+                throw new Error('Rider GPS is stale. Keep location sharing on to refresh the road route.');
+            }
+
+            const nextRouteLayer = L.geoJSON(data.route, {
+                style: {
+                    color: '#c76500',
+                    weight: 5,
+                    opacity: 0.92,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                },
+            });
+            const routeBounds = nextRouteLayer.getBounds();
+
+            if (!routeBounds.isValid()) {
+                throw new Error('The road-routing service returned no usable route.');
+            }
+
+            removeRouteLayers();
+            routeLayer = nextRouteLayer.addTo(map);
+            riderMarker = L.circleMarker(riderCoordinates, {
+                radius: 8,
+                color: '#ffffff',
+                weight: 3,
+                fillColor: '#187b72',
+                fillOpacity: 1,
+            })
+                .bindPopup('Your last shared Rider location.')
+                .addTo(map);
+
+            if (!hasFittedRoute) {
+                map.fitBounds(routeBounds.extend(riderCoordinates), {
+                    padding: [24, 24],
+                    maxZoom: 16,
+                });
+                hasFittedRoute = true;
+            }
+
+            expiryTimer = window.setTimeout(() => {
+                removeRouteLayers();
+                setRouteStatus('Rider GPS has gone stale. Keep location sharing on to refresh the road route.');
+            }, millisecondsUntilStale);
+
+            setRouteStatus('The Rider marker follows new GPS fixes; road geometry refreshes about every 15 seconds. No ETA is provided.');
+        } catch (error) {
+            if (error?.name === 'AbortError') return;
+
+            removeRouteLayers();
+            const message = error instanceof Error
+                ? error.message
+                : 'The road route is unavailable right now.';
+            setRouteStatus(message);
+        } finally {
+            if (requestController === controller) requestController = null;
+        }
+    };
+
+    const syncLocationSharing = (enabled, accuracyUsable, sharingState = '') => {
+        if (!enabled) {
+            locationUsable = false;
+            stopRouteUpdates('Road route hidden because location sharing is off. Turn sharing on to show it again.');
+            return;
+        }
+
+        if (!accuracyUsable) {
+            locationUsable = false;
+            requestController?.abort();
+            requestController = null;
+            removeRouteLayers();
+            setRouteStatus(sharingState === 'pending'
+                ? 'Waiting for a fresh, accurate GPS fix before drawing the road route…'
+                : sharingState === 'error'
+                    ? 'Rider location could not be refreshed. The route will return when GPS sharing recovers.'
+                    : 'Rider GPS accuracy is too low for a road route. Share a location with accuracy of ±100 m or better.');
+            return;
+        }
+
+        locationUsable = true;
+
+        if (sharingActive) {
+            return;
+        }
+
+        sharingActive = true;
+        setRouteStatus('Calculating a road route from your latest shared location…');
+        void refreshRoute();
+        refreshTimer = window.setInterval(refreshRoute, ROUTE_REFRESH_INTERVAL_MS);
+    };
+
+    window.addEventListener('bearly:rider-location-sharing-updated', (event) => {
+        syncLocationSharing(
+            event.detail?.sharing === true,
+            event.detail?.accuracyUsable === true,
+            event.detail?.state || '',
+        );
+    });
+
+    window.addEventListener('bearly:rider-location-shared', (event) => {
+        if (!sharingActive || !locationUsable || !riderMarker) return;
+
+        const coordinates = coordinatePair(event.detail?.latitude, event.detail?.longitude);
+        if (coordinates) riderMarker.setLatLng(coordinates);
+    });
+
+    if (document.body.dataset.riderLocationSharing === 'true') {
+        syncLocationSharing(document.body.dataset.riderLocationSharing === 'true',
+            document.body.dataset.riderLocationUsable === 'true',
+            document.body.dataset.riderLocationState || '');
+    }
 });

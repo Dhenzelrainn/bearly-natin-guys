@@ -7,6 +7,7 @@ use App\Models\Address;
 use App\Models\AuditLog;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
+use App\Models\Parcel;
 use App\Models\Payment;
 use App\Models\PickupRequest;
 use App\Models\RiderProfile;
@@ -49,6 +50,32 @@ class SellerPickupRequestIntegrationTest extends TestCase
             $this->readySellerOrder($store, 'first'),
             $this->readySellerOrder($store, 'second'),
         ];
+        $firstItem = $sellerOrders[0]->items()->sole();
+        $firstOrder = $sellerOrders[0]->order;
+        $firstItem->update([
+            'quantity' => 5,
+            'subtotal_minor' => 44_725,
+        ]);
+        $firstQuote = $sellerOrders[0]->shipping_quote;
+        $firstQuote['actual_weight_kg'] = 6.25;
+        $firstQuote['package_items'] = [[
+            'sku' => $firstItem->sku,
+            'quantity' => 5,
+            'package_weight_kg' => 1.25,
+            'package_dimensions_cm' => ['length' => 32, 'width' => 20, 'height' => 10],
+        ]];
+        $sellerOrders[0]->update([
+            'subtotal_minor' => 44_725,
+            'total_minor' => 48_125,
+            'shipping_quote' => $firstQuote,
+        ]);
+        $firstOrder->update([
+            'subtotal_minor' => 44_725,
+            'total_minor' => 48_125,
+        ]);
+        Payment::query()
+            ->where('order_id', $firstOrder->id)
+            ->update(['amount_minor' => 48_125]);
 
         foreach ($sellerOrders as $sellerOrder) {
             $this->fulfillSellerOrder($sellerOrder, $seller, $provider['profile']);
@@ -60,7 +87,13 @@ class SellerPickupRequestIntegrationTest extends TestCase
             ->assertSee($sellerOrders[0]->seller_order_no)
             ->assertSee($sellerOrders[1]->seller_order_no)
             ->assertSee('name="order_ids[]"', false)
+            ->assertSee('5 parcels')
             ->assertSee('printed');
+
+        $this->actingAs($seller)
+            ->get(route('seller.fulfillment.waybills'))
+            ->assertOk()
+            ->assertSee('5 pieces');
 
         $this->actingAs($seller)
             ->post(route('seller.fulfillment.pickups.store'), [
@@ -77,7 +110,7 @@ class SellerPickupRequestIntegrationTest extends TestCase
         $this->assertSame('requested', $pickup->status);
         $this->assertSame($store->id, (int) $pickup->store_id);
         $this->assertSame($provider['profile']->id, (int) $pickup->logistics_profile_id);
-        $this->assertSame(2, $pickup->parcels->count());
+        $this->assertSame(6, $pickup->parcels->count());
         $this->assertSame('Use the side entrance.', $pickup->seller_instructions);
         $this->assertSame(['ready_for_pickup', 'ready_for_pickup'], array_map(fn (SellerOrder $order): string => $order->fresh()->status, $sellerOrders));
 
@@ -95,11 +128,12 @@ class SellerPickupRequestIntegrationTest extends TestCase
             $this->assertSame($sellerOrder->id, (int) $shipment->seller_order_id);
             $this->assertSame($provider['profile']->id, (int) $shipment->logistics_profile_id);
             $this->assertSame('ready_for_pickup', $shipment->status);
-            $this->assertSame(12345, (int) $shipment->cod_amount_minor);
+            $this->assertSame((int) $sellerOrder->total_minor, (int) $shipment->cod_amount_minor);
 
             $waybill = Waybill::query()->where('shipment_id', $shipment->id)->sole();
             $this->assertSame('generated', $waybill->status);
-            $this->assertSame(1.25, (float) $waybill->total_weight_kg);
+            $this->assertSame((int) $sellerOrder->id === (int) $sellerOrders[0]->id ? 5 : 1, (int) $waybill->piece_count);
+            $this->assertSame((int) $sellerOrder->id === (int) $sellerOrders[0]->id ? 6.25 : 1.25, (float) $waybill->total_weight_kg);
             $this->assertSame(32.0, (float) $waybill->length_cm);
             $this->assertSame(64, strlen($waybill->scan_token));
             $this->assertDatabaseHas('parcels', [
@@ -123,7 +157,7 @@ class SellerPickupRequestIntegrationTest extends TestCase
             ->assertSee($store->name)
             ->assertSee($sellerOrders[0]->seller_order_no)
             ->assertSee($sellerOrders[1]->seller_order_no)
-            ->assertSeeHtml('<span><small>Total parcels</small><strong>2</strong></span>')
+            ->assertSeeHtml('<span><small>Total parcels</small><strong>6</strong></span>')
             ->assertSee('Pending');
 
         $this->actingAs($provider['user'])
@@ -460,12 +494,35 @@ class SellerPickupRequestIntegrationTest extends TestCase
             ->whereHas('shipment.sellerOrder', fn ($query) => $query->whereKey($foreignOrder->id))
             ->sole();
 
+        $firstParcel = $ownedWaybill->parcels()->sole();
+        $ownedWaybill->update(['piece_count' => 2]);
+
+        $this->actingAs($seller)
+            ->post(route('seller.fulfillment.waybills.pdf'), [
+                'waybill_ids' => [$ownedWaybill->id],
+            ])
+            ->assertConflict();
+
+        Parcel::query()->create([
+            'shipment_id' => $firstParcel->shipment_id,
+            'waybill_id' => $ownedWaybill->id,
+            'parcel_no' => 'PCL-'.Str::upper(Str::random(16)),
+            'piece_sequence' => 2,
+            'weight_kg' => $firstParcel->weight_kg,
+            'length_cm' => $firstParcel->length_cm,
+            'width_cm' => $firstParcel->width_cm,
+            'height_cm' => $firstParcel->height_cm,
+            'status' => 'created',
+            'last_event_at' => now(),
+        ]);
+
         $this->actingAs($seller)
             ->get(route('seller.fulfillment.waybills'))
             ->assertOk()
             ->assertSee($ownedWaybill->waybill_no)
             ->assertDontSee($foreignWaybill->waybill_no)
             ->assertSee($ownedOrder->seller_order_no)
+            ->assertSee('2 pieces')
             ->assertSee('Download PDF');
 
         $this->actingAs($seller)
@@ -486,14 +543,14 @@ class SellerPickupRequestIntegrationTest extends TestCase
         preg_match_all('/\/MediaBox\s*\[([^\]]+)\]/', $pdf, $mediaBoxMatches);
         $this->assertNotEmpty($mediaBoxMatches[1], 'The PDF must include an explicit page size.');
         preg_match_all('/\/Type\s*\/Page\b/', $pdf, $pageMatches);
-        $this->assertCount(1, $pageMatches[0], 'One waybill must render on exactly one PDF page.');
+        $this->assertCount(2, $pageMatches[0], 'A two-piece waybill must render one physical label page per parcel.');
         $mediaBox = preg_split('/\s+/', trim(end($mediaBoxMatches[1])));
         $this->assertSame([0.0, 0.0, 288.0, 432.0], array_map('floatval', $mediaBox));
         $this->assertStringContainsString('/DCTDecode', $pdf, 'The official Bearly logo should be embedded as a JPEG without requiring GD.');
         $pdfContent = $this->decodedPdfStreams($pdf);
         preg_match_all('/0\.000 0\.000 0\.000 rg\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+re f/', $pdfContent, $barcodeBars);
-        $this->assertGreaterThan(40, count($barcodeBars[0]), 'The PDF must draw the Code 128 bars, not just show its text.');
-        $this->assertStringContainsString("C\0O\0D", $pdfContent, 'The COD section must remain on the single label page.');
+        $this->assertGreaterThan(80, count($barcodeBars[0]), 'Each physical piece label must draw the shared Code 128 barcode.');
+        $this->assertSame(2, substr_count($pdfContent, "C\0O\0D"), 'The waybill COD total should appear on both physical piece labels.');
         $this->assertStringNotContainsString($ownedWaybill->scan_token, $pdf);
         $this->assertDatabaseHas('audit_logs', [
             'actor_user_id' => $seller->id,

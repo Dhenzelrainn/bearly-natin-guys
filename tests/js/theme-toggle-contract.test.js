@@ -78,6 +78,11 @@ test('standalone registration screens replace their light background in dark mod
     assert.match(themeCss, /:root\[data-theme="dark"\]\s+body\.registration-body\s*\{[^}]*background:\s*var\(--theme-page\)/s);
 });
 
+test('Rider and Logistics draft notices use readable dark-mode surfaces and text', () => {
+    assert.match(themeCss, /:root\[data-theme="dark"\]\s+body\.registration-body\[data-module="rider"\]\s+\.registration-draft-notice,[\s\S]*?body\.registration-body\[data-module="logistics"\]\s+\.registration-draft-notice\s*\{[^}]*background:\s*var\(--theme-surface-soft\);[^}]*color:\s*var\(--theme-text\);/);
+    assert.match(themeCss, /:root\[data-theme="dark"\]\s+body\.registration-body\[data-module="rider"\]\s+\.registration-draft-notice\s*>\s*span,[\s\S]*?body\.registration-body\[data-module="logistics"\]\s+\.registration-draft-notice\s*>\s*span\s*\{[^}]*color:\s*var\(--theme-muted\);/);
+});
+
 test('dark Logistics mode keeps settlement metrics, table headers, and topbar controls legible', () => {
     assert.match(themeCss, /body\[data-module="logistics"\]\s+\.metric-strip,/);
     assert.match(themeCss, /\.metric-strip,\s*:root\[data-theme="dark"\]\s+body\[data-module="rider"\]\s+\.metric-strip\s*\{[^}]*background:\s*var\(--theme-surface\)/s);

@@ -23,4 +23,24 @@ class ThemeToggleTest extends TestCase
                 ->assertSee('bearly-theme');
         }
     }
+
+    public function test_rider_uses_shared_registration_header_while_logistics_keeps_original_landing_layout(): void
+    {
+        $this->get(route('rider.landing'))
+            ->assertOk()
+            ->assertSee('data-module="rider"', false)
+            ->assertSee('data-registration-header', false)
+            ->assertSee('registration-brand-divider', false)
+            ->assertSee('Rider portal')
+            ->assertSee('data-theme-toggle', false);
+
+        $this->get(route('logistics.landing'))
+            ->assertOk()
+            ->assertSee('class="logistics-public-landing"', false)
+            ->assertDontSee('data-registration-header', false)
+            ->assertDontSee('registration-brand-divider', false)
+            ->assertSee('Logistics Partner Portal')
+            ->assertSee('portal-theme-toggle', false)
+            ->assertSee('data-theme-toggle', false);
+    }
 }

@@ -77,9 +77,9 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="form-actions">
+                <div class="form-actions manifest-actions">
+                    @if($availableCouriers->isEmpty())<small class="manifest-availability-note">No available, verified Courier with capacity is assigned to this Logistics provider.</small>@endif
                     <button class="button button-primary" type="submit" @disabled($availableCouriers->isEmpty())><i data-lucide="truck"></i> Assign manifest</button>
-                    @if($availableCouriers->isEmpty())<small>No available, verified Courier with capacity is assigned to this Logistics provider.</small>@endif
                 </div>
             </form>
         @empty

@@ -172,7 +172,7 @@
                         <span class="pickup-card-icon"><i data-lucide="map-pinned" aria-hidden="true"></i></span>
                         <div class="pickup-live-map-heading-copy">
                             <h4 id="pickup-live-map-{{ $pickup['database_id'] }}">Live pickup map</h4>
-                            <p>Fresh locations from your available local Riders. Click a Rider marker or list item to select them for manual assignment.</p>
+                            <p>All assignable local Riders appear in the list. Fresh, accurate GPS reports get map pins; select a marker or any listed Rider for manual assignment.</p>
                         </div>
                         <span class="pickup-map-sync" data-pickup-map-sync aria-live="polite">Waiting for map</span>
                     </div>
@@ -180,20 +180,21 @@
                     <div class="pickup-live-map-layout">
                         <div class="pickup-live-map-wrap">
                             <div class="pickup-live-map" data-pickup-live-map aria-label="Pickup and available Rider locations on OpenStreetMap"></div>
-                            <p class="pickup-map-status" data-pickup-map-status role="status">Loading fresh Rider locations…</p>
+                            <p class="pickup-map-status" data-pickup-map-status role="status" aria-live="polite">Loading assignable Riders and fresh locations…</p>
                         </div>
                         <aside class="pickup-live-map-sidebar" aria-label="Live pickup map legend and Riders">
                             <div class="pickup-map-legend">
                                 <span><i class="pickup-map-legend-dot is-pickup" aria-hidden="true"></i>Pickup</span>
-                                <span><i class="pickup-map-legend-dot is-rider" aria-hidden="true"></i>Fresh Rider</span>
+                                <span><i class="pickup-map-legend-dot is-rider" aria-hidden="true"></i>Rider with accurate GPS</span>
+                                <span><i class="pickup-map-legend-line" aria-hidden="true"></i>Straight-line distance (approx.)</span>
                             </div>
                             <div class="pickup-map-rider-list" data-pickup-map-riders>
-                                <p class="pickup-map-empty">Loading fresh Rider locations…</p>
+                                <p class="pickup-map-empty">Loading available Rider candidates…</p>
                             </div>
                         </aside>
                     </div>
 
-                    <p class="pickup-map-note">Only the latest fresh location is shown. Stale or unavailable GPS falls back to Sorting Zone, workload, and manual selection.</p>
+                    <p class="pickup-map-note">A Rider pin requires a location update within 3 minutes and reported accuracy of ±100 m or better. Other eligible Riders remain selectable in the list, but stale, imprecise, or missing GPS is not plotted or used for distance; Sorting Zone/workload fallback remains available.</p>
                 </section>
             @endif
 
@@ -313,6 +314,12 @@
                                         {{ $recommendedRider['recommendation_reason'] }}.
                                         @if($recommendedRider['distance_label'])
                                             Based on a fresh Rider location update.
+                                        @elseif($recommendedRider['location_state'] === 'stale')
+                                            The Rider's last location is older than 3 minutes, so it is not used for distance; the Sorting Zone/workload fallback is used.
+                                        @elseif($recommendedRider['gps_quality'] === 'low_accuracy')
+                                            The latest GPS report is too imprecise (±{{ number_format((float) $recommendedRider['accuracy_meters'], 0) }} m), so it is not used for distance; the Sorting Zone/workload fallback is used.
+                                        @elseif($recommendedRider['location_state'] === 'fresh' && $recommendedRider['gps_quality'] === 'unknown')
+                                            The fresh GPS update has no accuracy reading, so Sorting Zone/workload fallback is used.
                                         @elseif($recommendedRider['area_match'])
                                             Using the Rider's assigned Sorting Zone as the fallback.
                                         @else
@@ -330,8 +337,10 @@
                                     <option value="{{ $rider['id'] }}" @selected($loop->first)>
                                         {{ $rider['name'] }} · {{ $rider['vehicle'] }}@if($rider['plate']) · {{ $rider['plate'] }}@endif
                                         @if($rider['distance_label']) · {{ $rider['distance_label'] }}
+                                        @elseif($rider['location_state'] === 'stale') · GPS stale@if($rider['area_match']) · Same service area@endif
+                                        @elseif($rider['location_state'] === 'fresh' && $rider['gps_quality'] === 'low_accuracy') · GPS too imprecise (±{{ number_format((float) $rider['accuracy_meters'], 0) }} m)
+                                        @elseif($rider['location_state'] === 'fresh' && $rider['gps_quality'] === 'unknown') · GPS accuracy unavailable
                                         @elseif($rider['area_match']) · Same service area
-                                        @elseif($rider['location_state'] === 'stale') · GPS stale
                                         @else · GPS unavailable
                                         @endif
                                         · {{ $rider['active_jobs'] }} active {{ $rider['active_jobs'] === 1 ? 'job' : 'jobs' }}

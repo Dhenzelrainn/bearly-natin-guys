@@ -47,7 +47,10 @@ export function actionButtons(order){
     const details=order.details_url?`<a class="order-btn" href="${purchaseEsc(order.details_url)}">View Details</a>`:'<button class="order-btn" type="button">View Details</button>';
     if(order.status==='to-pay')return details;
     if(order.status==='to-ship'&&order.cancel_url)return `${details}${serverActionForm(order.cancel_url,'Buyer requested cancellation','Cancel Order','order-btn order-cancel')}`;
-    if(order.status==='to-ship')return `${details}`;
+    if(order.status==='to-ship'){
+      const cancellationNote=order.cancel_unavailable_message?`<p class="order-cancel-note" role="status">${purchaseEsc(order.cancel_unavailable_message)}</p>`:'';
+      return `${details}${cancellationNote}`;
+    }
     if(order.status==='to-receive'&&order.can_confirm&&order.confirm_url)return `${serverActionForm(order.confirm_url,'Buyer confirmed receipt','Order Received','order-btn primary')}${track}${details}`;
     if(order.status==='to-receive')return `${track}${details}`;
     if(order.status==='completed')return `<button class="order-btn primary order-rate-product" type="button" data-order="${id}" data-index="0">Rate Product</button>${details}`;

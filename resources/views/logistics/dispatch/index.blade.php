@@ -18,6 +18,10 @@
             Match delivery zones with available riders
             and release ready parcel batches.
         </p>
+        <p>
+            Each dispatch records a planned work window for conflict checks;
+            the existing dispatch action still starts immediately.
+        </p>
     </div>
 
     <div class="page-actions">
@@ -113,9 +117,7 @@
             <h3>Zone dispatch board</h3>
 
             <p>
-                Only approved and available riders
-                assigned to the active facility and zone
-                are eligible.
+                Destination-zone Riders come first. If none can carry the full batch, eligible local Riders from another active zone at this facility may be selected with a reason.
             </p>
         </div>
 
@@ -130,8 +132,13 @@
         @endif
     </div>
 
-    <div class="table-wrap">
-        <table class="data-table">
+    <div
+        class="table-wrap dispatch-board-wrap"
+        role="region"
+        aria-label="Zone dispatch assignments"
+        tabindex="0"
+    >
+        <table class="data-table {{ $zones->isNotEmpty() ? 'dispatch-board-table' : '' }}">
             <thead>
                 <tr>
                     <th>Zone / Area</th>
@@ -174,8 +181,10 @@
                         </td>
 
                         <td>
-                            {{ count($zone['riders']) }}
-                            eligible
+                            {{ count($zone['riders']) }} in zone
+                            @if(count($zone['nearby_riders']) > 0)
+                                <small class="dispatch-proximity-count">+ {{ count($zone['nearby_riders']) }} nearby</small>
+                            @endif
                         </td>
 
                         <td>
@@ -189,30 +198,94 @@
                             >
                                 @csrf
 
-                                <select
-                                    class="filter-select"
-                                    name="rider_profile_id"
-                                    required
-                                    @disabled(
-                                        $zone['ready'] === 0
-                                        || count($zone['riders']) === 0
-                                    )
-                                >
-                                    <option value="">
-                                        Choose eligible rider
-                                    </option>
-
-                                    @foreach($zone['riders'] as $rider)
-                                        <option
-                                            value="{{ $rider['id'] }}"
+                                <div class="dispatch-assignment-form">
+                                    <div class="dispatch-assignment-rider">
+                                        <label for="dispatch-rider-{{ $zone['id'] }}">Assign rider</label>
+                                        <select
+                                            id="dispatch-rider-{{ $zone['id'] }}"
+                                            class="filter-select"
+                                            name="rider_profile_id"
+                                            required
+                                            @disabled(
+                                                $zone['ready'] === 0
+                                                || (count($zone['riders']) === 0 && count($zone['nearby_riders']) === 0)
+                                            )
                                         >
-                                            {{ $rider['name'] }}
-                                            ·
-                                            {{ $rider['remaining'] }}
-                                            slots remaining
-                                        </option>
-                                    @endforeach
-                                </select>
+                                            <option value="">
+                                                Choose eligible rider
+                                            </option>
+
+                                            @if(count($zone['riders']) > 0)
+                                                <optgroup label="Assigned to this zone">
+                                                    @foreach($zone['riders'] as $rider)
+                                                        <option value="{{ $rider['id'] }}">
+                                                            {{ $rider['name'] }} · {{ $rider['specialization'] }} · {{ $rider['remaining'] }} slots remaining
+                                                        </option>
+                                                    @endforeach
+                                                </optgroup>
+                                            @endif
+
+                                            @if(count($zone['nearby_riders']) > 0)
+                                                <optgroup label="Nearby-zone fallback · Logistics approval required">
+                                                    @foreach($zone['nearby_riders'] as $rider)
+                                                        <option value="{{ $rider['id'] }}" data-assignment-mode="nearby_zone">
+                                                            {{ $rider['name'] }} · {{ $rider['zone_code'] }} · {{ $rider['remaining'] }} slots
+                                                            @if($rider['distance_label'])
+                                                                · {{ $rider['distance_label'] }}
+                                                            @endif
+                                                            · {{ $rider['gps_status_label'] }}
+                                                            @if($rider['is_recommended'])
+                                                                · Closest estimate
+                                                            @endif
+                                                        </option>
+                                                    @endforeach
+                                                </optgroup>
+                                            @endif
+                                        </select>
+                                    </div>
+
+                                    @if(count($zone['nearby_riders']) > 0)
+                                        <div class="dispatch-overflow-details">
+                                            <p class="dispatch-proximity-note" role="status">{{ $zone['proximity_message'] }}</p>
+                                            <label for="dispatch-reason-{{ $zone['id'] }}">Reason for nearby-zone assignment <span>(required when selecting a Rider from another zone)</span></label>
+                                            <textarea id="dispatch-reason-{{ $zone['id'] }}" name="assignment_reason" rows="2" minlength="5" maxlength="1000" required aria-describedby="dispatch-reason-help-{{ $zone['id'] }}">{{ old('assignment_reason') }}</textarea>
+                                            <small id="dispatch-reason-help-{{ $zone['id'] }}">Nearby assignments are one-time overflow; the Rider’s home zone will not change.</small>
+                                            @error('assignment_reason')<small role="alert">{{ $message }}</small>@enderror
+                                        </div>
+                                    @elseif($zone['proximity_message'])
+                                        <p class="dispatch-proximity-note" role="status">{{ $zone['proximity_message'] }}</p>
+                                    @endif
+
+                                    <div class="dispatch-window-fields">
+                                        <div class="dispatch-window-field">
+                                            <label for="dispatch-window-start-{{ $zone['id'] }}">Planned start</label>
+                                            <input
+                                                id="dispatch-window-start-{{ $zone['id'] }}"
+                                                type="datetime-local"
+                                                name="planned_window_start"
+                                                min="{{ now()->format('Y-m-d\TH:i') }}"
+                                                value="{{ old('planned_window_start') }}"
+                                                required
+                                                @disabled($zone['ready'] === 0 || (count($zone['riders']) === 0 && count($zone['nearby_riders']) === 0))
+                                            >
+                                            @error('planned_window_start')<small role="alert">{{ $message }}</small>@enderror
+                                        </div>
+
+                                        <div class="dispatch-window-field">
+                                            <label for="dispatch-window-end-{{ $zone['id'] }}">Planned end</label>
+                                            <input
+                                                id="dispatch-window-end-{{ $zone['id'] }}"
+                                                type="datetime-local"
+                                                name="planned_window_end"
+                                                min="{{ now()->format('Y-m-d\TH:i') }}"
+                                                value="{{ old('planned_window_end') }}"
+                                                required
+                                                @disabled($zone['ready'] === 0 || (count($zone['riders']) === 0 && count($zone['nearby_riders']) === 0))
+                                            >
+                                            @error('planned_window_end')<small role="alert">{{ $message }}</small>@enderror
+                                        </div>
+                                    </div>
+                                </div>
                             </form>
                         </td>
 
@@ -221,9 +294,11 @@
                                 <span class="dispatch-routing-warning">No matching parcels ready</span>
                             @elseif($zone['ready'] === 0)
                                 <span>No ready parcels</span>
+                            @elseif(count($zone['riders']) === 0 && count($zone['nearby_riders']) > 0)
+                                <span>Nearby Rider available · reason required</span>
                             @elseif(count($zone['riders']) === 0)
                                 <span>
-                                    Waiting for rider capacity
+                                    No eligible Rider with capacity at this Sorting Center
                                 </span>
                             @else
                                 <span>Ready for dispatch</span>
@@ -237,7 +312,7 @@
                                 form="dispatch-zone-{{ $zone['id'] }}"
                                 @disabled(
                                     $zone['ready'] === 0
-                                    || count($zone['riders']) === 0
+                                    || (count($zone['riders']) === 0 && count($zone['nearby_riders']) === 0)
                                 )
                             >
                                 Assign & dispatch

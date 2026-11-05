@@ -20,6 +20,21 @@ test('unsupported Pay Now and Buy Again actions are not offered', () => {
     assert.match(completed, /Rate Product/);
 });
 
+test('accepted Seller orders show the cancellation explanation without a cancel action', () => {
+    const actions = actionButtons({
+        server: true,
+        status: 'to-ship',
+        details_url: '/orders/receipt',
+        cancel_url: null,
+        cancel_unavailable_message: 'A Seller has already accepted or started preparing this order. Cancellation is no longer available.',
+    });
+
+    assert.match(actions, /View Details/);
+    assert.match(actions, /class="order-cancel-note" role="status"/);
+    assert.match(actions, /A Seller has already accepted or started preparing this order/);
+    assert.doesNotMatch(actions, /Cancel Order/);
+});
+
 test('purchase cards use the saved quantity line total rather than the per-unit price', () => {
     assert.equal(purchaseItemLineTotalMinor({
         price: 69990,

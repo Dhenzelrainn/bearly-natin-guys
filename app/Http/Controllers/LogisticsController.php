@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\AccountStatus;
 use App\Enums\DeliveryAttemptOutcome;
 use App\Enums\ParcelStatus;
+use App\Enums\RiderSpecialization;
 use App\Enums\RiderWorkType;
 use App\Enums\ShipmentStatus;
 use App\Enums\UserRole;
@@ -31,8 +32,10 @@ use App\Models\User;
 use App\Models\Waybill;
 use App\Notifications\WorkflowNotification;
 use App\Services\ApplicationReviewService;
+use App\Services\AuditService;
 use App\Services\BuyerCatalogService;
 use App\Services\ConversationService;
+use App\Services\CourierDailyEarningService;
 use App\Services\DispatchService;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
@@ -44,7 +47,9 @@ use App\Services\PsgcAddressService;
 use App\Services\RegistrationDraftService;
 use App\Services\RegistrationLifecycleService;
 use App\Services\RiderAccountStatusService;
+use App\Services\RiderAssignmentEligibilityService;
 use App\Services\RiderCapacityService;
+use App\Services\RiderDeliveryRecommendationService;
 use App\Services\RiderLocationService;
 use App\Services\RiderPickupRecommendationService;
 use App\Services\RiderWorkloadService;
@@ -1099,8 +1104,10 @@ class LogisticsController extends Controller
         ]);
     }
 
-    public function riders(RiderWorkloadService $workloadService)
-    {
+    public function riders(
+        RiderWorkloadService $workloadService,
+        RiderAssignmentEligibilityService $eligibility,
+    ) {
         /** @var User $operator */
         $operator = Auth::user();
 
@@ -1203,10 +1210,13 @@ class LogisticsController extends Controller
             $workloadMetrics = $workloadService
                 ->metricsForRiders($riderProfiles);
 
+            $operationalStatuses = $eligibility
+                ->operationalStatuses($riderProfiles);
+
             $riders = $riderProfiles
                 ->map(function (
                     RiderProfile $rider
-                ) use ($workloadMetrics): array {
+                ) use ($workloadMetrics, $operationalStatuses): array {
                     $accountStatus = $rider->user?->status
                         ?? AccountStatus::Active->value;
                     $availability =
@@ -1254,6 +1264,14 @@ class LogisticsController extends Controller
                         'availability' => $availability === 'available'
                             ? 'Available'
                             : 'Off duty',
+
+                        'operational_status' => $operationalStatuses->get(
+                            (int) $rider->id,
+                            RiderAssignmentEligibilityService::STATUS_OFFLINE,
+                        ),
+
+                        'specialization' => $rider->specializationValue()->label(),
+                        'specialization_key' => $rider->specializationValue()->value,
                     ];
                 });
         }
@@ -1272,6 +1290,7 @@ class LogisticsController extends Controller
         string $id,
         SortingZoneMatcher $zoneMatcher,
         RiderAccountStatusService $statusService,
+        CourierDailyEarningService $courierDailyEarnings,
     ): View {
         abort_unless(
             ctype_digit($id),
@@ -1322,6 +1341,25 @@ class LogisticsController extends Controller
         $workType = $riderProfile?->work_type
             ?: $accountApplication->requested_work_type
             ?: RiderWorkType::Local->value;
+
+        $courierAttendance = collect();
+        $courierDailySummary = null;
+
+        if ($riderProfile
+            && (int) $riderProfile->logistics_profile_id === (int) $profile->id
+            && $workType === RiderWorkType::Courier->value) {
+            $courierAttendance = $riderProfile->shifts()
+                ->with(['earnings' => function ($query): void {
+                    $query
+                        ->where('type', config('bearly_rider_compensation.courier_daily_earning_type', 'courier_daily'))
+                        ->with(['linehaulRun', 'payout', 'payoutBatchItem.batch']);
+                }])
+                ->orderByDesc('checked_in_at')
+                ->orderByDesc('id')
+                ->limit(30)
+                ->get();
+            $courierDailySummary = $courierDailyEarnings->summaryFor($riderProfile);
+        }
 
         $canManageStatus = $accountApplication->status === 'approved'
             && $user->role === UserRole::Rider->value
@@ -1563,10 +1601,23 @@ class LogisticsController extends Controller
                         && $user->status === AccountStatus::Active->value
                         && $riderProfile !== null,
 
+                    'specialization' => $riderProfile?->specializationValue()->value
+                        ?? RiderSpecialization::Both->value,
+
+                    'specialization_label' => $riderProfile?->specializationValue()->label()
+                        ?? RiderSpecialization::Both->label(),
+
+                    'can_manage_specialization' => $accountApplication->status === 'approved'
+                        && $user->status === AccountStatus::Active->value
+                        && $riderProfile !== null
+                        && RiderWorkType::isLocal($workType),
+
                     'documents' => $documents,
                 ],
 
                 'assignmentCenters' => $assignmentCenters,
+                'courierAttendance' => $courierAttendance,
+                'courierDailySummary' => $courierDailySummary,
             ]
         );
     }
@@ -1636,6 +1687,68 @@ class LogisticsController extends Controller
         return redirect()
             ->route('logistics.riders.show', $user)
             ->with('success', 'Local Rider parcel capacity was updated.');
+    }
+
+    public function updateRiderSpecialization(
+        Request $request,
+        User $user,
+        AuditService $audit,
+    ): RedirectResponse {
+        $provider = $this->currentLogisticsProfile($request->user());
+        abort_unless($provider, 404);
+
+        $validated = $request->validate([
+            'specialization' => [
+                'required',
+                Rule::in(RiderSpecialization::values()),
+            ],
+            'reason' => ['required', 'string', 'min:5', 'max:1000'],
+        ]);
+
+        DB::transaction(function () use ($request, $user, $provider, $validated, $audit): void {
+            $rider = RiderProfile::query()
+                ->with('user')
+                ->where('user_id', $user->id)
+                ->where('logistics_profile_id', $provider->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            abort_unless(
+                $rider->verification_status === 'approved'
+                && $rider->user?->status === AccountStatus::Active->value,
+                403,
+            );
+
+            if (! RiderWorkType::isLocal($rider->work_type)) {
+                throw ValidationException::withMessages([
+                    'specialization' => 'Courier line-haul Riders cannot receive local pickup or delivery specialization.',
+                ]);
+            }
+
+            $old = $rider->specializationValue()->value;
+
+            if ($old !== $validated['specialization']) {
+                $rider->update(['specialization' => $validated['specialization']]);
+
+                $audit->record(
+                    action: 'rider_specialization.updated',
+                    module: 'Logistics',
+                    subject: $rider,
+                    description: 'Logistics updated the local Rider work specialization.',
+                    oldValues: ['specialization' => $old],
+                    newValues: [
+                        'specialization' => $validated['specialization'],
+                        'reason' => trim($validated['reason']),
+                        'logistics_profile_id' => (int) $provider->id,
+                    ],
+                    request: $request,
+                );
+            }
+        }, attempts: 3);
+
+        return redirect()
+            ->route('logistics.riders.show', $user)
+            ->with('success', 'Rider specialization was updated. It applies to future pickup and delivery assignments only.');
     }
 
     public function updateRiderAssignment(
@@ -1761,6 +1874,7 @@ class LogisticsController extends Controller
         BuyerCatalogService $catalog,
         RiderPickupRecommendationService $recommendations,
         RiderWorkloadService $workloadService,
+        RiderAssignmentEligibilityService $eligibility,
     ): View
     {
         /** @var User $operator */
@@ -1819,6 +1933,7 @@ class LogisticsController extends Controller
                 $recommendations,
                 $availableRiderProfiles,
                 $workloadMetrics,
+                $eligibility,
             ))
             ->values();
 
@@ -1895,14 +2010,15 @@ class LogisticsController extends Controller
     }
 
     /**
-     * Return the current provider-owned Rider markers for one pickup map.
-     * Coordinates are intentionally limited to fresh, eligible local Riders.
+     * Return schedulable provider-owned local pickup Riders for the map list.
+     * Coordinates are included only when their latest GPS fix is usable.
      */
     public function pickupRiderLocations(
         Request $request,
         PickupRequest $pickupRequest,
         RiderPickupRecommendationService $recommendations,
         RiderWorkloadService $workloadService,
+        RiderAssignmentEligibilityService $eligibility,
     ): JsonResponse {
         /** @var User|null $operator */
         $operator = $request->user();
@@ -1919,6 +2035,10 @@ class LogisticsController extends Controller
         ]);
 
         $availableRiders = $this->availablePickupRiderProfiles($profile);
+        $conflictedRiderIds = $eligibility->pickupConflictRiderIds($availableRiders, $pickupRequest);
+        $availableRiders = $availableRiders
+            ->reject(fn (RiderProfile $rider): bool => $conflictedRiderIds->contains((int) $rider->id))
+            ->values();
         $now = now();
         $workloadMetrics = $workloadService->metricsForRiders(
             $availableRiders,
@@ -1932,11 +2052,7 @@ class LogisticsController extends Controller
         );
         $coordinates = $this->pickupCoordinates($pickupRequest);
 
-        $markers = $rankedRiders
-            ->filter(fn (array $rider): bool => $rider['location_state'] === 'fresh'
-                && $rider['latitude'] !== null
-                && $rider['longitude'] !== null
-            )
+        $riderCandidates = $rankedRiders
             ->map(fn (array $rider): array => [
                 'id' => $rider['id'],
                 'name' => $rider['name'],
@@ -1945,6 +2061,9 @@ class LogisticsController extends Controller
                 'latitude' => $rider['latitude'],
                 'longitude' => $rider['longitude'],
                 'accuracy_meters' => $rider['accuracy_meters'],
+                'location_state' => $rider['location_state'],
+                'gps_quality' => $rider['gps_quality'],
+                'location_usable' => $rider['location_usable'],
                 'last_seen_at' => $rider['last_seen_at'],
                 'distance_km' => $rider['distance_km'],
                 'distance_label' => $rider['distance_label'],
@@ -1958,11 +2077,12 @@ class LogisticsController extends Controller
         return response()->json([
             'data' => [
                 'pickup' => $coordinates,
-                'riders' => $markers,
+                'riders' => $riderCandidates,
                 'generated_at' => $now->toIso8601String(),
                 'stale_after_seconds' => RiderLocationService::FRESHNESS_SECONDS,
+                'max_usable_accuracy_meters' => RiderLocationService::MAX_USABLE_ACCURACY_METERS,
             ],
-            'message' => 'Fresh provider-owned pickup map locations loaded.',
+            'message' => 'Schedulable provider-owned pickup Riders loaded; only fresh accurate GPS coordinates are included.',
         ]);
     }
 
@@ -1979,6 +2099,10 @@ class LogisticsController extends Controller
                 $query->whereNull('work_type')
                     ->orWhere('work_type', RiderWorkType::Local->value);
             })
+            ->whereIn('specialization', [
+                RiderSpecialization::PickupOnly->value,
+                RiderSpecialization::Both->value,
+            ])
             ->where('availability_status', 'available')
             ->whereHas(
                 'user',
@@ -2008,6 +2132,7 @@ class LogisticsController extends Controller
         RiderPickupRecommendationService $recommendations,
         Collection $availableRiderProfiles,
         Collection $workloadMetrics,
+        RiderAssignmentEligibilityService $eligibility,
     ): array {
         $eligibleParcels = $pickupRequest->parcels
             ->filter(fn (Parcel $parcel) => (int) $parcel->shipment?->logistics_profile_id
@@ -2050,6 +2175,13 @@ class LogisticsController extends Controller
                 $pickupRequest->logisticsProfile?->serviceAddress?->province,
             ])))
             : 'Location unavailable';
+
+        $conflictedRiderIds = $pickupRequest->status === 'verified'
+            ? $eligibility->pickupConflictRiderIds($availableRiderProfiles, $pickupRequest)
+            : collect();
+        $schedulableRiderProfiles = $availableRiderProfiles
+            ->reject(fn (RiderProfile $rider): bool => $conflictedRiderIds->contains((int) $rider->id))
+            ->values();
 
         $shipments = $eligibleParcels
             ->map(fn (Parcel $parcel) => $parcel->shipment)
@@ -2157,7 +2289,7 @@ class LogisticsController extends Controller
                 ? $recommendations
                     ->rank(
                         $pickupRequest,
-                        $availableRiderProfiles,
+                        $schedulableRiderProfiles,
                         $workloadMetrics,
                     )
                     ->all()
@@ -2505,7 +2637,8 @@ class LogisticsController extends Controller
     public function assignPickup(
         Request $request,
         PickupRequest $pickupRequest,
-        NotificationService $notifications
+        NotificationService $notifications,
+        RiderAssignmentEligibilityService $eligibility,
     ): RedirectResponse {
         /** @var User $operator */
         $operator = Auth::user();
@@ -2546,6 +2679,10 @@ class LogisticsController extends Controller
                 $query->whereNull('work_type')
                     ->orWhere('work_type', RiderWorkType::Local->value);
             })
+            ->whereIn('specialization', [
+                RiderSpecialization::PickupOnly->value,
+                RiderSpecialization::Both->value,
+            ])
             ->where('availability_status', 'available')
             ->whereHas(
                 'user',
@@ -2561,7 +2698,8 @@ class LogisticsController extends Controller
             $pickupRequest,
             $rider,
             $validated,
-            $profile
+            $profile,
+            $eligibility
         ): void {
             $lockedPickupRequest = PickupRequest::query()
                 ->whereKey($pickupRequest->id)
@@ -2592,6 +2730,10 @@ class LogisticsController extends Controller
                     $query->whereNull('work_type')
                         ->orWhere('work_type', RiderWorkType::Local->value);
                 })
+                ->whereIn('specialization', [
+                    RiderSpecialization::PickupOnly->value,
+                    RiderSpecialization::Both->value,
+                ])
                 ->where('availability_status', 'available')
                 ->whereHas(
                     'user',
@@ -2602,6 +2744,11 @@ class LogisticsController extends Controller
                 )
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            $eligibility->assertPickupEligible(
+                $lockedRider,
+                $lockedPickupRequest
+            );
 
             PickupAssignment::query()->create([
                 'pickup_request_id' => $lockedPickupRequest->id,
@@ -4139,7 +4286,10 @@ class LogisticsController extends Controller
         );
     }
 
-    public function dispatch(SortingZoneMatcher $zoneMatcher): View
+    public function dispatch(
+        SortingZoneMatcher $zoneMatcher,
+        RiderDeliveryRecommendationService $deliveryRecommendations,
+    ): View
     {
         /** @var User $operator */
         $operator = Auth::user();
@@ -4191,7 +4341,7 @@ class LogisticsController extends Controller
         * Their active batch parcel counts are used to derive
         * remaining capacity.
         */
-        $riders = RiderProfile::query()
+        $riderProfiles = RiderProfile::query()
             ->where(
                 'logistics_profile_id',
                 $profile->id
@@ -4212,6 +4362,10 @@ class LogisticsController extends Controller
                 $query->whereNull('work_type')
                     ->orWhere('work_type', RiderWorkType::Local->value);
             })
+            ->whereIn('specialization', [
+                RiderSpecialization::DeliveryOnly->value,
+                RiderSpecialization::Both->value,
+            ])
             ->where(
                 'availability_status',
                 'available'
@@ -4225,6 +4379,8 @@ class LogisticsController extends Controller
             )
             ->with([
                 'user',
+                'currentZone.sortingCenter',
+                'liveLocation',
                 'dispatchBatches' => fn ($query) => $query
                     ->whereNotIn(
                         'status',
@@ -4236,8 +4392,9 @@ class LogisticsController extends Controller
                     ->withCount('parcels'),
             ])
             ->orderBy('id')
-            ->get()
-            ->map(function (RiderProfile $rider): array {
+            ->get();
+
+        $riders = $riderProfiles->map(function (RiderProfile $rider): array {
                 $activeLoad = (int) $rider
                     ->dispatchBatches
                     ->sum('parcels_count');
@@ -4254,6 +4411,8 @@ class LogisticsController extends Controller
                     'name' => $rider->user?->name
                         ?? 'Unnamed rider',
 
+                    'specialization' => $rider->specializationValue()->label(),
+
                     'load' => $activeLoad,
 
                     'capacity' => $capacity,
@@ -4264,6 +4423,7 @@ class LogisticsController extends Controller
                     ),
                 ];
             });
+        $riderCapacityById = $riders->keyBy('id');
 
         $ridersByZone = $riders
             ->groupBy('zone_id');
@@ -4275,7 +4435,10 @@ class LogisticsController extends Controller
                 $center,
                 $profile,
                 $ridersByZone,
-                $zoneMatcher
+                $riderProfiles,
+                $riderCapacityById,
+                $zoneMatcher,
+                $deliveryRecommendations,
             ): array {
                 $readyParcels = Parcel::query()
                     ->with([
@@ -4343,6 +4506,23 @@ class LogisticsController extends Controller
                     )
                     ->values();
 
+                $nearbyRiders = collect();
+                $proximityStatus = 'not_needed';
+                $proximityMessage = null;
+
+                if ($ready > 0 && $eligibleRiders->isEmpty()) {
+                    $nearbyProfiles = $riderProfiles
+                        ->filter(fn (RiderProfile $rider): bool => (int) $rider->current_zone_id !== (int) $zone->id)
+                        ->filter(function (RiderProfile $rider) use ($riderCapacityById, $ready): bool {
+                            return (int) ($riderCapacityById->get((int) $rider->id)['remaining'] ?? 0) >= $ready;
+                        })
+                        ->values();
+                    $recommendation = $deliveryRecommendations->recommend($matchingParcels, $nearbyProfiles);
+                    $nearbyRiders = $recommendation['candidates'];
+                    $proximityStatus = $recommendation['proximity_status'];
+                    $proximityMessage = $recommendation['proximity_message'];
+                }
+
                 return [
                     'id' => $zone->id,
                     'zone' => $zone->code,
@@ -4353,6 +4533,9 @@ class LogisticsController extends Controller
                     'ready' => $ready,
                     'routing_issues' => $routingIssues,
                     'riders' => $eligibleRiders,
+                    'nearby_riders' => $nearbyRiders,
+                    'proximity_status' => $proximityStatus,
+                    'proximity_message' => $proximityMessage,
                 ];
             })
             ->values();
@@ -4444,7 +4627,25 @@ class LogisticsController extends Controller
                 'required',
                 'integer',
             ],
+            'planned_window_start' => ['required', 'date_format:Y-m-d\\TH:i'],
+            'planned_window_end' => ['required', 'date_format:Y-m-d\\TH:i'],
+            'assignment_reason' => ['nullable', 'string', 'max:1000'],
         ]);
+
+        $plannedWindowStart = Carbon::createFromFormat('Y-m-d\\TH:i', $validated['planned_window_start']);
+        $plannedWindowEnd = Carbon::createFromFormat('Y-m-d\\TH:i', $validated['planned_window_end']);
+
+        if ($plannedWindowStart->lessThan(now()->startOfMinute())) {
+            throw ValidationException::withMessages([
+                'planned_window_start' => 'The planned delivery window cannot start in the past.',
+            ]);
+        }
+
+        if ($plannedWindowEnd->lessThanOrEqualTo($plannedWindowStart)) {
+            throw ValidationException::withMessages([
+                'planned_window_end' => 'The delivery window must end after it starts.',
+            ]);
+        }
 
         /*
         * The service still performs the authoritative
@@ -4459,7 +4660,10 @@ class LogisticsController extends Controller
             ->dispatchZone(
                 $zone,
                 $rider,
-                $operator
+                $operator,
+                $plannedWindowStart,
+                $plannedWindowEnd,
+                $validated['assignment_reason'] ?? null,
             );
 
         $riderName =

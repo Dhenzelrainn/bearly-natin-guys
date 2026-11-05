@@ -1446,6 +1446,25 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
             ->whereNumber('earning')
             ->name('settlements.rider-earnings.cash-receipt');
 
+        Route::get('/settlements/payout-batches/{batch}/cash-receipt', [LogisticsCashController::class, 'printRiderCashPayoutBatchReceipt'])
+            ->whereNumber('batch')
+            ->name('settlements.payout-batches.cash-receipt');
+
+        Route::post('/settlements/rider-earnings/{earning}/classify-size', [LogisticsCashController::class, 'classifyPickupEarning'])
+            ->whereNumber('earning')
+            ->name('settlements.rider-earnings.classify-size');
+
+        Route::post('/settlements/payout-batches', [LogisticsCashController::class, 'prepareRiderPayoutBatch'])
+            ->name('settlements.payout-batches.store');
+
+        Route::post('/settlements/payout-batches/{batch}/approve', [LogisticsCashController::class, 'approveRiderPayoutBatch'])
+            ->whereNumber('batch')
+            ->name('settlements.payout-batches.approve');
+
+        Route::post('/settlements/payout-batches/{batch}/record-paid', [LogisticsCashController::class, 'recordRiderPayoutBatchPayment'])
+            ->whereNumber('batch')
+            ->name('settlements.payout-batches.record-paid');
+
         Route::post('/cash/cod/{collection}/receive', [LogisticsCashController::class, 'receiveCod'])
             ->whereNumber('collection')
             ->name('cash.cod.receive');
@@ -1495,6 +1514,10 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::patch('/riders/{user}/capacity', [LogisticsController::class, 'updateRiderCapacity'])
             ->whereNumber('user')
             ->name('riders.capacity.update');
+
+        Route::patch('/riders/{user}/specialization', [LogisticsController::class, 'updateRiderSpecialization'])
+            ->whereNumber('user')
+            ->name('riders.specialization.update');
 
         Route::patch('/riders/{user}/assignment', [LogisticsController::class, 'updateRiderAssignment'])
             ->name('riders.assignment.update');
@@ -1684,11 +1707,15 @@ Route::prefix('rider')->name('rider.')->group(function () {
 
     // Authenticated active Rider accounts only.
     Route::middleware(['auth', 'role:rider'])->group(function () {
-        Route::redirect('/dashboard', '/rider/dashboard/pickups')
+        Route::get('/dashboard', [RiderController::class, 'dashboard'])
             ->name('dashboard');
 
         Route::get('/courier', [RiderController::class, 'courierDashboard'])
             ->name('courier.dashboard');
+
+        Route::get('/courier/history', [RiderController::class, 'courierHistory'])
+            ->name('courier.history.index');
+
         Route::post('/courier/runs/{run}/start-loading', [RiderController::class, 'courierStartLoading'])
             ->whereNumber('run')
             ->name('courier.runs.start-loading');
@@ -1708,67 +1735,89 @@ Route::prefix('rider')->name('rider.')->group(function () {
             ->whereNumber('run')
             ->name('courier.runs.exceptions.resolve');
 
-        Route::get('/dashboard/pickups', [RiderController::class, 'pickupsDashboard'])
-            ->name('dashboard.pickups');
-
         Route::patch('/account/availability', [RiderController::class, 'updateAvailability'])
             ->name('availability.update');
 
         Route::post('/account/location', [RiderController::class, 'updateLocation'])
+            ->middleware('throttle:60,1')
             ->name('location.update');
 
         Route::delete('/account/location', [RiderController::class, 'clearLocation'])
             ->name('location.destroy');
 
-        Route::get('/dashboard/deliveries', [RiderController::class, 'deliveriesDashboard'])
-            ->name('dashboard.deliveries');
+        Route::post('/account/attendance/check-in', [RiderController::class, 'attendanceCheckIn'])
+            ->name('attendance.check-in');
 
-        Route::get('/refund-cash', [RiderCashController::class, 'index'])
-            ->name('refund-cash.index');
+        Route::post('/account/attendance/check-out', [RiderController::class, 'attendanceCheckOut'])
+            ->name('attendance.check-out');
 
-        Route::post('/refund-cash/{payout}/receive', [RiderCashController::class, 'receive'])
-            ->whereNumber('payout')
-            ->name('refund-cash.receive');
+        Route::middleware('local-rider')->group(function () {
+            Route::get('/dashboard/pickups', [RiderController::class, 'pickupsDashboard'])
+                ->name('dashboard.pickups');
 
-        Route::post('/refund-cash/{payout}/start', [RiderCashController::class, 'start'])
-            ->whereNumber('payout')
-            ->name('refund-cash.start');
+            Route::get('/attendance/history', [RiderController::class, 'attendanceHistory'])
+                ->name('attendance.history');
 
-        Route::post('/refund-cash/{payout}/deliver', [RiderCashController::class, 'deliver'])
-            ->whereNumber('payout')
-            ->name('refund-cash.deliver');
+            Route::get('/dashboard/deliveries', [RiderController::class, 'deliveriesDashboard'])
+                ->name('dashboard.deliveries');
 
-        Route::post('/refund-cash/{payout}/fail', [RiderCashController::class, 'fail'])
-            ->whereNumber('payout')
-            ->name('refund-cash.fail');
+            Route::get('/refund-cash', [RiderCashController::class, 'index'])
+                ->name('refund-cash.index');
 
-        Route::post('/refund-cash/{payout}/return-cash', [RiderCashController::class, 'returnCash'])
-            ->whereNumber('payout')
-            ->name('refund-cash.return-cash');
+            Route::post('/refund-cash/{payout}/receive', [RiderCashController::class, 'receive'])
+                ->whereNumber('payout')
+                ->name('refund-cash.receive');
 
-        Route::get('/pickup/{id}', [RiderController::class, 'pickup'])
-            ->name('orders.pickup');
+            Route::post('/refund-cash/{payout}/start', [RiderCashController::class, 'start'])
+                ->whereNumber('payout')
+                ->name('refund-cash.start');
 
-        Route::post('/pickup/{id}/accept', [RiderController::class, 'acceptPickup'])
-            ->name('orders.pickup.accept');
+            Route::post('/refund-cash/{payout}/deliver', [RiderCashController::class, 'deliver'])
+                ->whereNumber('payout')
+                ->name('refund-cash.deliver');
 
-        Route::post('/pickup/{id}/confirm', [RiderController::class, 'confirmPickup'])
-            ->name('orders.pickup.confirm');
+            Route::post('/refund-cash/{payout}/fail', [RiderCashController::class, 'fail'])
+                ->whereNumber('payout')
+                ->name('refund-cash.fail');
 
-        Route::get('/deliver/{id}', [RiderController::class, 'deliver'])
-            ->name('orders.delivery');
+            Route::post('/refund-cash/{payout}/return-cash', [RiderCashController::class, 'returnCash'])
+                ->whereNumber('payout')
+                ->name('refund-cash.return-cash');
 
-        Route::post('/deliver/{id}/start', [RiderController::class, 'startDelivery'])
-            ->name('orders.delivery.start');
+            Route::get('/pickup/{id}', [RiderController::class, 'pickup'])
+                ->name('orders.pickup');
 
-        Route::post('/deliver/{id}/confirm', [RiderController::class, 'confirmDelivery'])
-            ->name('orders.delivery.confirm');
+            Route::get('/pickup/{id}/route', [RiderController::class, 'pickupRoute'])
+                ->middleware('throttle:60,1')
+                ->name('orders.pickup.route');
 
-        Route::post('/deliver/{id}/fail', [RiderController::class, 'failDelivery'])
-            ->name('orders.delivery.fail');
+            Route::post('/pickup/{id}/accept', [RiderController::class, 'acceptPickup'])
+                ->name('orders.pickup.accept');
 
-        Route::post('/deliver/{id}/retry', [RiderController::class, 'retryDelivery'])
-            ->name('orders.delivery.retry');
+            Route::post('/pickup/{id}/confirm', [RiderController::class, 'confirmPickup'])
+                ->name('orders.pickup.confirm');
+
+            Route::get('/deliver/{id}', [RiderController::class, 'deliver'])
+                ->name('orders.delivery');
+
+            Route::post('/deliver/{id}/start', [RiderController::class, 'startDelivery'])
+                ->name('orders.delivery.start');
+
+            Route::post('/deliver/{id}/confirm', [RiderController::class, 'confirmDelivery'])
+                ->name('orders.delivery.confirm');
+
+            Route::post('/deliver/{id}/fail', [RiderController::class, 'failDelivery'])
+                ->name('orders.delivery.fail');
+
+            Route::post('/deliver/{id}/retry', [RiderController::class, 'retryDelivery'])
+                ->name('orders.delivery.retry');
+
+            Route::get('/history/export', [RiderController::class, 'exportHistory'])
+                ->name('history.export');
+
+            Route::get('/history', [RiderController::class, 'history'])
+                ->name('history.index');
+        });
 
         Route::get('/earnings', [RiderController::class, 'earnings'])
             ->name('earnings.index');
@@ -1778,12 +1827,6 @@ Route::prefix('rider')->name('rider.')->group(function () {
 
         Route::get('/earnings/export', [RiderController::class, 'exportEarnings'])
             ->name('earnings.export');
-
-        Route::get('/history/export', [RiderController::class, 'exportHistory'])
-            ->name('history.export');
-
-        Route::get('/history', [RiderController::class, 'history'])
-            ->name('history.index');
 
         Route::get('/messages', [RiderController::class, 'messages'])
             ->name('messages.index');

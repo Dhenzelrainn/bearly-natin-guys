@@ -163,14 +163,17 @@ class SellerPickupRequestService
                 );
 
                 $parcels = $shipment->parcels()
-                    ->orderBy('id')
+                    ->orderBy('piece_sequence')
                     ->lockForUpdate()
                     ->get();
 
                 abort_unless(
-                    $parcels->isNotEmpty(),
+                    $parcels->isNotEmpty()
+                        && $parcels->count() === (int) $waybill->piece_count
+                        && $parcels->every(fn ($parcel): bool => (int) $parcel->waybill_id === (int) $waybill->id)
+                        && $parcels->pluck('piece_sequence')->map(fn ($sequence): int => (int) $sequence)->all() === range(1, (int) $waybill->piece_count),
                     409,
-                    "The parcel records for {$sellerOrder->seller_order_no} are missing. Contact support.",
+                    "The waybill piece count or parcel records for {$sellerOrder->seller_order_no} do not match. Contact support.",
                 );
 
                 $hasActivePickup = PickupRequest::query()
@@ -230,7 +233,7 @@ class SellerPickupRequestService
 
             $parcels = $shipments
                 ->flatMap(fn (Shipment $shipment): Collection => $shipment->parcels()
-                    ->orderBy('id')
+                    ->orderBy('piece_sequence')
                     ->get())
                 ->values();
 

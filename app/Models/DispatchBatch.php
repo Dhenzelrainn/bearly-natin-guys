@@ -8,9 +8,15 @@ class DispatchBatch extends Model
 {
     protected $guarded = [];
 
+    protected $hidden = [
+        'assignment_reason',
+    ];
+
     protected function casts(): array
     {
         return [
+            'planned_window_start' => 'datetime',
+            'planned_window_end' => 'datetime',
             'prepared_at' => 'datetime',
             'assigned_at' => 'datetime',
             'dispatched_at' => 'datetime',
@@ -32,6 +38,11 @@ class DispatchBatch extends Model
     public function riderProfile()
     {
         return $this->belongsTo(RiderProfile::class);
+    }
+
+    public function riderZone()
+    {
+        return $this->belongsTo(SortingZone::class, 'rider_zone_id');
     }
 
     public function preparedBy()

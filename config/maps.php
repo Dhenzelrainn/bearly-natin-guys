@@ -14,4 +14,5 @@ return [
         'MAPS_FORWARD_GEOCODING_SEARCH_URL',
         'https://nominatim.openstreetmap.org/search'
     ),
+    'geoapify_api_key' => env('GEOAPIFY_API_KEY'),
 ];

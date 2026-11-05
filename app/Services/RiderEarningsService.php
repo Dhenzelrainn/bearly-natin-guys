@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\OrderItem;
 use App\Models\ReturnItem;
 use App\Models\RiderProfile;
+use App\Models\RiderShift;
 use App\Models\Shipment;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -42,12 +43,16 @@ class RiderEarningsService
      *     active_total: string,
      *     active_entries: int,
      *     excluded_entries: int,
+     *     courier_daily_minor: int,
+     *     courier_daily: string,
+     *     courier_daily_days: int,
      * }
      */
     public function summary(RiderProfile $rider): array
     {
         $this->materializeShippingSettlements((int) $rider->id);
         $now = now();
+        $courierNow = now(CourierDailyEarningService::TIMEZONE);
         $base = DB::table('rider_earnings')
             ->where('rider_profile_id', $rider->id);
 
@@ -55,20 +60,79 @@ class RiderEarningsService
             $base,
             $now->copy()->startOfDay(),
             $now->copy()->endOfDay(),
+            $courierNow->copy()->startOfDay(),
+            $courierNow->copy()->endOfDay(),
         );
         $week = $this->periodSummary(
             $base,
             $now->copy()->startOfWeek(),
             $now->copy()->endOfWeek(),
+            $courierNow->copy()->startOfWeek(),
+            $courierNow->copy()->endOfWeek(),
         );
         $month = $this->periodSummary(
             $base,
             $now->copy()->startOfMonth(),
             $now->copy()->endOfMonth(),
+            $courierNow->copy()->startOfMonth(),
+            $courierNow->copy()->endOfMonth(),
         );
 
         $active = $this->activeQuery($base);
         $activeTotalMinor = (int) $active->sum('amount_minor');
+        $courierDailyType = (string) config('bearly_rider_compensation.courier_daily_earning_type', 'courier_daily');
+        $courierDaily = (clone $active)->where('type', $courierDailyType);
+        $courierDailyMinor = (int) $courierDaily->sum('amount_minor');
+
+        $pickupType = config('bearly_rider_compensation.pickup_earning_type', 'pickup_parcel');
+        $pickupBase = $this->activeQuery($base)->where('type', $pickupType);
+        $pickupTotalMinor = (int) $pickupBase->sum('amount_minor');
+        $pickupCompletedCount = (int) (clone $pickupBase)
+            ->whereNotNull('parcel_id')
+            ->distinct()
+            ->count('parcel_id');
+        $pickupHeldMinor = (int) (clone $base)
+            ->where('type', $pickupType)
+            ->where('status', RiderPickupEarningService::STATUS_HELD)
+            ->sum('amount_minor');
+        $pickupHeldEntries = (int) (clone $base)
+            ->where('type', $pickupType)
+            ->where('status', RiderPickupEarningService::STATUS_HELD)
+            ->count();
+
+        $rates = app(RiderPickupEarningService::class)->rates();
+        $bulkyClass = $rates['bulky_class'];
+        $pickupBulkyMinor = (int) (clone $pickupBase)
+            ->where('size_class_snapshot', $bulkyClass)
+            ->sum('amount_minor');
+        $pickupRegularMinor = max(0, $pickupTotalMinor - $pickupBulkyMinor);
+
+        $deliveryBase = $this->activeQuery($base)
+            ->whereIn('type', ['shipping_delivery', 'return_shipping_delivery', 'delivery']);
+        $deliveryTotalMinor = (int) $deliveryBase->sum('amount_minor');
+        $deliveryPendingMinor = (int) (clone $deliveryBase)
+            ->whereIn('status', ['pending', 'held'])
+            ->sum('amount_minor');
+
+        $payoutEligibleMinor = (int) (clone $base)
+            ->where('status', 'posted')
+            ->whereNull('paid_at')
+            ->sum('amount_minor');
+        $payoutEligibleEntries = (int) (clone $base)
+            ->where('status', 'posted')
+            ->whereNull('paid_at')
+            ->count();
+        $payoutPaidMinor = (int) (clone $base)
+            ->where('status', 'paid')
+            ->sum('amount_minor');
+
+        $payoutStatus = match (true) {
+            $pickupHeldEntries > 0 => 'Review required',
+            $payoutEligibleEntries > 0 => 'Ready for payout',
+            $deliveryPendingMinor > 0 => 'Pending eligibility',
+            $payoutPaidMinor > 0 => 'Paid',
+            default => 'No payout due',
+        };
 
         return [
             'today' => $today,
@@ -80,6 +144,36 @@ class RiderEarningsService
             'excluded_entries' => (int) (clone $base)
                 ->whereIn('status', self::EXCLUDED_TOTAL_STATUSES)
                 ->count(),
+
+            'pickup_completed_parcels' => $pickupCompletedCount,
+            'pickup_total_minor' => $pickupTotalMinor,
+            'pickup_total' => $this->formatMinor($pickupTotalMinor),
+            'pickup_regular_minor' => $pickupRegularMinor,
+            'pickup_regular' => $this->formatMinor($pickupRegularMinor),
+            'pickup_bulky_minor' => $pickupBulkyMinor,
+            'pickup_bulky' => $this->formatMinor($pickupBulkyMinor),
+            'pickup_held_minor' => $pickupHeldMinor,
+            'pickup_held' => $this->formatMinor($pickupHeldMinor),
+            'pickup_held_entries' => $pickupHeldEntries,
+
+            'delivery_total_minor' => $deliveryTotalMinor,
+            'delivery_total' => $this->formatMinor($deliveryTotalMinor),
+            'delivery_pending_minor' => $deliveryPendingMinor,
+            'delivery_pending' => $this->formatMinor($deliveryPendingMinor),
+
+            'courier_daily_minor' => $courierDailyMinor,
+            'courier_daily' => $this->formatMinor($courierDailyMinor),
+            'courier_daily_days' => (int) (clone $courierDaily)->count(),
+
+            'combined_total_minor' => $pickupTotalMinor + $deliveryTotalMinor + $courierDailyMinor,
+            'combined_total' => $this->formatMinor($pickupTotalMinor + $deliveryTotalMinor + $courierDailyMinor),
+
+            'payout_eligible_minor' => $payoutEligibleMinor,
+            'payout_eligible' => $this->formatMinor($payoutEligibleMinor),
+            'payout_eligible_entries' => $payoutEligibleEntries,
+            'payout_paid_minor' => $payoutPaidMinor,
+            'payout_paid' => $this->formatMinor($payoutPaidMinor),
+            'payout_status' => $payoutStatus,
         ];
     }
 
@@ -131,6 +225,7 @@ class RiderEarningsService
 
         return array_map($this->safeCsvValue(...), [
             Carbon::parse($record->earned_at)->format('Y-m-d H:i:s'),
+            $presented['work_date'],
             $presented['job'],
             $presented['source'],
             $presented['type_label'],
@@ -189,9 +284,25 @@ class RiderEarningsService
         Builder $base,
         Carbon $start,
         Carbon $end,
+        Carbon $workDateStart,
+        Carbon $workDateEnd,
     ): array {
+        $courierDailyType = (string) config('bearly_rider_compensation.courier_daily_earning_type', 'courier_daily');
         $query = $this->activeQuery($base)
-            ->whereBetween('earned_at', [$start, $end]);
+            ->where(function (Builder $dateQuery) use ($start, $end, $workDateStart, $workDateEnd, $courierDailyType): void {
+                $dateQuery
+                    ->where(function (Builder $courierQuery) use ($workDateStart, $workDateEnd, $courierDailyType): void {
+                        $courierQuery
+                            ->where('type', $courierDailyType)
+                            ->whereNotNull('work_date')
+                            ->whereBetween('work_date', [$workDateStart->toDateString(), $workDateEnd->toDateString()]);
+                    })
+                    ->orWhere(function (Builder $eventQuery) use ($start, $end, $courierDailyType): void {
+                        $eventQuery
+                            ->where('type', '<>', $courierDailyType)
+                            ->whereBetween('earned_at', [$start, $end]);
+                    });
+            });
         $amountMinor = (int) $query->sum('amount_minor');
 
         return [
@@ -246,6 +357,9 @@ class RiderEarningsService
             ->leftJoin('shipping_settlements as linked_settlements', 'linked_settlements.id', '=', 'earnings.shipping_settlement_id')
             ->leftJoin('seller_orders as settlement_orders', 'settlement_orders.id', '=', 'linked_settlements.seller_order_id')
             ->leftJoin('rider_earning_payouts as payouts', 'payouts.rider_earning_id', '=', 'earnings.id')
+            ->leftJoin('rider_shifts as earning_shifts', 'earning_shifts.id', '=', 'earnings.rider_shift_id')
+            ->leftJoin('rider_payout_batch_items as payout_batch_items', 'payout_batch_items.rider_earning_id', '=', 'earnings.id')
+            ->leftJoin('rider_payout_batches as payout_batches', 'payout_batches.id', '=', 'payout_batch_items.rider_payout_batch_id')
             ->where('earnings.rider_profile_id', $rider->id)
             ->select([
                 'earnings.id as earning_id',
@@ -256,6 +370,12 @@ class RiderEarningsService
                 'earnings.earned_at',
                 'earnings.posted_at',
                 'earnings.paid_at',
+                'earnings.size_class_snapshot',
+                'earnings.rate_minor',
+                'earnings.rider_shift_id',
+                'earning_shifts.checked_in_at as shift_checked_in_at',
+                'earning_shifts.checked_out_at as shift_checked_out_at',
+                'payout_batches.batch_no as payout_batch_no',
                 'settlement_orders.completed_at as seller_order_completed_at',
                 'payouts.method as payout_method',
                 'payouts.reference as payout_reference',
@@ -264,13 +384,17 @@ class RiderEarningsService
                 'payouts.reason as payout_reason',
                 'earnings.pickup_assignment_id',
                 'earnings.delivery_attempt_id',
+                'earnings.work_date',
+                'earnings.linehaul_run_id',
                 'assignments.id as linked_pickup_assignment_id',
                 'pickup_requests.pickup_no',
                 'attempts.id as linked_delivery_attempt_id',
                 'shipments.id as linked_shipment_id',
                 'shipments.shipment_no',
+                'daily_runs.run_no as linehaul_run_no',
                 'earning_orders.order_no as linked_order_no',
-            ]);
+            ])
+            ->leftJoin('linehaul_runs as daily_runs', 'daily_runs.id', '=', 'earnings.linehaul_run_id');
 
         if (filled($filters['search'] ?? null)) {
             $search = '%'.trim((string) $filters['search']).'%';
@@ -279,6 +403,7 @@ class RiderEarningsService
                 $query
                     ->where('pickup_requests.pickup_no', 'like', $search)
                     ->orWhere('shipments.shipment_no', 'like', $search)
+                    ->orWhere('daily_runs.run_no', 'like', $search)
                     ->orWhere('earnings.type', 'like', $search)
                     ->orWhere('earnings.status', 'like', $search)
                     ->orWhere('earnings.description', 'like', $search);
@@ -294,14 +419,34 @@ class RiderEarningsService
         }
 
         if (filled($filters['date_from'] ?? null)) {
-            $query->whereDate('earnings.earned_at', '>=', $filters['date_from']);
+            $this->whereEarningDate($query, '>=', (string) $filters['date_from']);
         }
 
         if (filled($filters['date_to'] ?? null)) {
-            $query->whereDate('earnings.earned_at', '<=', $filters['date_to']);
+            $this->whereEarningDate($query, '<=', (string) $filters['date_to']);
         }
 
         return $query;
+    }
+
+    private function whereEarningDate(Builder $query, string $operator, string $date): void
+    {
+        $courierDailyType = (string) config('bearly_rider_compensation.courier_daily_earning_type', 'courier_daily');
+
+        $query->where(function (Builder $dateQuery) use ($operator, $date, $courierDailyType): void {
+            $dateQuery
+                ->where(function (Builder $courierQuery) use ($operator, $date, $courierDailyType): void {
+                    $courierQuery
+                        ->where('earnings.type', $courierDailyType)
+                        ->whereNotNull('earnings.work_date')
+                        ->whereDate('earnings.work_date', $operator, $date);
+                })
+                ->orWhere(function (Builder $eventQuery) use ($operator, $date, $courierDailyType): void {
+                    $eventQuery
+                        ->where('earnings.type', '<>', $courierDailyType)
+                        ->whereDate('earnings.earned_at', $operator, $date);
+                });
+        });
     }
 
     private function presentPage(Collection $records, BuyerCatalogService $catalog): Collection
@@ -389,16 +534,24 @@ class RiderEarningsService
         $deliveryAttemptId = $record->linked_delivery_attempt_id
             ? (int) $record->linked_delivery_attempt_id
             : null;
+        $linehaulRunNo = (string) ($record->linehaul_run_no ?? '');
+        $workDate = $record->work_date
+            ? Carbon::parse($record->work_date)
+            : null;
         $job = filled($record->pickup_no)
             ? (string) $record->pickup_no
-            : (filled($record->shipment_no)
-                ? (string) $record->shipment_no
-                : 'Ledger entry #'.(int) $record->earning_id);
+            : (filled($linehaulRunNo)
+                ? $linehaulRunNo
+                : (filled($record->shipment_no)
+                    ? (string) $record->shipment_no
+                    : 'Ledger entry #'.(int) $record->earning_id));
         $source = $pickupAssignmentId !== null
             ? 'Pickup assignment #'.$pickupAssignmentId
-            : ($deliveryAttemptId !== null
-                ? 'Delivery attempt #'.$deliveryAttemptId
-                : 'No linked pickup or delivery record');
+            : (filled($linehaulRunNo)
+                ? 'Courier line-haul run '.$linehaulRunNo
+                : ($deliveryAttemptId !== null
+                    ? 'Delivery attempt #'.$deliveryAttemptId
+                    : 'No linked pickup or delivery record'));
         $returnWindowEndedAt = $record->type === 'shipping_delivery' && $record->seller_order_completed_at
             ? Carbon::parse($record->seller_order_completed_at)
                 ->addDays(ReturnRefundService::RETURN_WINDOW_DAYS)
@@ -410,6 +563,7 @@ class RiderEarningsService
             'id' => (int) $record->earning_id,
             'earned_at' => $earnedAt->format('M j, Y · g:i A'),
             'earned_at_iso' => $earnedAt->toIso8601String(),
+            'work_date' => $workDate?->format('M j, Y') ?? '',
             'job' => $job,
             'order_no' => (string) ($record->linked_order_no ?? ''),
             'products' => $products,
@@ -433,6 +587,23 @@ class RiderEarningsService
                 : $this->formatMinor((int) $record->payout_amount_minor),
             'payout_reason' => (string) ($record->payout_reason ?? ''),
             'description' => (string) ($record->description ?? ''),
+            'size_class' => (string) ($record->size_class_snapshot ?? ''),
+            'rate_minor' => $record->rate_minor === null ? null : (int) $record->rate_minor,
+            'shift_label' => $record->shift_checked_in_at
+                ? 'Shift '.Carbon::parse($record->shift_checked_in_at)->timezone(RiderShift::TIMEZONE)->format('M j, Y · g:i A').' '.RiderShift::TIMEZONE_LABEL
+                    .($record->shift_checked_out_at
+                        ? '–'.Carbon::parse($record->shift_checked_out_at)->timezone(RiderShift::TIMEZONE)->format('g:i A').' '.RiderShift::TIMEZONE_LABEL
+                        : ' (open)')
+                : '',
+            'rider_shift_id' => $record->rider_shift_id === null
+                ? ''
+                : (string) $record->rider_shift_id,
+            'linehaul_run_id' => $record->linehaul_run_id === null
+                ? ''
+                : (string) $record->linehaul_run_id,
+            'linehaul_run_no' => $linehaulRunNo,
+            'work_date_label' => $workDate?->format('M j, Y') ?? '',
+            'payout_batch_no' => (string) ($record->payout_batch_no ?? ''),
             'return_window_ended_at' => $returnWindowEndedAt,
             'pickup_assignment_id' => $pickupAssignmentId === null
                 ? ''

@@ -24,9 +24,14 @@ use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class CheckoutService
 {
+    public const BUYER_CANCELLATION_UNAVAILABLE_MESSAGE = 'A Seller has already accepted or started preparing this order. Cancellation is no longer available.';
+
+    public const BUYER_ORDER_ALREADY_CANCELLED_MESSAGE = 'This order has already been cancelled.';
+
     public function __construct(
         private readonly ShippingQuoteService $shipping,
         private readonly BuyerCatalogService $catalog,
@@ -142,6 +147,7 @@ class CheckoutService
                     'province' => $destination->province,
                     'postal_code' => $destination->postal_code,
                     'psgc_city_code' => $destination->psgc_city_code,
+                    ...$this->deliveryCoordinateSnapshot($destination),
                     'currency' => 'PHP',
                     'subtotal_minor' => $totals['subtotal_minor'],
                     'shipping_fee_minor' => $totals['shipping_fee_minor'],
@@ -310,6 +316,24 @@ class CheckoutService
         }
     }
 
+    /**
+     * @return array{can_cancel: bool, unavailable_message: string|null}
+     */
+    public function buyerCancellationState(Order $order): array
+    {
+        $activeSellerOrders = $this->activeSellerOrders($order->sellerOrders);
+        $sellerStartedProcessing = $this->sellerStartedProcessing($activeSellerOrders);
+
+        return [
+            'can_cancel' => $order->status === 'processing'
+                && $activeSellerOrders->isNotEmpty()
+                && ! $sellerStartedProcessing,
+            'unavailable_message' => $order->status === 'processing' && $sellerStartedProcessing
+                ? self::BUYER_CANCELLATION_UNAVAILABLE_MESSAGE
+                : null,
+        ];
+    }
+
     public function cancel(User $buyer, int $orderId, string $reason): Order
     {
         return DB::transaction(function () use ($buyer, $orderId, $reason): Order {
@@ -319,11 +343,14 @@ class CheckoutService
                 ->lockForUpdate()
                 ->firstOrFail();
             $sellerOrders = $order->sellerOrders()->orderBy('id')->lockForUpdate()->get();
-            $activeSellerOrders = $sellerOrders->reject(fn (SellerOrder $sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Cancelled->value
-            );
+            $activeSellerOrders = $this->activeSellerOrders($sellerOrders);
 
-            if ($activeSellerOrders->isEmpty() || $activeSellerOrders->contains(fn (SellerOrder $sellerOrder): bool => $sellerOrder->status !== SellerOrderStatus::Pending->value)) {
-                abort(409, 'This order can no longer be cancelled because a Seller has started processing it.');
+            if ($activeSellerOrders->isEmpty()) {
+                throw new ConflictHttpException(self::BUYER_ORDER_ALREADY_CANCELLED_MESSAGE);
+            }
+
+            if ($this->sellerStartedProcessing($activeSellerOrders)) {
+                throw new ConflictHttpException(self::BUYER_CANCELLATION_UNAVAILABLE_MESSAGE);
             }
 
             $cancelledAt = now();
@@ -358,6 +385,25 @@ class CheckoutService
 
             return $order->fresh(['sellerOrders.items', 'payments']);
         });
+    }
+
+    /**
+     * @param  Collection<int, SellerOrder>  $sellerOrders
+     * @return Collection<int, SellerOrder>
+     */
+    private function activeSellerOrders(Collection $sellerOrders): Collection
+    {
+        return $sellerOrders->reject(
+            fn (SellerOrder $sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Cancelled->value,
+        );
+    }
+
+    /** @param  Collection<int, SellerOrder>  $sellerOrders */
+    private function sellerStartedProcessing(Collection $sellerOrders): bool
+    {
+        return $sellerOrders->contains(
+            fn (SellerOrder $sellerOrder): bool => $sellerOrder->status !== SellerOrderStatus::Pending->value,
+        );
     }
 
     private function applyPromotions(
@@ -760,6 +806,7 @@ class CheckoutService
     ): array {
         $items = [];
         $sellerOrders = [];
+        $deliveryCoordinates = $this->deliveryCoordinateSnapshot($destination);
 
         foreach ($groups as $storeId => $group) {
             foreach ($group['items'] as $line) {
@@ -826,6 +873,8 @@ class CheckoutService
                 'postal_code' => $destination->postal_code,
                 'psgc_city_code' => $destination->psgc_city_code,
                 'psgc_province_code' => $destination->psgc_province_code,
+                'latitude' => $deliveryCoordinates['delivery_latitude'],
+                'longitude' => $deliveryCoordinates['delivery_longitude'],
             ],
             'cart_item_ids' => collect($cartItemIds)->map(fn ($id): int => (int) $id)->unique()->sort()->values()->all(),
             'items' => $items,
@@ -852,6 +901,34 @@ class CheckoutService
     private function contextHash(array $context): string
     {
         return hash('sha256', json_encode($context, JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR));
+    }
+
+    /** @return array{delivery_latitude: float|null, delivery_longitude: float|null} */
+    private function deliveryCoordinateSnapshot(Address $destination): array
+    {
+        $latitude = $destination->latitude;
+        $longitude = $destination->longitude;
+
+        if (! is_numeric($latitude) || ! is_numeric($longitude)) {
+            return ['delivery_latitude' => null, 'delivery_longitude' => null];
+        }
+
+        $latitude = (float) $latitude;
+        $longitude = (float) $longitude;
+
+        if (! is_finite($latitude)
+            || ! is_finite($longitude)
+            || $latitude < -90
+            || $latitude > 90
+            || $longitude < -180
+            || $longitude > 180) {
+            return ['delivery_latitude' => null, 'delivery_longitude' => null];
+        }
+
+        return [
+            'delivery_latitude' => $latitude,
+            'delivery_longitude' => $longitude,
+        ];
     }
 
     private function assertQuoteIsCurrent(

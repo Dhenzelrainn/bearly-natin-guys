@@ -1392,3 +1392,105 @@ body[data-module="rider"] .history-detail-modal .activity-item {
         flex: 1;
     }
 }
+
+:root[data-theme="dark"] body[data-module="rider"] .workflow-steps {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .workflow-step {
+    border-color: var(--theme-border);
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .workflow-step > span:first-child {
+    border-color: var(--theme-border);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .workflow-step.is-complete {
+    color: var(--theme-success);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .workflow-step.is-complete > span:first-child {
+    border-color: var(--theme-success);
+    background: var(--success-soft);
+    color: var(--theme-success);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .workflow-step.is-current {
+    background: var(--theme-accent-soft);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .workflow-step.is-current > span:first-child {
+    border-color: var(--theme-accent);
+    background: var(--theme-accent);
+    color: #2b1d16;
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .panel-footer {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .pickup-map-shell .map-meta {
+    border-color: var(--theme-border);
+    background: var(--theme-surface-soft);
+    color: var(--theme-text);
+    backdrop-filter: none;
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .pickup-map-shell .map-meta strong {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .destination-map-status {
+    color: var(--theme-muted);
+}
+
+body[data-module="rider"] #pickup-route-status {
+    font-size: 12px;
+}
+
+.pickup-route-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    margin-top: 10px;
+    color: var(--muted, #6f6259);
+    font-size: 11px;
+}
+
+.pickup-route-legend > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pickup-route-legend svg {
+    width: 15px;
+    height: 15px;
+    color: var(--brown-700, #6f4a31);
+}
+
+.pickup-route-legend-key {
+    display: inline-block;
+    flex: 0 0 auto;
+}
+
+.pickup-route-legend-key.is-road {
+    width: 18px;
+    height: 0;
+    border-top: 3px solid #c76500;
+}
+
+.pickup-route-legend-key.is-rider {
+    width: 10px;
+    height: 10px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    background: #187b72;
+    box-shadow: 0 0 0 1px #187b72;
+}

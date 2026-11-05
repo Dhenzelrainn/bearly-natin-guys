@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class BuyerCheckoutController extends Controller
 {
@@ -145,7 +146,7 @@ class BuyerCheckoutController extends Controller
         return redirect()->route('checkout.confirmation', $order->order_no);
     }
 
-    public function confirmation(Request $request, string $orderNo, BuyerOrderConfirmationService $confirmation, BuyerCatalogService $catalog): View
+    public function confirmation(Request $request, string $orderNo, BuyerOrderConfirmationService $confirmation, BuyerCatalogService $catalog, CheckoutService $checkout): View
     {
         $order = Order::query()
             ->with([
@@ -167,8 +168,12 @@ class BuyerCheckoutController extends Controller
             }
         }
 
+        $cancellationState = $checkout->buyerCancellationState($order);
+
         return view('buyer.checkout-confirmation', [
             'order' => $order,
+            'canCancelOrder' => $cancellationState['can_cancel'],
+            'cancelUnavailableMessage' => $cancellationState['unavailable_message'],
             'canConfirmReceipt' => $confirmation->canConfirm($order),
             'receiptConfirmed' => $confirmation->isConfirmed($order),
             'itemImages' => $itemImages,
@@ -240,11 +245,20 @@ class BuyerCheckoutController extends Controller
         $data = $request->validate([
             'reason' => ['nullable', 'string', 'max:255'],
         ]);
-        $model = $checkout->cancel(
-            $request->user(),
-            $order,
-            trim((string) ($data['reason'] ?? 'Buyer requested cancellation')) ?: 'Buyer requested cancellation',
-        );
+        $ownedOrder = Order::query()
+            ->where('buyer_id', $request->user()->id)
+            ->findOrFail($order);
+
+        try {
+            $model = $checkout->cancel(
+                $request->user(),
+                $order,
+                trim((string) ($data['reason'] ?? 'Buyer requested cancellation')) ?: 'Buyer requested cancellation',
+            );
+        } catch (ConflictHttpException $exception) {
+            return redirect()->route('checkout.confirmation', $ownedOrder->order_no)
+                ->with('warning', $exception->getMessage());
+        }
 
         return redirect()->route('checkout.confirmation', $model->order_no)
             ->with('success', 'The order was cancelled and reserved stock was released.');

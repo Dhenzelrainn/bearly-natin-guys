@@ -169,7 +169,7 @@ class BearlyAuthController extends Controller
             UserRole::Buyer->value => 'home',
             UserRole::Seller->value => 'seller.dashboard',
             UserRole::Logistics->value => 'logistics.dashboard',
-            UserRole::Rider->value => 'rider.dashboard.deliveries',
+            UserRole::Rider->value => 'rider.dashboard',
             UserRole::Guest->value => 'shop.home',
         ];
 
@@ -296,7 +296,7 @@ class BearlyAuthController extends Controller
                 UserRole::Buyer->value => 'home',
                 UserRole::Seller->value => 'seller.dashboard',
                 UserRole::Logistics->value => 'logistics.dashboard',
-                UserRole::Rider->value => 'rider.dashboard.deliveries',
+                UserRole::Rider->value => 'rider.dashboard',
                 UserRole::Guest->value => 'shop.home',
             ];
 

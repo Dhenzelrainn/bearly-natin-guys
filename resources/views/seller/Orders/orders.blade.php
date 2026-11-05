@@ -16,7 +16,7 @@
 </div>
 
 @if (session('success'))
-    <p class="orders-success-note" role="status">{{ session('success') }}</p>
+    <p class="orders-success-note" role="status" data-auto-dismiss="5000">{{ session('success') }}</p>
 @endif
 
 <p class="orders-workflow-note" role="note">After an order is ready, open <a href="{{ route('seller.fulfillment.pickups') }}">Pickup Requests</a> to schedule collection. Logistics verifies the request and assigns a Rider.</p>

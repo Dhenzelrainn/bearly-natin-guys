@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\RiderSpecialization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -10,6 +11,31 @@ class RiderProfile extends Model
     use SoftDeletes;
 
     protected $guarded = [];
+
+    public function specializationValue(): RiderSpecialization
+    {
+        return RiderSpecialization::normalize($this->specialization);
+    }
+
+    public function allowsPickupWork(): bool
+    {
+        return RiderSpecialization::allowsPickup($this->specialization);
+    }
+
+    public function allowsDeliveryWork(): bool
+    {
+        return RiderSpecialization::allowsDelivery($this->specialization);
+    }
+
+    public function shifts()
+    {
+        return $this->hasMany(RiderShift::class);
+    }
+
+    public function payoutBatches()
+    {
+        return $this->hasMany(RiderPayoutBatch::class);
+    }
 
     public function user()
     {

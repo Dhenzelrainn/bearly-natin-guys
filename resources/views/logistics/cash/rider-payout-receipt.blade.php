@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ $payout->reference }} | Bearly Rider Cash Receipt</title>
+    <title>{{ isset($batch) ? $batch->reference : $payout->reference }} | Bearly Rider Cash Receipt</title>
     <style>
         @page { size: A4; margin: 14mm; }
         * { box-sizing: border-box; }
@@ -56,6 +56,12 @@
     </style>
 </head>
 <body>
+@php($isBatchReceipt = isset($batch))
+@php($receiptReference = $isBatchReceipt ? $batch->reference : $payout->reference)
+@php($receiptAmountMinor = $isBatchReceipt ? (int) $batch->total_minor : (int) $payout->amount_minor)
+@php($receiptPaidOn = $isBatchReceipt ? $batch->paid_on : $payout->paid_on)
+@php($receiptReason = $isBatchReceipt ? $batch->reason : $payout->reason)
+@php($receiptRecorder = $isBatchReceipt ? $batch->recorder : $payout->recorder)
 <main class="receipt" aria-labelledby="receipt-title">
     <header class="receipt-header">
         <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly">
@@ -68,7 +74,7 @@
     <section class="receipt-number" aria-label="Cash payout reference">
         <div>
             <span>Bearly Rider cash payout reference</span>
-            <code>{{ $payout->reference }}</code>
+            <code>{{ $receiptReference }}</code>
         </div>
         <strong class="receipt-status">CASH PAID</strong>
     </section>
@@ -78,14 +84,23 @@
     <section class="receipt-section" aria-labelledby="receipt-details-heading">
         <h2 id="receipt-details-heading">Payout details</h2>
         <dl class="receipt-details">
-            <div><dt>Shipping settlement</dt><dd><code>{{ $settlement?->settlement_no ?? 'Not available' }}</code></dd></div>
-            <div><dt>Shipment</dt><dd><code>{{ $settlement?->shipment?->shipment_no ?? 'Not available' }}</code></dd></div>
-            <div><dt>{{ $settlement?->settlement_type === 'return' ? 'Return case' : 'Seller Order' }}</dt><dd>{{ $settlement?->settlement_type === 'return' ? ($settlement?->returnRequest?->return_no ?? 'Not available') : ($settlement?->sellerOrder?->seller_order_no ?? 'Not available') }}</dd></div>
-            <div><dt>Marketplace order</dt><dd>{{ $settlement?->settlement_type === 'return' ? ($settlement?->returnRequest?->order?->order_no ?? 'Not available') : ($settlement?->sellerOrder?->order?->order_no ?? 'Not available') }}</dd></div>
-            <div><dt>Logistics provider</dt><dd>{{ $payout->logisticsProfile?->display_name ?? 'Not available' }}</dd></div>
-            <div><dt>Rider / recipient</dt><dd>{{ $riderName }}</dd></div>
-            <div><dt>Paid on</dt><dd>{{ $payout->paid_on?->format('M d, Y') ?? 'Not available' }}</dd></div>
-            <div><dt>Recorded by</dt><dd>{{ $payout->recorder?->name ?? 'Logistics' }}</dd></div>
+            @if($isBatchReceipt)
+                <div><dt>Payout batch</dt><dd><code>{{ $batch->batch_no }}</code></dd></div>
+                <div><dt>Included earnings</dt><dd>{{ number_format($batch->items->count()) }}</dd></div>
+                <div><dt>Logistics provider</dt><dd>{{ $batch->logisticsProfile?->display_name ?? 'Not available' }}</dd></div>
+                <div><dt>Rider / recipient</dt><dd>{{ $riderName }}</dd></div>
+                <div><dt>Paid on</dt><dd>{{ $receiptPaidOn?->format('M d, Y') ?? 'Not available' }}</dd></div>
+                <div><dt>Recorded by</dt><dd>{{ $batch->recorder?->name ?? 'Logistics' }}</dd></div>
+            @else
+                <div><dt>Shipping settlement</dt><dd><code>{{ $settlement?->settlement_no ?? 'Not available' }}</code></dd></div>
+                <div><dt>Shipment</dt><dd><code>{{ $settlement?->shipment?->shipment_no ?? 'Not available' }}</code></dd></div>
+                <div><dt>{{ $settlement?->settlement_type === 'return' ? 'Return case' : 'Seller Order' }}</dt><dd>{{ $settlement?->settlement_type === 'return' ? ($settlement?->returnRequest?->return_no ?? 'Not available') : ($settlement?->sellerOrder?->seller_order_no ?? 'Not available') }}</dd></div>
+                <div><dt>Marketplace order</dt><dd>{{ $settlement?->settlement_type === 'return' ? ($settlement?->returnRequest?->order?->order_no ?? 'Not available') : ($settlement?->sellerOrder?->order?->order_no ?? 'Not available') }}</dd></div>
+                <div><dt>Logistics provider</dt><dd>{{ $payout->logisticsProfile?->display_name ?? 'Not available' }}</dd></div>
+                <div><dt>Rider / recipient</dt><dd>{{ $riderName }}</dd></div>
+                <div><dt>Paid on</dt><dd>{{ $receiptPaidOn?->format('M d, Y') ?? 'Not available' }}</dd></div>
+                <div><dt>Recorded by</dt><dd>{{ $payout->recorder?->name ?? 'Logistics' }}</dd></div>
+            @endif
         </dl>
     </section>
 
@@ -93,14 +108,36 @@
         <h2 id="cash-summary-heading">Cash payout</h2>
         <table class="receipt-amounts">
             <tbody>
-                <tr><th scope="row">Rider amount physically paid</th><td>₱{{ number_format((int) $payout->amount_minor / 100, 2) }}</td></tr>
+                <tr><th scope="row">Rider amount physically paid</th><td>₱{{ number_format($receiptAmountMinor / 100, 2) }}</td></tr>
             </tbody>
         </table>
-        <p class="receipt-notice">Reason / note: {{ $payout->reason }}</p>
+        @if($isBatchReceipt)
+            <table class="receipt-amounts" style="margin-top:16px">
+                <thead><tr><th scope="col">Included earning</th><th scope="col" style="text-align:right">Amount</th></tr></thead>
+                <tbody>
+                    @foreach($batch->items as $item)
+                        @php($earning = $item->riderEarning)
+                        <tr>
+                            <th scope="row">
+                                {{ str($item->earning_type)->replace('_', ' ')->title() }} ·
+                                @if($item->earning_type === config('bearly_rider_compensation.courier_daily_earning_type', 'courier_daily'))
+                                    {{ $earning?->linehaulRun?->run_no ?? 'Line-haul run' }} · Work date {{ $earning?->work_date?->format('M j, Y') ?? '—' }}
+                                @else
+                                    {{ $earning?->parcel?->parcel_no ?? $earning?->shipment?->shipment_no ?? 'Earning #'.$item->rider_earning_id }}
+                                @endif
+                            </th>
+                            <td>₱{{ number_format((int) $item->amount_minor / 100, 2) }}</td>
+                        </tr>
+                    @endforeach
+                    <tr><th scope="row">Batch total</th><td>₱{{ number_format($receiptAmountMinor / 100, 2) }}</td></tr>
+                </tbody>
+            </table>
+        @endif
+        <p class="receipt-notice">Reason / note: {{ $receiptReason }}</p>
     </section>
 
     <section class="receipt-signatures" aria-label="Cash payout signatures">
-        <div class="receipt-signature"><small>Logistics — paid by</small><strong>{{ $payout->recorder?->name ?? 'Logistics representative' }}</strong><small>Signature and date</small></div>
+        <div class="receipt-signature"><small>Logistics — paid by</small><strong>{{ $receiptRecorder?->name ?? 'Logistics representative' }}</strong><small>Signature and date</small></div>
         <div class="receipt-signature"><small>Rider — cash received by</small><strong>{{ $riderName }}</strong><small>Signature and date</small></div>
     </section>
 

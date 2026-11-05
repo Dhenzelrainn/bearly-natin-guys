@@ -379,6 +379,26 @@ class SellerWaybillController extends Controller
             ->flatMap(fn ($parcel) => $parcel->pickupRequests)
             ->sortByDesc('created_at')
             ->first();
+        $parcelSizes = $waybill->parcels
+            ->map(fn ($parcel): ?string => $this->formattedParcelDimensions([
+                $parcel->length_cm,
+                $parcel->width_cm,
+                $parcel->height_cm,
+            ]))
+            ->filter()
+            ->unique()
+            ->values();
+        $size = $parcelSizes->isNotEmpty()
+            ? ($parcelSizes->count() === 1 ? $parcelSizes->first() : 'Varies by piece')
+            : $this->formattedParcelDimensions([
+                $waybill->length_cm,
+                $waybill->width_cm,
+                $waybill->height_cm,
+            ]) ?? 'Not recorded';
+        $parcelCount = $waybill->parcels->count();
+        $totalWeight = $parcelCount > 0
+            ? $waybill->parcels->sum(fn ($parcel): float => (float) $parcel->weight_kg)
+            : (float) $waybill->total_weight_kg;
         $isVoided = (bool) $waybill->voided_at || $waybill->status === 'voided';
         $isPrinted = ! $isVoided && (bool) $waybill->printed_at;
 
@@ -397,12 +417,9 @@ class SellerWaybillController extends Controller
             'product_count' => $sellerOrder->items->count(),
             'tracking' => (string) $waybill->waybill_no,
             'courier' => (string) ($shipment->logisticsProfile?->display_name ?? 'Bearly Logistics'),
-            'packages' => max(1, (int) $waybill->piece_count),
-            'weight' => number_format((float) $waybill->total_weight_kg, 3).' kg',
-            'size' => implode(' × ', array_map(
-                fn ($value): string => is_numeric($value) ? rtrim(rtrim(number_format((float) $value, 2, '.', ''), '0'), '.') : '—',
-                [$waybill->length_cm, $waybill->width_cm, $waybill->height_cm],
-            )).' cm',
+            'packages' => $parcelCount,
+            'weight' => number_format((float) $totalWeight, 3).' kg',
+            'size' => $size,
             'destination' => implode(', ', array_filter([
                 $order->city_municipality,
                 $order->province,
@@ -416,5 +433,18 @@ class SellerWaybillController extends Controller
             'print_count' => (int) $waybill->print_count,
             'generated_at' => $waybill->generated_at?->format('M j, Y g:i A') ?? '—',
         ];
+    }
+
+    /** @param array{0: mixed, 1: mixed, 2: mixed} $dimensions */
+    private function formattedParcelDimensions(array $dimensions): ?string
+    {
+        if (! collect($dimensions)->every(fn ($value): bool => is_numeric($value) && (float) $value > 0)) {
+            return null;
+        }
+
+        return implode(' × ', array_map(
+            fn ($value): string => rtrim(rtrim(number_format((float) $value, 2, '.', ''), '0'), '.'),
+            $dimensions,
+        )).' cm';
     }
 }

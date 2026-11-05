@@ -12,7 +12,7 @@
     </div>
 </section>
 
-@if (session('success'))<div class="panel" role="status">{{ session('success') }}</div>@endif
+@include('admin.partials.success-toast')
 @if ($errors->any())
     <div class="panel" role="alert">
         <strong>Review the shipping settings below.</strong>
@@ -43,6 +43,35 @@
             <small>Zone 1 adds one increment; Zone 2 adds two; Zone 3 adds three; Zone 4 adds four. Defaults produce ₱50, ₱55, ₱60, ₱65, and ₱70.</small>
             @error('zone_surcharge_per_level')<small class="field-error">{{ $message }}</small>@enderror
         </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <div>
+                <span class="eyebrow">Rider pickup compensation</span>
+                <h2>Logistics-funded Seller pickup rate</h2>
+                <p>Logistics pays the local Rider per successfully collected outbound Seller parcel. The parcel's saved size class decides the rate; the count of parcels never makes a pickup bulky. Return pickups and deliveries keep their existing compensation rules.</p>
+            </div>
+        </div>
+        <div class="form-field">
+            <label for="pickup-regular-rate">Regular parcel rate (₱)</label>
+            <input id="pickup-regular-rate" name="pickup_regular_rate" type="number" min="0.01" max="9999999.99" step="0.01" value="{{ old('pickup_regular_rate', $pickupRegularRate) }}" required>
+            <small>Applied when the persisted size class is one of the recognized regular classes below. Default: ₱15.00.</small>
+            @error('pickup_regular_rate')<small class="field-error">{{ $message }}</small>@enderror
+        </div>
+        <div class="form-field">
+            <label for="pickup-bulky-rate">Bulky parcel rate (₱)</label>
+            <input id="pickup-bulky-rate" name="pickup_bulky_rate" type="number" min="0.01" max="9999999.99" step="0.01" value="{{ old('pickup_bulky_rate', $pickupBulkyRate) }}" required>
+            <small>Applied only when the persisted size class is exactly <code>{{ $pickupBulkyClass }}</code>. Default: ₱30.00.</small>
+            @error('pickup_bulky_rate')<small class="field-error">{{ $message }}</small>@enderror
+        </div>
+        <div class="form-field">
+            <label for="pickup-regular-classes">Recognized regular size classes</label>
+            <input id="pickup-regular-classes" name="pickup_regular_classes" type="text" maxlength="500" value="{{ old('pickup_regular_classes', $pickupRegularClasses) }}" required>
+            <small>Comma-separated lowercase values of up to 20 characters, for example <code>small, regular</code>. Missing or unrecognized classes are held for Logistics review and are never guessed from parcel count.</small>
+            @error('pickup_regular_classes')<small class="field-error">{{ $message }}</small>@enderror
+        </div>
+        <p><small>Rates are snapshotted on each pickup earning, so later rate changes do not rewrite already-recorded earnings.</small></p>
     </section>
 
     <section class="panel">

@@ -25,6 +25,10 @@ class ShippingRateController extends Controller
             'volumetricDivisor' => (int) (SystemSetting::query()
                 ->where('key', 'shipping.volumetric_divisor')
                 ->value('value') ?? config('shipping.default_volumetric_divisor', 5000)),
+            'pickupRegularRate' => $this->moneyInput($this->pickupRateMinor('rider.pickup_rate_regular_minor')),
+            'pickupBulkyRate' => $this->moneyInput($this->pickupRateMinor('rider.pickup_rate_bulky_minor')),
+            'pickupBulkyClass' => $this->pickupBulkyClass(),
+            'pickupRegularClasses' => implode(', ', $this->pickupRegularClasses()),
         ]);
     }
 
@@ -34,14 +38,34 @@ class ShippingRateController extends Controller
             'base_fee' => ['required', 'string', 'regex:/^\d{1,7}(?:\.\d{1,2})?$/'],
             'zone_surcharge_per_level' => ['required', 'string', 'regex:/^\d{1,7}(?:\.\d{1,2})?$/'],
             'volumetric_divisor' => ['required', 'integer', 'min:1', 'max:1000000'],
+            'pickup_regular_rate' => ['required', 'string', 'regex:/^\d{1,7}(?:\.\d{1,2})?$/'],
+            'pickup_bulky_rate' => ['required', 'string', 'regex:/^\d{1,7}(?:\.\d{1,2})?$/'],
+            'pickup_regular_classes' => ['required', 'string', 'max:500'],
             'reason' => ['required', 'string', 'min:5', 'max:255'],
         ], [
             'base_fee.regex' => 'Enter a valid peso amount with up to two decimal places.',
             'zone_surcharge_per_level.regex' => 'Enter a valid peso amount with up to two decimal places.',
+            'pickup_regular_rate.regex' => 'Enter a valid pickup rate with up to two decimal places.',
+            'pickup_bulky_rate.regex' => 'Enter a valid bulky pickup rate with up to two decimal places.',
         ]);
 
         $baseFeeMinor = $this->moneyToMinor($data['base_fee']);
         $surchargePerLevelMinor = $this->moneyToMinor($data['zone_surcharge_per_level']);
+        $pickupRegularMinor = $this->moneyToMinor($data['pickup_regular_rate']);
+        $pickupBulkyMinor = $this->moneyToMinor($data['pickup_bulky_rate']);
+        $pickupRegularClasses = $this->parsePickupRegularClasses($data['pickup_regular_classes']);
+
+        if ($pickupRegularMinor < 1 || $pickupBulkyMinor < 1) {
+            throw ValidationException::withMessages([
+                'pickup_regular_rate' => 'Pickup rates must be greater than zero.',
+            ]);
+        }
+
+        if ($pickupRegularClasses === []) {
+            throw ValidationException::withMessages([
+                'pickup_regular_classes' => 'Add at least one recognized non-bulky parcel size class.',
+            ]);
+        }
         if ($baseFeeMinor < 1) {
             throw ValidationException::withMessages(['base_fee' => 'The base shipping fee must be greater than zero.']);
         }
@@ -51,7 +75,15 @@ class ShippingRateController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($request, $data, $baseFeeMinor, $surchargePerLevelMinor): void {
+        DB::transaction(function () use (
+            $request,
+            $data,
+            $baseFeeMinor,
+            $surchargePerLevelMinor,
+            $pickupRegularMinor,
+            $pickupBulkyMinor,
+            $pickupRegularClasses,
+        ): void {
             $oldValues = [
                 'volumetric_divisor' => (int) (SystemSetting::query()
                     ->where('key', 'shipping.volumetric_divisor')
@@ -62,11 +94,17 @@ class ShippingRateController extends Controller
                     ->where('key', 'shipping.zone_surcharge_per_level_minor')
                     ->lockForUpdate()
                     ->value('value') ?? config('shipping.default_zone_surcharge_per_level_minor', 500)),
+                'pickup_rate_regular_minor' => $this->pickupRateMinor('rider.pickup_rate_regular_minor'),
+                'pickup_rate_bulky_minor' => $this->pickupRateMinor('rider.pickup_rate_bulky_minor'),
+                'pickup_regular_size_classes' => $this->pickupRegularClasses(),
             ];
             $newValues = [
                 'volumetric_divisor' => (int) $data['volumetric_divisor'],
                 'base_fee_minor' => $baseFeeMinor,
                 'zone_surcharge_per_level_minor' => $surchargePerLevelMinor,
+                'pickup_rate_regular_minor' => $pickupRegularMinor,
+                'pickup_rate_bulky_minor' => $pickupBulkyMinor,
+                'pickup_regular_size_classes' => $pickupRegularClasses,
             ];
 
             SystemSetting::query()->updateOrCreate(
@@ -92,6 +130,33 @@ class ShippingRateController extends Controller
                 [
                     'value' => $newValues['zone_surcharge_per_level_minor'],
                     'value_type' => 'integer',
+                    'is_public' => false,
+                    'updated_by' => $request->user()->id,
+                ],
+            );
+            SystemSetting::query()->updateOrCreate(
+                ['key' => 'rider.pickup_rate_regular_minor'],
+                [
+                    'value' => $newValues['pickup_rate_regular_minor'],
+                    'value_type' => 'integer',
+                    'is_public' => false,
+                    'updated_by' => $request->user()->id,
+                ],
+            );
+            SystemSetting::query()->updateOrCreate(
+                ['key' => 'rider.pickup_rate_bulky_minor'],
+                [
+                    'value' => $newValues['pickup_rate_bulky_minor'],
+                    'value_type' => 'integer',
+                    'is_public' => false,
+                    'updated_by' => $request->user()->id,
+                ],
+            );
+            SystemSetting::query()->updateOrCreate(
+                ['key' => 'rider.pickup_regular_size_classes'],
+                [
+                    'value' => $newValues['pickup_regular_size_classes'],
+                    'value_type' => 'json',
                     'is_public' => false,
                     'updated_by' => $request->user()->id,
                 ],
@@ -145,5 +210,75 @@ class ShippingRateController extends Controller
         }
 
         return (int) ($stored ?? config('shipping.default_base_fee_minor', 5000));
+    }
+
+    private function pickupBulkyClass(): string
+    {
+        return (string) config('bearly_rider_compensation.pickup_bulky_size_class', 'bulky');
+    }
+
+    private function pickupRateMinor(string $key): int
+    {
+        $fallback = $key === 'rider.pickup_rate_bulky_minor'
+            ? config('bearly_rider_compensation.pickup_rate_bulky_minor', 3000)
+            : config('bearly_rider_compensation.pickup_rate_regular_minor', 1500);
+
+        $stored = SystemSetting::query()
+            ->where('key', $key)
+            ->value('value');
+
+        return $stored === null ? (int) $fallback : (int) $stored;
+    }
+
+    /** @return list<string> */
+    private function pickupRegularClasses(): array
+    {
+        $stored = SystemSetting::query()
+            ->where('key', 'rider.pickup_regular_size_classes')
+            ->value('value');
+
+        if (is_string($stored)) {
+            $decoded = json_decode($stored, true);
+            $stored = is_array($decoded) ? $decoded : null;
+        }
+
+        $classes = is_array($stored)
+            ? $stored
+            : (array) config('bearly_rider_compensation.pickup_regular_size_classes', []);
+
+        return collect($classes)
+            ->map(fn ($value): string => strtolower(trim((string) $value)))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /** @return list<string> */
+    private function parsePickupRegularClasses(string $value): array
+    {
+        $classes = collect(explode(',', $value))
+            ->map(fn (string $class): string => strtolower(trim($class)))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $invalid = $classes->first(
+            fn (string $class): bool => preg_match('/^[a-z0-9][a-z0-9_-]{0,19}$/', $class) !== 1,
+        );
+
+        if ($invalid !== null) {
+            throw ValidationException::withMessages([
+                'pickup_regular_classes' => "The size class \"{$invalid}\" is not a valid lowercase class of up to 20 characters.",
+            ]);
+        }
+
+        if ($classes->contains(strtolower($this->pickupBulkyClass()))) {
+            throw ValidationException::withMessages([
+                'pickup_regular_classes' => 'The bulky class is paid at the bulky rate and cannot be listed as a regular class.',
+            ]);
+        }
+
+        return $classes->all();
     }
 }

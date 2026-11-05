@@ -13,7 +13,7 @@
             <p id="dashboard-period-help">Incoming parcels and recent fulfillment activity use this period. Queue, readiness, available riders, and active dispatch values remain live current-state counts.</p>
         </div>
     </div>
-    <form class="table-toolbar" method="GET" action="{{ route('logistics.dashboard') }}" aria-describedby="dashboard-period-help">
+    <form class="table-toolbar date-range-toolbar" method="GET" action="{{ route('logistics.dashboard') }}" aria-describedby="dashboard-period-help">
         <div class="field">
             <label for="dashboard-from">From</label>
             <input

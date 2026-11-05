@@ -107,8 +107,8 @@ function setupRiderOperationalStatusRealtime() {
                 help.textContent = isLocked
                     ? 'Availability is locked until Logistics changes your account status.'
                     : effectiveAvailability === 'available'
-                        ? 'Visible for new pickup assignments.'
-                        : 'Hidden from new pickup assignments.';
+                        ? 'Logistics can send you new local pickup and delivery assignments.'
+                        : 'Paused: Logistics will not send new local assignments.';
             }
 
             if (input) {
@@ -124,8 +124,8 @@ function setupRiderOperationalStatusRealtime() {
                 submit.textContent = isLocked
                     ? 'Availability locked'
                     : effectiveAvailability === 'available'
-                        ? 'Go off duty'
-                        : 'Go available';
+                        ? 'Pause new assignments'
+                        : 'Accept new assignments';
 
                 if (isLocked) {
                     submit.setAttribute('aria-disabled', 'true');
@@ -172,11 +172,41 @@ function setupRiderOperationalStatusRealtime() {
 }
 
 const RIDER_LOCATION_PREFERENCE_KEY = 'bearlyRiderLocationSharingV1';
-const RIDER_LOCATION_SEND_INTERVAL_MS = 30_000;
-const RIDER_LOCATION_HEARTBEAT_INTERVAL_MS = 45_000;
+const RIDER_LOCATION_SEND_INTERVAL_MS = 5_000;
+const RIDER_LOCATION_HEARTBEAT_INTERVAL_MS = 15_000;
+const RIDER_FIRST_FIX_TIMEOUT_MS = 15_000;
+const RIDER_LOCATION_MAX_USABLE_ACCURACY_METERS = 100;
+const RIDER_GEOLOCATION_OPTIONS = Object.freeze({
+    enableHighAccuracy: true,
+    maximumAge: 0,
+    timeout: 30_000,
+});
 
 function setupRiderLocationSharing() {
     const body = document.body;
+    const isLocalRider = String(body.dataset.riderWorkType || 'local').toLowerCase() !== 'courier';
+
+    if (!isLocalRider) {
+        const clearEndpoint = body.dataset.riderLocationClearEndpoint || '';
+
+        if (clearEndpoint) {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            void fetch(clearEndpoint, {
+                method: 'DELETE',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            }).catch(() => {
+                // The server freshness window remains the safety fallback.
+            });
+        }
+
+        return;
+    }
+
     const control = document.querySelector('[data-rider-location-status]');
     const toggle = control?.querySelector('[data-rider-location-toggle]');
     const dot = control?.querySelector('[data-rider-location-dot]');
@@ -190,12 +220,14 @@ function setupRiderLocationSharing() {
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
     let watchId = null;
     let heartbeatId = null;
+    let firstFixTimeoutId = null;
+    let sharingSession = 0;
     let requestInFlight = false;
     let clearInFlight = false;
+    let locationRequestSettled = Promise.resolve();
+    let clearRequestSettled = Promise.resolve();
     let lastSentAt = 0;
     let hasSharedLocation = false;
-    const isLocalRider = String(body.dataset.riderWorkType || 'local').toLowerCase() !== 'courier';
-
     const sharingPreference = () => {
         try {
             return localStorage.getItem(RIDER_LOCATION_PREFERENCE_KEY) === 'enabled';
@@ -215,13 +247,12 @@ function setupRiderLocationSharing() {
         }
     };
 
-    const isAvailable = () => isLocalRider
-        && body.dataset.riderAvailabilityStatus === 'available'
+    const isAvailable = () => body.dataset.riderAvailabilityStatus === 'available'
         && !['suspended', 'deactivated'].includes(
             String(body.dataset.riderAccountStatus || 'active').toLowerCase(),
         );
 
-    const setUi = (state, title, description, buttonText = 'Share live location', showButton = true) => {
+    const setUi = (state, title, description, buttonText = 'Share live location', showButton = true, accuracyUsable = false) => {
         control.classList.toggle('is-sharing', state === 'sharing');
         control.classList.toggle('is-error', state === 'error');
         dot?.classList.toggle('is-sharing', state === 'sharing');
@@ -233,6 +264,16 @@ function setupRiderLocationSharing() {
         toggle.hidden = !showButton;
         toggle.disabled = state === 'pending';
         toggle.textContent = buttonText;
+
+        const sharing = state === 'sharing'
+            || (['pending', 'error'].includes(state) && sharingPreference());
+        const usableLocation = state === 'sharing' && accuracyUsable;
+        body.dataset.riderLocationSharing = sharing ? 'true' : 'false';
+        body.dataset.riderLocationUsable = usableLocation ? 'true' : 'false';
+        body.dataset.riderLocationState = state;
+        window.dispatchEvent(new CustomEvent('bearly:rider-location-sharing-updated', {
+            detail: { sharing, accuracyUsable: usableLocation, state },
+        }));
     };
 
     const formatUpdatedAt = () => new Intl.DateTimeFormat(undefined, {
@@ -244,7 +285,14 @@ function setupRiderLocationSharing() {
         if (!clearEndpoint || clearInFlight) return;
 
         clearInFlight = true;
+        let resolveClearRequest;
+        clearRequestSettled = new Promise((resolve) => {
+            resolveClearRequest = resolve;
+        });
+
         try {
+            if (requestInFlight) await locationRequestSettled;
+
             await fetch(clearEndpoint, {
                 method: 'DELETE',
                 credentials: 'same-origin',
@@ -258,31 +306,56 @@ function setupRiderLocationSharing() {
             // The server freshness window remains the safety fallback.
         } finally {
             clearInFlight = false;
+            resolveClearRequest?.();
         }
     };
 
     const stopWatcher = () => {
+        sharingSession += 1;
         if (watchId !== null && navigator.geolocation) {
             navigator.geolocation.clearWatch(watchId);
         }
         if (heartbeatId !== null) window.clearInterval(heartbeatId);
+        if (firstFixTimeoutId !== null) window.clearTimeout(firstFixTimeoutId);
         watchId = null;
         heartbeatId = null;
+        firstFixTimeoutId = null;
     };
 
-    const sendPosition = async (position) => {
-        if (!endpoint || requestInFlight || !isAvailable()) return;
+    const sendPosition = async (position, session) => {
+        if (session !== sharingSession
+            || !endpoint
+            || !isAvailable()
+            || watchId === null
+            || !sharingPreference()) return;
+
+        if (clearInFlight) await clearRequestSettled;
+
+        if (session !== sharingSession
+            || !endpoint
+            || requestInFlight
+            || !isAvailable()
+            || watchId === null
+            || !sharingPreference()) return;
 
         const now = Date.now();
         if (now - lastSentAt < RIDER_LOCATION_SEND_INTERVAL_MS) return;
 
         const latitude = Number(position?.coords?.latitude);
         const longitude = Number(position?.coords?.longitude);
-        const accuracy = Number(position?.coords?.accuracy);
+        const rawAccuracy = position?.coords?.accuracy;
+        const accuracy = typeof rawAccuracy === 'number'
+            ? rawAccuracy
+            : Number.NaN;
 
         if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
 
         requestInFlight = true;
+        let resolveLocationRequest;
+        locationRequestSettled = new Promise((resolve) => {
+            resolveLocationRequest = resolve;
+        });
+
         try {
             const response = await fetch(endpoint, {
                 method: 'POST',
@@ -300,10 +373,13 @@ function setupRiderLocationSharing() {
                 }),
             });
 
+            if (session !== sharingSession || watchId === null || !sharingPreference()) return;
+
             if (response.status === 409) {
                 stopWatcher();
                 setSharingPreference(false);
                 hasSharedLocation = false;
+                void clearRemoteLocation();
                 setUi('error', 'Location sharing stopped', 'Set your Rider status to Available before sharing again.');
                 return;
             }
@@ -314,37 +390,63 @@ function setupRiderLocationSharing() {
 
             lastSentAt = Date.now();
             hasSharedLocation = true;
-            const accuracyLabel = Number.isFinite(accuracy)
+            const hasReportedAccuracy = Number.isFinite(accuracy) && accuracy >= 0;
+            const accuracyLabel = hasReportedAccuracy
                 ? ` · ±${Math.round(accuracy)} m accuracy`
-                : '';
+                : ' · accuracy unavailable';
+            const accuracyGuidance = !hasReportedAccuracy
+                ? 'This device did not report accuracy, so Logistics will use the service-area/workload fallback.'
+                : accuracy <= RIDER_LOCATION_MAX_USABLE_ACCURACY_METERS
+                    ? 'This fix is precise enough for nearby pickup recommendations.'
+                    : 'This fix is too approximate for map distance; Logistics will use the service-area/workload fallback. On PC, check Windows Location and browser site permissions.';
+            const locationTitle = !hasReportedAccuracy
+                ? 'Location shared · accuracy unavailable'
+                : accuracy <= RIDER_LOCATION_MAX_USABLE_ACCURACY_METERS
+                    ? 'Location sharing is active'
+                    : 'Location shared · approximate';
             setUi(
                 'sharing',
-                'Location sharing is active',
-                `Last update ${formatUpdatedAt()}${accuracyLabel}. Logistics can use it for pickup recommendations.`,
+                locationTitle,
+                `Last update ${formatUpdatedAt()}${accuracyLabel}. ${accuracyGuidance}`,
                 'Stop sharing',
                 true,
+                hasReportedAccuracy && accuracy <= RIDER_LOCATION_MAX_USABLE_ACCURACY_METERS,
             );
+            window.dispatchEvent(new CustomEvent('bearly:rider-location-shared', {
+                detail: {
+                    latitude,
+                    longitude,
+                    accuracyMeters: hasReportedAccuracy ? accuracy : null,
+                },
+            }));
         } catch {
+            if (session !== sharingSession || watchId === null || !sharingPreference()) return;
+
             setUi(
                 'error',
                 hasSharedLocation ? 'Location update delayed' : 'Could not share location',
-                'Keep this Rider page open and check your connection or browser location permission.',
-                'Retry sharing',
+                'The last position could not be saved. We will retry on the next GPS fix; keep this page open and check your connection.',
+                'Stop sharing',
                 true,
             );
         } finally {
             requestInFlight = false;
+            resolveLocationRequest?.();
         }
     };
 
-    const handlePositionError = (error) => {
+    const handlePositionError = (error, session = sharingSession) => {
+        if (session !== sharingSession) return;
+
         if (error?.code === 1) {
             stopWatcher();
             setSharingPreference(false);
+            hasSharedLocation = false;
+            void clearRemoteLocation();
             setUi(
                 'error',
                 'Location permission denied',
-                'Allow location access in your browser settings, then try again.',
+                'Allow this site to use location in your browser and device settings, then try again.',
                 'Try again',
                 true,
             );
@@ -353,10 +455,39 @@ function setupRiderLocationSharing() {
 
         setUi(
             'error',
-            'Waiting for location',
-            'Your browser could not get a fresh position yet. We will keep trying while Available.',
+            error?.code === 3 ? 'Still waiting for GPS' : 'GPS temporarily unavailable',
+            error?.code === 3
+                ? 'The device location request timed out. Keep this page open, check device location and browser permission, and we will keep trying while Available.'
+                : 'The device has not returned a fresh position yet. Check device location and browser permission; we will keep trying while Available.',
             'Stop sharing',
             true,
+        );
+    };
+
+    const handlePosition = (position, session = sharingSession) => {
+        if (session !== sharingSession) return;
+
+        const latitude = Number(position?.coords?.latitude);
+        const longitude = Number(position?.coords?.longitude);
+
+        if (Number.isFinite(latitude) && Number.isFinite(longitude) && firstFixTimeoutId !== null) {
+            window.clearTimeout(firstFixTimeoutId);
+            firstFixTimeoutId = null;
+        }
+
+        void sendPosition(position, session);
+    };
+
+    const requestCurrentPosition = (session) => {
+        if (session !== sharingSession
+            || watchId === null
+            || !isAvailable()
+            || !navigator.geolocation) return;
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => handlePosition(position, session),
+            (error) => handlePositionError(error, session),
+            RIDER_GEOLOCATION_OPTIONS,
         );
     };
 
@@ -373,30 +504,39 @@ function setupRiderLocationSharing() {
 
         if (watchId !== null) return;
 
-        setUi('pending', 'Requesting location permission', 'Allow browser location access to share your latest position with your Logistics provider.', 'Starting…', true);
+        const session = ++sharingSession;
+        lastSentAt = 0;
+        hasSharedLocation = false;
         setSharingPreference(true);
+        setUi('pending', 'Requesting precise location', 'Allow this site and your device to use location. PC accuracy depends on available location hardware.', 'Starting…', true);
+        firstFixTimeoutId = window.setTimeout(() => {
+            if (session !== sharingSession) return;
+            firstFixTimeoutId = null;
+            if (watchId === null || hasSharedLocation) return;
+
+            setUi(
+                'error',
+                'Still waiting for GPS',
+                'No location fix has arrived yet. Check browser permission and device location settings; on a phone, enable Location Services and GPS. Keep this page open while sharing.',
+                'Stop sharing',
+                true,
+            );
+        }, RIDER_FIRST_FIX_TIMEOUT_MS);
         watchId = navigator.geolocation.watchPosition(
-            (position) => { void sendPosition(position); },
-            handlePositionError,
-            {
-                enableHighAccuracy: false,
-                maximumAge: 30_000,
-                timeout: 15_000,
-            },
+            (position) => handlePosition(position, session),
+            (error) => handlePositionError(error, session),
+            RIDER_GEOLOCATION_OPTIONS,
         );
         heartbeatId = window.setInterval(() => {
-            if (!isAvailable() || !navigator.geolocation) return;
-            navigator.geolocation.getCurrentPosition(
-                (position) => { void sendPosition(position); },
-                handlePositionError,
-                {
-                    enableHighAccuracy: false,
-                    maximumAge: 30_000,
-                    timeout: 15_000,
-                },
-            );
+            requestCurrentPosition(session);
         }, RIDER_LOCATION_HEARTBEAT_INTERVAL_MS);
     };
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden || watchId === null || !isAvailable() || !navigator.geolocation) return;
+
+        requestCurrentPosition(sharingSession);
+    });
 
     const stopSharing = (clearRemote = true) => {
         stopWatcher();
@@ -409,13 +549,6 @@ function setupRiderLocationSharing() {
     };
 
     const reconcileAvailability = () => {
-        if (!isLocalRider) {
-            stopWatcher();
-            void clearRemoteLocation();
-            setUi('off', 'Location sharing is not used', 'Courier runs do not use the local pickup recommendation GPS channel.', 'Share live location', false);
-            return;
-        }
-
         if (!isAvailable()) {
             stopWatcher();
             void clearRemoteLocation();
@@ -449,6 +582,13 @@ function setupShell() {
     document.querySelector('[data-mobile-menu]')?.addEventListener('click', () => body.classList.add('sidebar-open'));
     document.querySelector('[data-overlay]')?.addEventListener('click', () => body.classList.remove('sidebar-open'));
     document.querySelectorAll('[data-dismiss]').forEach((button) => button.addEventListener('click', () => button.closest('.flash-banner')?.remove()));
+    document.querySelectorAll('.flash-banner.is-success[data-auto-dismiss]').forEach((banner) => {
+        const delay = Number.parseInt(banner.dataset.autoDismiss || '', 10);
+
+        if (Number.isFinite(delay) && delay > 0) {
+            window.setTimeout(() => banner.remove(), delay);
+        }
+    });
     document.querySelectorAll('[data-popover-toggle]').forEach((button) => button.addEventListener('click', (event) => { event.stopPropagation(); const name = button.dataset.popoverToggle; document.querySelectorAll('[data-popover]').forEach((popover) => { popover.hidden = popover.dataset.popover !== name || !popover.hidden; }); }));
     document.addEventListener('click', (event) => { if (!event.target.closest('.popover-wrap')) document.querySelectorAll('[data-popover]').forEach((popover) => { popover.hidden = true; }); });
 }

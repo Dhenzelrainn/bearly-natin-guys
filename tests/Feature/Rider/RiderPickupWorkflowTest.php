@@ -6,6 +6,7 @@ use App\Enums\AccountStatus;
 use App\Enums\ParcelStatus;
 use App\Enums\ShipmentStatus;
 use App\Enums\UserRole;
+use App\Events\RiderLocationUpdated;
 use App\Events\RiderOperationalStatusUpdated;
 use App\Models\Address;
 use App\Models\LogisticsProfile;
@@ -14,20 +15,354 @@ use App\Models\Parcel;
 use App\Models\PickupAssignment;
 use App\Models\PickupRequest;
 use App\Models\ReturnRequest;
+use App\Models\RiderEarning;
+use App\Models\RiderPayoutBatch;
 use App\Models\RiderProfile;
+use App\Models\RiderShift;
 use App\Models\SellerOrder;
 use App\Models\SellerProfile;
 use App\Models\Shipment;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
+use App\Services\RiderPayoutBatchService;
+use App\Services\RiderPickupEarningService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request as HttpRequest;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class RiderPickupWorkflowTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_accepted_rider_can_load_geoapify_road_route_from_own_shared_location(): void
+    {
+        $provider = $this->makeProvider('ROAD-ROUTE');
+        $rider = $this->makeRider($provider, 'ROAD-ROUTE');
+        $seller = $this->makeSeller('ROAD-ROUTE');
+        $seller['address']->update([
+            'latitude' => 14.6000,
+            'longitude' => 120.9900,
+        ]);
+        $record = $this->makePickupAssignment($provider, $seller, $rider, 'ROAD-ROUTE');
+        $apiKey = 'geoapify-route-test-key';
+        config()->set('maps.geoapify_api_key', $apiKey);
+
+        Http::fake([
+            'https://api.geoapify.com/v1/routing*' => Http::response([
+                'type' => 'FeatureCollection',
+                'features' => [[
+                    'type' => 'Feature',
+                    'geometry' => [
+                        'type' => 'LineString',
+                        'coordinates' => [[120.9842, 14.5995], [120.9870, 14.6000], [120.9900, 14.6000]],
+                    ],
+                    'properties' => [],
+                ]],
+            ]),
+        ]);
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.accept', $record['pickup']->pickup_no))
+            ->assertRedirect();
+
+        $this->actingAs($rider->user)
+            ->get(route('rider.orders.pickup', $record['pickup']->pickup_no))
+            ->assertOk()
+            ->assertSee('data-pickup-route-enabled="true"', false)
+            ->assertSee(route('rider.orders.pickup.route', $record['pickup']->pickup_no), false)
+            ->assertSee('class="pickup-route-legend"', false);
+
+        $this->actingAs($rider->user)
+            ->postJson(route('rider.location.update'), [
+                'latitude' => 14.5995,
+                'longitude' => 120.9842,
+                'accuracy_meters' => 12.4,
+            ])
+            ->assertOk();
+
+        $this->actingAs($rider->user)
+            ->getJson(route('rider.orders.pickup.route', $record['pickup']->pickup_no))
+            ->assertOk()
+            ->assertJsonPath('message', 'Pickup road route loaded.')
+            ->assertJsonPath('data.route.geometry.type', 'LineString')
+            ->assertJsonPath('data.route.geometry.coordinates.0.0', 120.9842)
+            ->assertJsonPath('data.rider.latitude', 14.5995)
+            ->assertJsonPath('data.pickup.longitude', 120.99)
+            ->assertJsonPath('data.max_usable_accuracy_meters', 100)
+            ->assertDontSee($apiKey);
+
+        Http::assertSent(fn (HttpRequest $request): bool => str_starts_with(
+            $request->url(),
+            'https://api.geoapify.com/v1/routing'
+        )
+            && $request['mode'] === 'motorcycle'
+            && $request['format'] === 'geojson'
+            && $request['apiKey'] === $apiKey
+            && $request['waypoints'] === '14.5995000,120.9842000|14.6000000,120.9900000');
+        Http::assertSentCount(1);
+    }
+
+    public function test_pickup_route_requires_an_owned_accepted_assignment(): void
+    {
+        $provider = $this->makeProvider('ROAD-ROUTE-AUTH');
+        $rider = $this->makeRider($provider, 'ROAD-ROUTE-AUTH');
+        $otherRider = $this->makeRider($provider, 'ROAD-ROUTE-OTHER');
+        $seller = $this->makeSeller('ROAD-ROUTE-AUTH');
+        $record = $this->makePickupAssignment($provider, $seller, $rider, 'ROAD-ROUTE-AUTH');
+        config()->set('maps.geoapify_api_key', 'geoapify-route-test-key');
+        Http::fake();
+
+        $this->actingAs($rider->user)
+            ->get(route('rider.orders.pickup', $record['pickup']->pickup_no))
+            ->assertOk()
+            ->assertSee('data-pickup-route-enabled="false"', false)
+            ->assertDontSee('class="pickup-route-legend"', false);
+
+        $this->actingAs($rider->user)
+            ->getJson(route('rider.orders.pickup.route', $record['pickup']->pickup_no))
+            ->assertStatus(409);
+
+        $this->actingAs($otherRider->user)
+            ->getJson(route('rider.orders.pickup.route', $record['pickup']->pickup_no))
+            ->assertNotFound();
+
+        Http::assertNothingSent();
+    }
+
+    public function test_pickup_route_requires_fresh_accurate_gps_and_saved_pickup_pin(): void
+    {
+        $provider = $this->makeProvider('ROAD-ROUTE-GPS');
+        $rider = $this->makeRider($provider, 'ROAD-ROUTE-GPS');
+        $seller = $this->makeSeller('ROAD-ROUTE-GPS');
+        $seller['address']->update([
+            'latitude' => 14.6000,
+            'longitude' => 120.9900,
+        ]);
+        $record = $this->makePickupAssignment($provider, $seller, $rider, 'ROAD-ROUTE-GPS');
+        config()->set('maps.geoapify_api_key', 'geoapify-route-test-key');
+        Http::fake();
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.accept', $record['pickup']->pickup_no))
+            ->assertRedirect();
+
+        $this->actingAs($rider->user)
+            ->getJson(route('rider.orders.pickup.route', $record['pickup']->pickup_no))
+            ->assertStatus(409);
+
+        $this->actingAs($rider->user)
+            ->postJson(route('rider.location.update'), [
+                'latitude' => 14.5995,
+                'longitude' => 120.9842,
+                'accuracy_meters' => 101,
+            ])
+            ->assertOk();
+
+        $this->actingAs($rider->user)
+            ->getJson(route('rider.orders.pickup.route', $record['pickup']->pickup_no))
+            ->assertStatus(409)
+            ->assertJsonPath('message', 'Share a fresh Rider location with accuracy of ±100 m or better to calculate the road route.');
+
+        $this->actingAs($rider->user)
+            ->postJson(route('rider.location.update'), [
+                'latitude' => 14.5995,
+                'longitude' => 120.9842,
+                'accuracy_meters' => 12,
+            ])
+            ->assertOk();
+
+        $this->travel(181)->seconds();
+
+        $this->actingAs($rider->user)
+            ->getJson(route('rider.orders.pickup.route', $record['pickup']->pickup_no))
+            ->assertStatus(409)
+            ->assertJsonPath('message', 'Share a fresh Rider location with accuracy of ±100 m or better to calculate the road route.');
+
+        Http::assertNothingSent();
+
+        $seller['address']->update([
+            'latitude' => null,
+            'longitude' => null,
+        ]);
+        $unpinned = $this->makePickupAssignment($provider, $seller, $rider, 'ROAD-ROUTE-NO-PIN');
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.accept', $unpinned['pickup']->pickup_no))
+            ->assertRedirect();
+        $this->actingAs($rider->user)
+            ->postJson(route('rider.location.update'), [
+                'latitude' => 14.5995,
+                'longitude' => 120.9842,
+                'accuracy_meters' => 12,
+            ])
+            ->assertOk();
+
+        $this->actingAs($rider->user)
+            ->getJson(route('rider.orders.pickup.route', $unpinned['pickup']->pickup_no))
+            ->assertStatus(409)
+            ->assertJsonPath('message', 'A saved pickup map pin is required. The approximate address map cannot be used for a road route.');
+
+        Http::assertNothingSent();
+    }
+
+    public function test_pickup_route_provider_failure_does_not_return_route_data(): void
+    {
+        $provider = $this->makeProvider('ROAD-ROUTE-FAILURE');
+        $rider = $this->makeRider($provider, 'ROAD-ROUTE-FAILURE');
+        $seller = $this->makeSeller('ROAD-ROUTE-FAILURE');
+        $seller['address']->update([
+            'latitude' => 14.6000,
+            'longitude' => 120.9900,
+        ]);
+        $record = $this->makePickupAssignment($provider, $seller, $rider, 'ROAD-ROUTE-FAILURE');
+        config()->set('maps.geoapify_api_key', 'geoapify-route-test-key');
+        Http::fake([
+            'https://api.geoapify.com/v1/routing*' => Http::response(['message' => 'provider failure'], 503),
+        ]);
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.accept', $record['pickup']->pickup_no))
+            ->assertRedirect();
+        $this->actingAs($rider->user)
+            ->postJson(route('rider.location.update'), [
+                'latitude' => 14.5995,
+                'longitude' => 120.9842,
+                'accuracy_meters' => 12,
+            ])
+            ->assertOk();
+
+        $this->actingAs($rider->user)
+            ->getJson(route('rider.orders.pickup.route', $record['pickup']->pickup_no))
+            ->assertStatus(502)
+            ->assertJsonMissingPath('data.route')
+            ->assertDontSee('geoapify-route-test-key');
+    }
+
+    public function test_pickup_route_is_discarded_if_assignment_is_confirmed_during_routing(): void
+    {
+        $provider = $this->makeProvider('ROAD-ROUTE-RACE-STATUS');
+        $rider = $this->makeRider($provider, 'ROAD-ROUTE-RACE-STATUS');
+        $seller = $this->makeSeller('ROAD-ROUTE-RACE-STATUS');
+        $seller['address']->update([
+            'latitude' => 14.6000,
+            'longitude' => 120.9900,
+        ]);
+        $record = $this->makePickupAssignment($provider, $seller, $rider, 'ROAD-ROUTE-RACE-STATUS');
+        config()->set('maps.geoapify_api_key', 'geoapify-route-test-key');
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.accept', $record['pickup']->pickup_no))
+            ->assertRedirect();
+        $this->actingAs($rider->user)
+            ->postJson(route('rider.location.update'), [
+                'latitude' => 14.5995,
+                'longitude' => 120.9842,
+                'accuracy_meters' => 12,
+            ])
+            ->assertOk();
+
+        Http::fake(function (HttpRequest $request) use ($record) {
+            $record['assignment']->update(['status' => 'picked_up']);
+
+            return Http::response([
+                'type' => 'FeatureCollection',
+                'features' => [[
+                    'type' => 'Feature',
+                    'geometry' => [
+                        'type' => 'LineString',
+                        'coordinates' => [[120.9842, 14.5995], [120.9900, 14.6000]],
+                    ],
+                ]],
+            ]);
+        });
+
+        $this->actingAs($rider->user)
+            ->getJson(route('rider.orders.pickup.route', $record['pickup']->pickup_no))
+            ->assertStatus(409)
+            ->assertJsonPath('message', 'The pickup assignment changed while calculating the road route.')
+            ->assertJsonMissingPath('data.route');
+    }
+
+    public function test_pickup_route_is_discarded_if_location_sharing_stops_during_routing(): void
+    {
+        $provider = $this->makeProvider('ROAD-ROUTE-RACE-GPS');
+        $rider = $this->makeRider($provider, 'ROAD-ROUTE-RACE-GPS');
+        $seller = $this->makeSeller('ROAD-ROUTE-RACE-GPS');
+        $seller['address']->update([
+            'latitude' => 14.6000,
+            'longitude' => 120.9900,
+        ]);
+        $record = $this->makePickupAssignment($provider, $seller, $rider, 'ROAD-ROUTE-RACE-GPS');
+        config()->set('maps.geoapify_api_key', 'geoapify-route-test-key');
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.accept', $record['pickup']->pickup_no))
+            ->assertRedirect();
+        $this->actingAs($rider->user)
+            ->postJson(route('rider.location.update'), [
+                'latitude' => 14.5995,
+                'longitude' => 120.9842,
+                'accuracy_meters' => 12,
+            ])
+            ->assertOk();
+
+        Http::fake(function (HttpRequest $request) use ($rider) {
+            $rider->liveLocation()->delete();
+
+            return Http::response([
+                'type' => 'FeatureCollection',
+                'features' => [[
+                    'type' => 'Feature',
+                    'geometry' => [
+                        'type' => 'LineString',
+                        'coordinates' => [[120.9842, 14.5995], [120.9900, 14.6000]],
+                    ],
+                ]],
+            ]);
+        });
+
+        $this->actingAs($rider->user)
+            ->getJson(route('rider.orders.pickup.route', $record['pickup']->pickup_no))
+            ->assertStatus(409)
+            ->assertJsonPath('message', 'Rider sharing stopped or the live GPS fix became stale while calculating the route.')
+            ->assertJsonMissingPath('data.route');
+    }
+
+    public function test_pickup_route_is_unavailable_without_geoapify_configuration(): void
+    {
+        $provider = $this->makeProvider('ROAD-ROUTE-NO-KEY');
+        $rider = $this->makeRider($provider, 'ROAD-ROUTE-NO-KEY');
+        $seller = $this->makeSeller('ROAD-ROUTE-NO-KEY');
+        $seller['address']->update([
+            'latitude' => 14.6000,
+            'longitude' => 120.9900,
+        ]);
+        $record = $this->makePickupAssignment($provider, $seller, $rider, 'ROAD-ROUTE-NO-KEY');
+        config()->set('maps.geoapify_api_key', null);
+        Http::fake();
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.accept', $record['pickup']->pickup_no))
+            ->assertRedirect();
+        $this->actingAs($rider->user)
+            ->postJson(route('rider.location.update'), [
+                'latitude' => 14.5995,
+                'longitude' => 120.9842,
+                'accuracy_meters' => 12,
+            ])
+            ->assertOk();
+
+        $this->actingAs($rider->user)
+            ->getJson(route('rider.orders.pickup.route', $record['pickup']->pickup_no))
+            ->assertStatus(503)
+            ->assertJsonPath('message', 'Road routing is not configured. The pickup location is still available on the map.');
+
+        Http::assertNothingSent();
+    }
 
     public function test_rider_can_confirm_own_accepted_pickup(): void
     {
@@ -250,6 +585,210 @@ class RiderPickupWorkflowTest extends TestCase
             'from_status' => 'return_pickup_requested',
             'to_status' => 'return_in_transit',
             'actor_user_id' => $rider->user_id,
+        ]);
+        $this->assertSame(
+            0,
+            RiderEarning::query()->count(),
+            'Return pickups do not receive Seller outbound pickup earnings.',
+        );
+    }
+
+    public function test_pickup_earnings_use_saved_size_class_and_attendance_is_reporting_only(): void
+    {
+        $provider = $this->makeProvider('COMPENSATION');
+        $rider = $this->makeRider($provider, 'COMPENSATION');
+        $seller = $this->makeSeller('COMPENSATION');
+        $regular = $this->makePickupAssignment($provider, $seller, $rider, 'COMPENSATION-REGULAR');
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.accept', $regular['pickup']->pickup_no))
+            ->assertRedirect();
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.confirm', $regular['pickup']->pickup_no), [
+                'waybill_identifier' => $regular['waybill']->waybill_no,
+                'scan_method' => 'barcode',
+            ])
+            ->assertRedirect();
+
+        $regularEarning = RiderEarning::query()->sole();
+        $this->assertSame('pickup_parcel', $regularEarning->type);
+        $this->assertSame('posted', $regularEarning->status);
+        $this->assertSame(1500, (int) $regularEarning->amount_minor);
+        $this->assertSame(1500, (int) $regularEarning->rate_minor);
+        $this->assertSame('small', $regularEarning->size_class_snapshot);
+        $this->assertNull($regularEarning->rider_shift_id, 'A missing attendance punch must not suppress a collected pickup earning.');
+
+        $duplicate = app(RiderPickupEarningService::class)->recordForPickup(
+            $regular['assignment']->fresh(),
+            collect([$regular['parcel']->fresh('shipment')]),
+            Carbon::parse($regular['assignment']->fresh()->picked_up_at),
+        );
+        $this->assertCount(1, $duplicate);
+        $this->assertSame($regularEarning->id, $duplicate->sole()->id);
+        $this->assertSame(1, RiderEarning::query()->count());
+
+        $this->travelTo(Carbon::parse('2026-11-04 06:45:00', 'UTC'));
+        $this->actingAs($rider->user)
+            ->post(route('rider.attendance.check-in'))
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+        $shift = $rider->shifts()->whereNull('checked_out_at')->sole();
+
+        $bulky = $this->makePickupAssignment($provider, $seller, $rider, 'COMPENSATION-BULKY');
+        $bulky['parcel']->update(['size_class' => 'bulky']);
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.accept', $bulky['pickup']->pickup_no))
+            ->assertRedirect();
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.confirm', $bulky['pickup']->pickup_no), [
+                'waybill_identifier' => $bulky['waybill']->waybill_no,
+                'scan_method' => 'barcode',
+            ])
+            ->assertRedirect();
+        $this->actingAs($rider->user)
+            ->post(route('rider.attendance.check-out'))
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $bulkyEarning = RiderEarning::query()->where('parcel_id', $bulky['parcel']->id)->sole();
+        $this->assertSame('posted', $bulkyEarning->status);
+        $this->assertSame(3000, (int) $bulkyEarning->amount_minor);
+        $this->assertSame(3000, (int) $bulkyEarning->rate_minor);
+        $this->assertSame('bulky', $bulkyEarning->size_class_snapshot);
+        $this->assertSame((int) $shift->id, (int) $bulkyEarning->rider_shift_id);
+
+        $this->actingAs($rider->user)
+            ->get(route('rider.earnings.index'))
+            ->assertOk()
+            ->assertSee('Earnings by attendance shift')
+            ->assertSee('No attendance shift recorded')
+            ->assertSee('Saved size: small')
+            ->assertSee('Saved size: bulky')
+            ->assertSee('₱15.00')
+            ->assertSee('₱30.00')
+            ->assertSee('Shift · Nov 4, 2026 · 2:45 PM PHT')
+            ->assertSee('Checked out 2:45 PM PHT');
+    }
+
+    public function test_unknown_pickup_size_is_held_until_provider_classifies_it(): void
+    {
+        $provider = $this->makeProvider('COMPENSATION-REVIEW');
+        $rider = $this->makeRider($provider, 'COMPENSATION-REVIEW');
+        $seller = $this->makeSeller('COMPENSATION-REVIEW');
+        $record = $this->makePickupAssignment($provider, $seller, $rider, 'COMPENSATION-UNKNOWN');
+        $record['parcel']->update(['size_class' => 'unlisted']);
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.accept', $record['pickup']->pickup_no))
+            ->assertRedirect();
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.confirm', $record['pickup']->pickup_no), [
+                'waybill_identifier' => $record['waybill']->waybill_no,
+                'scan_method' => 'barcode',
+            ])
+            ->assertRedirect();
+
+        $earning = RiderEarning::query()->sole();
+        $this->assertSame('held', $earning->status);
+        $this->assertSame(0, (int) $earning->amount_minor);
+        $this->assertNull($earning->rate_minor);
+        $this->assertSame('unlisted', $earning->size_class_snapshot);
+        $this->assertCount(0, app(RiderPayoutBatchService::class)
+            ->eligibleEarningsFor($provider['user'], $rider));
+
+        $classified = app(RiderPickupEarningService::class)->classifyHeldEarning(
+            $earning,
+            'bulky',
+            $provider['user'],
+        );
+        $this->assertSame('posted', $classified->status);
+        $this->assertSame(3000, (int) $classified->amount_minor);
+        $this->assertSame(3000, (int) $classified->rate_minor);
+        $this->assertSame('bulky', $classified->size_class_snapshot);
+        $this->assertSame('bulky', $record['parcel']->fresh()->size_class);
+    }
+
+    public function test_logistics_batch_consolidates_pickup_earnings_across_assignments_and_shifts(): void
+    {
+        $provider = $this->makeProvider('MULTI-SHIFT-BATCH');
+        $rider = $this->makeRider($provider, 'MULTI-SHIFT-BATCH');
+        $seller = $this->makeSeller('MULTI-SHIFT-BATCH');
+        $earnings = collect();
+
+        foreach (['MULTI-SHIFT-FIRST', 'MULTI-SHIFT-SECOND'] as $suffix) {
+            $record = $this->makePickupAssignment($provider, $seller, $rider, $suffix);
+
+            $this->actingAs($rider->user)
+                ->post(route('rider.attendance.check-in'))
+                ->assertRedirect();
+            $shift = $rider->shifts()->whereNull('checked_out_at')->sole();
+
+            $this->actingAs($rider->user)
+                ->post(route('rider.orders.pickup.accept', $record['pickup']->pickup_no))
+                ->assertRedirect();
+            $this->actingAs($rider->user)
+                ->post(route('rider.orders.pickup.confirm', $record['pickup']->pickup_no), [
+                    'waybill_identifier' => $record['waybill']->waybill_no,
+                    'scan_method' => 'barcode',
+                ])
+                ->assertRedirect();
+            $this->actingAs($rider->user)
+                ->post(route('rider.attendance.check-out'))
+                ->assertRedirect();
+
+            $earning = RiderEarning::query()->where('parcel_id', $record['parcel']->id)->sole();
+            $this->assertSame((int) $shift->id, (int) $earning->rider_shift_id);
+            $earnings->push($earning);
+        }
+
+        $this->assertSame(2, $earnings->pluck('pickup_assignment_id')->unique()->count());
+        $this->assertSame(2, $earnings->pluck('rider_shift_id')->unique()->count());
+
+        $this->actingAs($provider['user'])
+            ->post(route('logistics.settlements.payout-batches.store'), [
+                'rider_profile_id' => $rider->id,
+                'notes' => 'Consolidate separate pickup shifts.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $batch = RiderPayoutBatch::query()->sole();
+        $this->assertSame(3000, (int) $batch->total_minor);
+        $this->assertDatabaseCount('rider_payout_batch_items', 2);
+        foreach ($earnings as $earning) {
+            $this->assertDatabaseHas('rider_payout_batch_items', [
+                'rider_payout_batch_id' => $batch->id,
+                'rider_earning_id' => $earning->id,
+                'amount_minor' => 1500,
+                'earning_type' => 'pickup_parcel',
+            ]);
+        }
+    }
+
+    public function test_rider_compensation_migration_refuses_to_drop_payout_history(): void
+    {
+        $provider = $this->makeProvider('ROLLBACK-GUARD');
+        $rider = $this->makeRider($provider, 'ROLLBACK-GUARD');
+        $batch = RiderPayoutBatch::query()->create([
+            'batch_no' => 'RPB-ROLLBACK-GUARD',
+            'logistics_profile_id' => $provider['profile']->id,
+            'rider_profile_id' => $rider->id,
+            'status' => 'pending_review',
+            'total_minor' => 0,
+        ]);
+        $migration = require database_path('migrations/2026_11_03_000001_add_flexible_rider_assignment_and_payouts.php');
+
+        try {
+            $migration->down();
+            $this->fail('Rollback must not erase Rider payout history.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('preserve it before rolling back', $exception->getMessage());
+        }
+
+        $this->assertTrue(Schema::hasTable('rider_payout_batches'));
+        $this->assertDatabaseHas('rider_payout_batches', [
+            'id' => $batch->id,
+            'batch_no' => 'RPB-ROLLBACK-GUARD',
         ]);
     }
 
@@ -988,7 +1527,7 @@ class RiderPickupWorkflowTest extends TestCase
             ->get(route('rider.dashboard.pickups'))
             ->assertOk()
             ->assertSee('Off duty')
-            ->assertSee('Go available')
+            ->assertSee('Accept new assignments')
             ->assertSee('data-rider-account-alert', false)
             ->assertSee('data-rider-availability-form', false)
             ->assertSee('data-rider-availability-submit', false);
@@ -1007,7 +1546,7 @@ class RiderPickupWorkflowTest extends TestCase
             ->assertRedirect(route('rider.dashboard.pickups'))
             ->assertSessionHas(
                 'success',
-                'You are now available for new pickup assignments.'
+                'You are now available for new local pickup and delivery assignments.'
             );
 
         Event::assertDispatched(
@@ -1108,6 +1647,121 @@ class RiderPickupWorkflowTest extends TestCase
             );
     }
 
+    public function test_local_rider_attendance_and_assignment_availability_are_independent(): void
+    {
+        Event::fake([RiderOperationalStatusUpdated::class]);
+
+        $provider = $this->makeProvider('ATTENDANCE-AVAILABILITY');
+        $rider = $this->makeRider($provider, 'ATTENDANCE-AVAILABILITY');
+        $rider->update(['availability_status' => 'offline']);
+        $dashboard = route('rider.dashboard.pickups');
+
+        $this->actingAs($rider->user)
+            ->get($dashboard)
+            ->assertOk()
+            ->assertSee('Accept new assignments')
+            ->assertSee('Attendance record')
+            ->assertSee('View attendance history');
+
+        $this->from($dashboard)
+            ->actingAs($rider->user)
+            ->patch(route('rider.availability.update'), [
+                'availability_status' => 'available',
+            ])
+            ->assertRedirect($dashboard)
+            ->assertSessionHas(
+                'success',
+                'You are now available for new local pickup and delivery assignments.',
+            );
+
+        $this->assertSame(0, $rider->shifts()->count(), 'Becoming available must not check the Rider in.');
+
+        $this->from($dashboard)
+            ->actingAs($rider->user)
+            ->post(route('rider.attendance.check-in'))
+            ->assertRedirect($dashboard)
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('rider_profiles', [
+            'id' => $rider->id,
+            'availability_status' => 'available',
+        ]);
+        $shift = $rider->shifts()->whereNull('checked_out_at')->sole();
+
+        $this->from($dashboard)
+            ->actingAs($rider->user)
+            ->patch(route('rider.availability.update'), [
+                'availability_status' => 'offline',
+            ])
+            ->assertRedirect($dashboard)
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('rider_shifts', [
+            'id' => $shift->id,
+            'checked_out_at' => null,
+        ]);
+
+        $this->from($dashboard)
+            ->actingAs($rider->user)
+            ->post(route('rider.attendance.check-out'))
+            ->assertRedirect($dashboard)
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('rider_profiles', [
+            'id' => $rider->id,
+            'availability_status' => 'offline',
+        ]);
+        $this->assertNotNull(RiderShift::query()->findOrFail($shift->id)->checked_out_at);
+    }
+
+    public function test_local_rider_attendance_history_is_pht_paginated_and_scoped_to_own_shifts(): void
+    {
+        $provider = $this->makeProvider('ATTENDANCE-HISTORY');
+        $rider = $this->makeRider($provider, 'ATTENDANCE-HISTORY');
+        $otherRider = $this->makeRider($provider, 'ATTENDANCE-HISTORY-OTHER');
+        $firstCheckIn = Carbon::parse('2026-10-01 16:00:00', 'UTC');
+
+        for ($index = 0; $index < 21; $index++) {
+            $checkedInAt = $firstCheckIn->copy()->addDays($index);
+
+            $rider->shifts()->create([
+                'checked_in_at' => $checkedInAt,
+                'checked_out_at' => $index === 20 ? null : $checkedInAt->copy()->addHours(8),
+                'check_in_source' => 'rider',
+                'check_out_source' => $index === 20 ? null : 'rider',
+            ]);
+        }
+
+        $otherRider->shifts()->create([
+            'checked_in_at' => Carbon::parse('2030-12-31 08:00:00', 'UTC'),
+            'checked_out_at' => Carbon::parse('2030-12-31 16:00:00', 'UTC'),
+            'check_in_source' => 'rider',
+            'check_out_source' => 'rider',
+        ]);
+
+        $this->actingAs($rider->user)
+            ->get(route('rider.attendance.history'))
+            ->assertOk()
+            ->assertSee('Philippine Time (PHT / UTC+8)')
+            ->assertSee('Showing 1–20 of 21 shifts')
+            ->assertSee('Oct 22, 2026')
+            ->assertSee('12:00 AM')
+            ->assertSee('Still checked in')
+            ->assertSee('Open shift')
+            ->assertSee('Closed')
+            ->assertDontSee('Dec 31, 2030');
+
+        $this->actingAs($rider->user)
+            ->get(route('rider.attendance.history', ['page' => 2]))
+            ->assertOk()
+            ->assertSee('Showing 21–21 of 21 shifts')
+            ->assertSee('Oct 2, 2026')
+            ->assertDontSee('Oct 22, 2026')
+            ->assertDontSee('Still checked in')
+            ->assertDontSee('Open shift')
+            ->assertDontSee('Dec 31, 2030');
+    }
+
     public function test_courier_dashboard_uses_live_availability_control_hooks(): void
     {
         $provider = $this->makeProvider('COURIER-AVAILABILITY');
@@ -1124,12 +1778,126 @@ class RiderPickupWorkflowTest extends TestCase
             ->actingAs($riderProfile->user)
             ->get(route('rider.courier.dashboard'))
             ->assertOk()
+            ->assertSee('href="'.route('rider.courier.dashboard').'" class="ops-brand"', false)
+            ->assertSee('Courier runs')
+            ->assertSee('₱650 per qualifying workday')
+            ->assertSee('Earnings & payouts', false)
+            ->assertSee('Check in')
+            ->assertSee('Messages')
+            ->assertSee('Notifications')
+            ->assertSee('Account')
+            ->assertSee('Logout')
+            ->assertDontSee('Items for Pickup')
+            ->assertDontSee('Items for Delivery')
+            ->assertDontSee('Share live location')
+            ->assertDontSee('data-rider-location-status', false)
             ->assertSee('Off duty')
             ->assertSee('Set available')
             ->assertSee('data-rider-availability-control', false)
             ->assertSee('data-rider-availability-badge', false)
             ->assertSee('data-rider-availability-form', false)
             ->assertSee('data-rider-account-alert', false);
+
+        $this->actingAs($riderProfile->user)
+            ->get(route('rider.dashboard'))
+            ->assertRedirect(route('rider.courier.dashboard'));
+    }
+
+    public function test_couriers_are_redirected_from_local_rider_pages_and_blocked_from_local_actions_and_gps(): void
+    {
+        $provider = $this->makeProvider('COURIER-LOCAL-GUARD');
+        $riderProfile = $this->makeRider($provider, 'COURIER-LOCAL-GUARD');
+        $riderProfile->update([
+            'work_type' => 'courier',
+            'courier_vehicle_verified_by' => $provider['user']->id,
+            'courier_vehicle_verified_at' => now(),
+            'linehaul_parcel_capacity' => 20,
+        ]);
+
+        $courierDashboard = route('rider.courier.dashboard');
+
+        foreach ([
+            route('rider.dashboard.pickups'),
+            route('rider.attendance.history'),
+            route('rider.dashboard.deliveries'),
+            route('rider.refund-cash.index'),
+            route('rider.orders.pickup', 'UNKNOWN-COURIER-PICKUP'),
+            route('rider.orders.delivery', 123),
+            route('rider.history.index'),
+            route('rider.history.export'),
+        ] as $localPage) {
+            $this->actingAs($riderProfile->user)
+                ->get($localPage)
+                ->assertRedirect($courierDashboard);
+        }
+
+        foreach ([
+            route('rider.orders.pickup.accept', 'UNKNOWN-COURIER-PICKUP'),
+            route('rider.orders.delivery.start', 123),
+        ] as $localAction) {
+            $this->actingAs($riderProfile->user)
+                ->post($localAction)
+                ->assertRedirect($courierDashboard);
+        }
+
+        $this->actingAs($riderProfile->user)
+            ->get(route('rider.earnings.index'))
+            ->assertOk()
+            ->assertSee('Courier ledger')
+            ->assertSee('Courier daily pay');
+
+        $this->actingAs($riderProfile->user)
+            ->get(route('rider.earnings.status-version'))
+            ->assertOk();
+
+        $this->actingAs($riderProfile->user)
+            ->get(route('rider.earnings.export'))
+            ->assertOk();
+
+        $this->from($courierDashboard)
+            ->actingAs($riderProfile->user)
+            ->post(route('rider.attendance.check-in'))
+            ->assertRedirect($courierDashboard);
+
+        $this->assertDatabaseHas('rider_shifts', [
+            'rider_profile_id' => $riderProfile->id,
+            'checked_out_at' => null,
+        ]);
+
+        $this->from($courierDashboard)
+            ->actingAs($riderProfile->user)
+            ->post(route('rider.attendance.check-out'))
+            ->assertRedirect($courierDashboard);
+
+        $this->assertDatabaseHas('rider_shifts', [
+            'rider_profile_id' => $riderProfile->id,
+            'check_out_source' => 'rider',
+        ]);
+        $this->assertDatabaseMissing('rider_earnings', [
+            'rider_profile_id' => $riderProfile->id,
+            'type' => 'courier_daily',
+        ]);
+
+        $this->actingAs($riderProfile->user)
+            ->postJson(route('rider.location.update'), [
+                'latitude' => 14.5995,
+                'longitude' => 120.9842,
+            ])
+            ->assertStatus(409);
+
+        $this->assertDatabaseMissing('rider_locations', [
+            'rider_profile_id' => $riderProfile->id,
+        ]);
+    }
+
+    public function test_local_rider_dashboard_still_defaults_to_pickups(): void
+    {
+        $provider = $this->makeProvider('LOCAL-DASHBOARD-DEFAULT');
+        $riderProfile = $this->makeRider($provider, 'LOCAL-DASHBOARD-DEFAULT');
+
+        $this->actingAs($riderProfile->user)
+            ->get(route('rider.dashboard'))
+            ->assertRedirect(route('rider.dashboard.pickups'));
     }
 
     public function test_rider_cannot_set_availability_before_profile_approval_or_use_other_states(): void
@@ -1174,6 +1942,8 @@ class RiderPickupWorkflowTest extends TestCase
 
     public function test_available_rider_can_publish_location_and_off_duty_clears_it(): void
     {
+        Event::fake([RiderLocationUpdated::class]);
+
         $provider = $this->makeProvider('LOCATION');
         $riderProfile = $this->makeRider($provider, 'LOCATION');
 
@@ -1188,6 +1958,14 @@ class RiderPickupWorkflowTest extends TestCase
             ->assertJsonPath('data.longitude', 120.9842)
             ->assertJsonPath('data.accuracy_meters', 12.4)
             ->assertJsonPath('message', 'Live location updated.');
+
+        Event::assertDispatched(
+            RiderLocationUpdated::class,
+            fn (RiderLocationUpdated $event): bool => $event->logisticsUserId === (int) $provider['user']->id
+                && $event->riderUserId === (int) $riderProfile->user_id
+                && ! $event->locationCleared
+                && $event->updatedAt !== '',
+        );
 
         $this->assertDatabaseHas('rider_locations', [
             'rider_profile_id' => $riderProfile->id,
@@ -1205,6 +1983,13 @@ class RiderPickupWorkflowTest extends TestCase
         $this->assertDatabaseMissing('rider_locations', [
             'rider_profile_id' => $riderProfile->id,
         ]);
+
+        Event::assertDispatched(
+            RiderLocationUpdated::class,
+            fn (RiderLocationUpdated $event): bool => $event->logisticsUserId === (int) $provider['user']->id
+                && $event->riderUserId === (int) $riderProfile->user_id
+                && $event->locationCleared,
+        );
     }
 
     public function test_location_updates_require_an_approved_available_rider(): void

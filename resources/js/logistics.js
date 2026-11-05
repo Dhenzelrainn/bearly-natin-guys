@@ -46,6 +46,13 @@ function setupShell() {
     document.querySelector('[data-mobile-menu]')?.addEventListener('click', () => body.classList.add('sidebar-open'));
     document.querySelector('[data-overlay]')?.addEventListener('click', closeMobile);
     document.querySelectorAll('[data-dismiss]').forEach((button) => button.addEventListener('click', () => button.closest('.flash-banner')?.remove()));
+    document.querySelectorAll('.flash-banner.is-success[data-auto-dismiss]').forEach((banner) => {
+        const delay = Number.parseInt(banner.dataset.autoDismiss || '', 10);
+
+        if (Number.isFinite(delay) && delay > 0) {
+            window.setTimeout(() => banner.remove(), delay);
+        }
+    });
 
     document.querySelectorAll('[data-popover-toggle]').forEach((button) => button.addEventListener('click', (event) => {
         event.stopPropagation();

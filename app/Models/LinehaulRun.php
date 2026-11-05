@@ -50,4 +50,9 @@ class LinehaulRun extends Model
     {
         return $this->hasMany(LinehaulRunEvent::class)->orderBy('occurred_at')->orderBy('id');
     }
+
+    public function earnings()
+    {
+        return $this->hasMany(RiderEarning::class);
+    }
 }

@@ -13,12 +13,14 @@ use App\Models\MessageAttachment;
 use App\Models\OrderItem;
 use App\Models\PickupAssignment;
 use App\Models\RiderProfile;
+use App\Models\RiderShift;
 use App\Models\RiderVehicleChangeRequest;
 use App\Models\User;
 use App\Services\ApplicationReviewService;
 use App\Services\BuyerCatalogService;
 use App\Services\CodCashCollectionService;
 use App\Services\ConversationService;
+use App\Services\CourierDailyEarningService;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
 use App\Services\LinehaulRunService;
@@ -31,8 +33,10 @@ use App\Services\RiderAccountStatusService;
 use App\Services\RiderDeliveryHistoryService;
 use App\Services\RiderDeliveryService;
 use App\Services\RiderEarningsService;
+use App\Services\RiderPickupRouteService;
 use App\Services\RiderPickupService;
 use App\Services\RiderLocationService;
+use App\Services\RiderShiftService;
 use App\Services\RiderWorkloadService;
 use App\Services\RiderVehicleChangeService;
 use App\Services\RiderZoneAssignmentService;
@@ -1036,7 +1040,18 @@ class RiderController extends Controller
             ->with('registration_pending', true);
     }
 
-    public function pickupsDashboard(): View
+    public function dashboard(Request $request): RedirectResponse
+    {
+        $workType = $request->user()?->riderProfile()->value('work_type');
+
+        return redirect()->route(
+            $workType === RiderWorkType::Courier->value
+                ? 'rider.courier.dashboard'
+                : 'rider.dashboard.pickups',
+        );
+    }
+
+    public function pickupsDashboard(RiderShiftService $shifts): View
     {
         /** @var User|null $user */
         $user = Auth::user();
@@ -1046,10 +1061,13 @@ class RiderController extends Controller
                 $user
             );
 
+        $profile = $user?->riderProfile()->first();
+
         return view(
             'rider.dashboard.pickups',
             $this->shared() + [
                 'pickups' => $pickups,
+                'currentShift' => $profile ? $shifts->currentShift($profile) : null,
 
                 'pickupMetrics' => [
                     'assigned' => $pickups
@@ -1084,13 +1102,39 @@ class RiderController extends Controller
         );
     }
 
-    public function courierDashboard(Request $request, LinehaulRunService $runs): View
+    public function attendanceHistory(Request $request, RiderShiftService $shifts): View
+    {
+        $riderProfile = $this->authenticatedRiderProfile($request);
+
+        return view('rider.attendance.index', $this->shared() + [
+            'shifts' => $shifts->attendanceHistoryFor($riderProfile),
+        ]);
+    }
+
+    public function courierDashboard(
+        Request $request,
+        LinehaulRunService $runs,
+        RiderShiftService $shifts,
+        CourierDailyEarningService $dailyEarnings,
+    ): View
     {
         $profile = $this->courierProfileFor($request);
 
         return view('rider.dashboard.courier', $this->shared() + [
             'courierProfile' => $profile,
             'runs' => $runs->courierRunsFor($profile),
+            'currentShift' => $shifts->currentShift($profile),
+            'courierEarnings' => $dailyEarnings->summaryFor($profile),
+            'courierEarningHistory' => $dailyEarnings->historyFor($profile, 5),
+        ]);
+    }
+
+    public function courierHistory(Request $request, LinehaulRunService $runs): View
+    {
+        $profile = $this->courierProfileFor($request);
+
+        return view('rider.courier.history', $this->shared() + [
+            'runs' => $runs->courierRunHistoryFor($profile),
         ]);
     }
 
@@ -1241,10 +1285,52 @@ class RiderController extends Controller
 
         $message =
             $validated['availability_status'] === 'available'
-                ? 'You are now available for new pickup assignments.'
-                : 'You are now offline and hidden from new pickup assignments.';
+                ? 'You are now available for new local pickup and delivery assignments.'
+                : 'You are now offline and will not receive new local assignments.';
 
         return back()->with('success', $message);
+    }
+
+    public function attendanceCheckIn(
+        Request $request,
+        RiderShiftService $shifts,
+    ): RedirectResponse {
+        $profile = $this->authenticatedRiderProfile($request);
+
+        abort_unless(
+            $profile->verification_status === 'approved',
+            403
+        );
+
+        $shift = $shifts->checkIn($profile, $request->user());
+        $isCourier = $profile->work_type === RiderWorkType::Courier->value;
+
+        return back()->with(
+            'success',
+            'Attendance checked in at '.$shift->checkedInAtPht()?->format('g:i A').' '.RiderShift::TIMEZONE_LABEL.'. '
+                .($isCourier
+                    ? 'Daily pay requires check-out and at least one assigned line-haul run accepted by destination Logistics.'
+                    : 'Attendance is for reporting only and does not affect assignments or existing per-job earnings.')
+        );
+    }
+
+    public function attendanceCheckOut(
+        Request $request,
+        RiderShiftService $shifts,
+    ): RedirectResponse {
+        $profile = $this->authenticatedRiderProfile($request);
+        abort_unless($profile->verification_status === 'approved', 403);
+
+        $shift = $shifts->checkOut($profile, $request->user());
+        $isCourier = $profile->work_type === RiderWorkType::Courier->value;
+
+        return back()->with(
+            'success',
+            'Attendance checked out at '.$shift->checkedOutAtPht()?->format('g:i A').' '.RiderShift::TIMEZONE_LABEL.'. '
+                .($isCourier
+                    ? 'Any daily earning is posted only after destination Logistics accepts every shipment on at least one run assigned during this shift.'
+                    : 'Your existing per-job earnings remain recorded normally.')
+        );
     }
 
     public function updateLocation(
@@ -1507,6 +1593,37 @@ class RiderController extends Controller
                 'job_status',
                 'Pickup assignment accepted.'
             );
+    }
+
+    public function pickupRoute(
+        Request $request,
+        string $id,
+        RiderPickupRouteService $routeService,
+    ): JsonResponse {
+        /** @var User|null $user */
+        $user = $request->user();
+        $profile = $user?->riderProfile()->first();
+
+        abort_unless($profile, 404);
+
+        $assignment = $profile
+            ->pickupAssignments()
+            ->whereHas(
+                'pickupRequest',
+                fn ($query) => $query->where('pickup_no', $id)
+            )
+            ->with([
+                'pickupRequest.pickupAddress' => fn ($query) => $query->withTrashed(),
+                'riderProfile.liveLocation',
+                'riderProfile.user',
+            ])
+            ->orderByDesc('id')
+            ->firstOrFail();
+
+        return response()->json([
+            'data' => $routeService->routeForAcceptedPickup($assignment),
+            'message' => 'Pickup road route loaded.',
+        ]);
     }
 
     public function confirmPickup(
@@ -1779,6 +1896,8 @@ class RiderController extends Controller
         Request $request,
         RiderEarningsService $earningsService,
         BuyerCatalogService $catalog,
+        RiderShiftService $shifts,
+        CourierDailyEarningService $courierDailyEarnings,
     ): View {
         $riderProfile = $this->authenticatedRiderProfile($request);
         $filters = $this->earningsFilters($request);
@@ -1793,6 +1912,8 @@ class RiderController extends Controller
             'statusOptions' => $earningsService->statusOptions($riderProfile),
             'typeOptions' => $earningsService->typeOptions($riderProfile),
             'earningsStatusVersion' => $earningsStatusVersion,
+            'earningGroups' => $shifts->earningGroupsFor($riderProfile),
+            'courierEarnings' => $courierDailyEarnings->summaryFor($riderProfile),
         ]);
     }
 
@@ -1827,6 +1948,7 @@ class RiderController extends Controller
             fwrite($stream, "\xEF\xBB\xBF");
             fputcsv($stream, [
                 'Earned at',
+                'Work date',
                 'Job',
                 'Linked source',
                 'Type',

@@ -15,6 +15,7 @@ class RiderEarning extends Model
             'earned_at' => 'datetime',
             'posted_at' => 'datetime',
             'paid_at' => 'datetime',
+            'work_date' => 'date',
         ];
     }
 
@@ -51,5 +52,25 @@ class RiderEarning extends Model
     public function payout()
     {
         return $this->hasOne(RiderEarningPayout::class);
+    }
+
+    public function parcel()
+    {
+        return $this->belongsTo(Parcel::class);
+    }
+
+    public function shift()
+    {
+        return $this->belongsTo(RiderShift::class, 'rider_shift_id');
+    }
+
+    public function linehaulRun()
+    {
+        return $this->belongsTo(LinehaulRun::class);
+    }
+
+    public function payoutBatchItem()
+    {
+        return $this->hasOne(RiderPayoutBatchItem::class);
     }
 }

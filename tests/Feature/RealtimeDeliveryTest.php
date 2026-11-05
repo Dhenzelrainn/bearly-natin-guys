@@ -5,8 +5,9 @@ namespace Tests\Feature;
 use App\Events\AnnouncementPublished;
 use App\Events\ConversationMessageCreated;
 use App\Events\LogisticsRefundCashPayoutUpdated;
-use App\Events\RiderShippingEarningUpdated;
+use App\Events\RiderLocationUpdated;
 use App\Events\RiderOperationalStatusUpdated;
+use App\Events\RiderShippingEarningUpdated;
 use App\Events\SellerReturnStatusUpdated;
 use App\Models\Announcement;
 use App\Models\Role;
@@ -174,6 +175,33 @@ class RealtimeDeliveryTest extends TestCase
             'availability_status' => 'offline',
             'updated_at' => '2026-10-29T12:00:00+00:00',
         ], $event->broadcastWith());
+    }
+
+    public function test_rider_location_event_targets_only_owning_logistics_and_omits_coordinates(): void
+    {
+        $rider = $this->user('rider');
+        $logistics = $this->user('logistics');
+        $event = new RiderLocationUpdated(
+            logisticsUserId: (int) $logistics->id,
+            riderUserId: (int) $rider->id,
+            locationCleared: false,
+            updatedAt: '2026-10-29T12:00:00+00:00',
+        );
+
+        $channels = collect($event->broadcastOn())
+            ->map(fn ($channel): string => $channel->name)
+            ->values()
+            ->all();
+
+        $this->assertSame('rider.location-updated', $event->broadcastAs());
+        $this->assertSame(['private-users.'.$logistics->id], $channels);
+        $this->assertSame([
+            'rider_user_id' => (int) $rider->id,
+            'location_cleared' => false,
+            'updated_at' => '2026-10-29T12:00:00+00:00',
+        ], $event->broadcastWith());
+        $this->assertArrayNotHasKey('latitude', $event->broadcastWith());
+        $this->assertArrayNotHasKey('longitude', $event->broadcastWith());
     }
 
     public function test_announcement_broadcast_failure_is_logged_and_does_not_fail_publication(): void

@@ -16,6 +16,7 @@ use App\Models\ShipmentEvent;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\CodCashCollectionService;
+use App\Services\CheckoutService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -105,6 +106,33 @@ class BuyerPurchasesDataTest extends TestCase
         $this->assertSame('Oct 12, 2026 · 8:30 AM', $data[1]['delivered_at_display']);
         $this->assertSame(route('checkout.confirmation', $delivered->order_no), $data[1]['details_url']);
         $this->assertNotEmpty($data[1]['shop']);
+    }
+
+    public function test_accepted_seller_order_hides_cancel_action_and_explains_why(): void
+    {
+        $buyer = $this->buyer('accepted-cancellation');
+        [, $store] = $this->seller();
+        $order = $this->marketplaceOrder($buyer, 'accepted-cancellation');
+        $this->sellerOrder($order, $store, 'accepted-cancellation', 'accepted');
+
+        $purchase = collect($this->actingAs($buyer)
+            ->getJson(route('buyer.purchases.data'))
+            ->assertOk()
+            ->json('data'))
+            ->firstWhere('id', $order->order_no);
+
+        $this->assertFalse($purchase['can_cancel']);
+        $this->assertNull($purchase['cancel_url']);
+        $this->assertSame(
+            CheckoutService::BUYER_CANCELLATION_UNAVAILABLE_MESSAGE,
+            $purchase['cancel_unavailable_message'],
+        );
+
+        $this->actingAs($buyer)
+            ->get(route('checkout.confirmation', $order->order_no))
+            ->assertOk()
+            ->assertSee(CheckoutService::BUYER_CANCELLATION_UNAVAILABLE_MESSAGE)
+            ->assertDontSee('Cancel order before Seller processing');
     }
 
     public function test_purchases_show_completed_and_cancelled_buckets(): void

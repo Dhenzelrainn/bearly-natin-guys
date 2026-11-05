@@ -9,6 +9,7 @@ use App\Models\Address;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
 use App\Models\Parcel;
+use App\Models\PickupAssignment;
 use App\Models\PickupRequest;
 use App\Models\RiderLocation;
 use App\Models\RiderProfile;
@@ -24,6 +25,7 @@ use App\Models\Waybill;
 use App\Notifications\WorkflowNotification;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
@@ -428,6 +430,68 @@ class PickupRequestWorkflowTest extends TestCase
         $this->assertDatabaseCount('pickup_assignments', 0);
     }
 
+    public function test_pickup_specialization_and_same_day_schedule_conflicts_are_enforced(): void
+    {
+        $provider = $this->makeProvider('SPECIALIZATION');
+        $seller = $this->makeSeller('SPECIALIZATION');
+        $existing = $this->makePickup($provider, $seller, 'SPECIALIZATION-EXISTING', 'scheduled');
+        $overlap = $this->makePickup($provider, $seller, 'SPECIALIZATION-OVERLAP', 'verified');
+        $adjacent = $this->makePickup($provider, $seller, 'SPECIALIZATION-ADJACENT', 'verified');
+        $start = Carbon::parse(today()->toDateString().' 09:00:00');
+
+        $existing['pickup']->update([
+            'window_start' => $start,
+            'window_end' => $start->copy()->addHour(),
+        ]);
+        $overlap['pickup']->update([
+            'window_start' => $start->copy()->addMinutes(30),
+            'window_end' => $start->copy()->addHours(2),
+        ]);
+        $adjacent['pickup']->update([
+            'window_start' => $start->copy()->addHour(),
+            'window_end' => $start->copy()->addHours(2),
+        ]);
+
+        $deliveryOnly = $this->makeRider($provider, 'SPECIALIZATION-DELIVERY');
+        $deliveryOnly->update(['specialization' => 'delivery_only']);
+        $pickupOnly = $this->makeRider($provider, 'SPECIALIZATION-PICKUP');
+        $pickupOnly->update(['specialization' => 'pickup_only']);
+
+        PickupAssignment::query()->create([
+            'pickup_request_id' => $existing['pickup']->id,
+            'rider_profile_id' => $pickupOnly->id,
+            'status' => 'assigned',
+            'assigned_by' => $provider['user']->id,
+            'assigned_at' => now(),
+        ]);
+
+        $this->actingAs($provider['user'])
+            ->post(route('logistics.pickups.assign', $overlap['pickup']), [
+                'rider_profile_id' => $deliveryOnly->id,
+            ])
+            ->assertNotFound();
+
+        $this->actingAs($provider['user'])
+            ->post(route('logistics.pickups.assign', $overlap['pickup']), [
+                'rider_profile_id' => $pickupOnly->id,
+            ])
+            ->assertStatus(409);
+
+        $this->actingAs($provider['user'])
+            ->post(route('logistics.pickups.assign', $adjacent['pickup']), [
+                'rider_profile_id' => $pickupOnly->id,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('pickup_assignments', [
+            'pickup_request_id' => $adjacent['pickup']->id,
+            'rider_profile_id' => $pickupOnly->id,
+            'status' => 'assigned',
+        ]);
+        $this->assertSame('verified', $overlap['pickup']->fresh()->status);
+    }
+
     public function test_pickup_ui_wires_status_actions_metrics_and_owned_available_riders(): void
     {
         $provider = $this->makeProvider('UI');
@@ -512,7 +576,7 @@ class PickupRequestWorkflowTest extends TestCase
             'rider_profile_id' => $near->id,
             'latitude' => 14.6000,
             'longitude' => 120.9842,
-            'accuracy_meters' => 10,
+            'accuracy_meters' => 100,
             'last_seen_at' => now(),
         ]);
         RiderLocation::query()->create([
@@ -553,7 +617,7 @@ class PickupRequestWorkflowTest extends TestCase
         $this->assertDatabaseCount('pickup_assignments', 0);
     }
 
-    public function test_pickup_map_returns_only_fresh_riders_owned_by_the_logistics_provider(): void
+    public function test_pickup_map_lists_all_schedulable_provider_riders_but_only_exposes_usable_coordinates(): void
     {
         $provider = $this->makeProvider('MAP');
         $foreignProvider = $this->makeProvider('MAP-FOREIGN');
@@ -569,14 +633,33 @@ class PickupRequestWorkflowTest extends TestCase
             'verified',
         )['pickup'];
         $freshRider = $this->makeRider($provider, 'MAP-FRESH');
+        $lowAccuracyRider = $this->makeRider($provider, 'MAP-LOW-ACCURACY');
         $staleRider = $this->makeRider($provider, 'MAP-STALE');
+        $missingLocationRider = $this->makeRider($provider, 'MAP-NO-LOCATION');
+        $conflictedRider = $this->makeRider($provider, 'MAP-CONFLICTED');
         $foreignRider = $this->makeRider($foreignProvider, 'MAP-FOREIGN');
+        $overlappingPickup = $this->makePickup($provider, $seller, 'MAP-OVERLAPPING', 'scheduled')['pickup'];
+
+        PickupAssignment::query()->create([
+            'pickup_request_id' => $overlappingPickup->id,
+            'rider_profile_id' => $conflictedRider->id,
+            'status' => 'assigned',
+            'assigned_by' => $provider['user']->id,
+            'assigned_at' => now(),
+        ]);
 
         RiderLocation::query()->create([
             'rider_profile_id' => $freshRider->id,
             'latitude' => 14.6000,
             'longitude' => 120.9842,
             'accuracy_meters' => 8,
+            'last_seen_at' => now(),
+        ]);
+        RiderLocation::query()->create([
+            'rider_profile_id' => $lowAccuracyRider->id,
+            'latitude' => 14.6000,
+            'longitude' => 120.9842,
+            'accuracy_meters' => 50000,
             'last_seen_at' => now(),
         ]);
         RiderLocation::query()->create([
@@ -603,10 +686,42 @@ class PickupRequestWorkflowTest extends TestCase
             ->assertJsonPath('data.pickup.latitude', 14.5995)
             ->assertJsonPath('data.pickup.longitude', 120.9842)
             ->assertJsonPath('data.stale_after_seconds', 180)
-            ->assertJsonPath('data.riders.0.id', $freshRider->id)
-            ->assertJsonPath('data.riders.0.latitude', 14.6)
-            ->assertJsonPath('data.riders.0.accuracy_meters', 8)
-            ->assertJsonCount(1, 'data.riders');
+            ->assertJsonPath('data.max_usable_accuracy_meters', 100)
+            ->assertJsonCount(4, 'data.riders');
+
+        $mapRiders = collect($response->json('data.riders'));
+        $this->assertEqualsCanonicalizing(
+            [$freshRider->id, $lowAccuracyRider->id, $staleRider->id, $missingLocationRider->id],
+            $mapRiders->pluck('id')->all(),
+        );
+        $this->assertNull($mapRiders->firstWhere('id', $conflictedRider->id));
+        $this->assertNull($mapRiders->firstWhere('id', $foreignRider->id));
+
+        $freshLocation = $mapRiders->firstWhere('id', $freshRider->id);
+        $this->assertSame(14.6, $freshLocation['latitude']);
+        $this->assertSame('fresh', $freshLocation['location_state']);
+        $this->assertSame(true, $freshLocation['location_usable']);
+
+        $lowAccuracyLocation = $mapRiders->firstWhere('id', $lowAccuracyRider->id);
+        $this->assertNull($lowAccuracyLocation['latitude']);
+        $this->assertNull($lowAccuracyLocation['longitude']);
+        $this->assertSame(50000.0, (float) $lowAccuracyLocation['accuracy_meters']);
+        $this->assertSame('fresh', $lowAccuracyLocation['location_state']);
+        $this->assertSame('low_accuracy', $lowAccuracyLocation['gps_quality']);
+        $this->assertFalse($lowAccuracyLocation['location_usable']);
+
+        $staleLocation = $mapRiders->firstWhere('id', $staleRider->id);
+        $this->assertNull($staleLocation['latitude']);
+        $this->assertNull($staleLocation['longitude']);
+        $this->assertSame('stale', $staleLocation['location_state']);
+        $this->assertFalse($staleLocation['location_usable']);
+
+        $missingLocation = $mapRiders->firstWhere('id', $missingLocationRider->id);
+        $this->assertNull($missingLocation['latitude']);
+        $this->assertNull($missingLocation['longitude']);
+        $this->assertSame('missing', $missingLocation['location_state']);
+        $this->assertSame('unknown', $missingLocation['gps_quality']);
+        $this->assertNull($missingLocation['last_seen_at']);
 
         $this
             ->actingAs($foreignProvider['user'])
@@ -618,6 +733,10 @@ class PickupRequestWorkflowTest extends TestCase
     {
         $provider = $this->makeProvider('ZONE-RECOMMEND');
         $seller = $this->makeSeller('ZONE-RECOMMEND');
+        $seller['address']->update([
+            'latitude' => 14.5995,
+            'longitude' => 120.9842,
+        ]);
         $pickup = $this->makePickup(
             $provider,
             $seller,
@@ -625,7 +744,14 @@ class PickupRequestWorkflowTest extends TestCase
             'verified',
         )['pickup'];
         $zoneRider = $this->makeRider($provider, 'ZONE-MATCH');
-        $this->makeRider($provider, 'ZONE-OTHER');
+        $lowAccuracyRider = $this->makeRider($provider, 'ZONE-LOW-ACCURACY');
+        RiderLocation::query()->create([
+            'rider_profile_id' => $lowAccuracyRider->id,
+            'latitude' => 14.5995,
+            'longitude' => 120.9842,
+            'accuracy_meters' => 50000,
+            'last_seen_at' => now(),
+        ]);
 
         $centerAddress = Address::query()->create([
             'user_id' => $provider['user']->id,
@@ -667,7 +793,7 @@ class PickupRequestWorkflowTest extends TestCase
             ->assertOk()
             ->assertViewHas(
                 'pickups',
-                function (array $pickups) use ($pickup, $zoneRider): bool {
+                function (array $pickups) use ($pickup, $zoneRider, $lowAccuracyRider): bool {
                     $row = collect($pickups)->firstWhere(
                         'database_id',
                         $pickup->id,
@@ -675,9 +801,17 @@ class PickupRequestWorkflowTest extends TestCase
                     $recommendation = collect($row['rider_recommendations'] ?? [])
                         ->first();
 
+                    $inaccurateRecommendation = collect($row['rider_recommendations'] ?? [])
+                        ->firstWhere('id', $lowAccuracyRider->id);
+
                     return $recommendation['id'] === $zoneRider->id
                         && $recommendation['area_match'] === true
-                        && $recommendation['distance_km'] === null;
+                        && $recommendation['distance_km'] === null
+                        && $inaccurateRecommendation['location_state'] === 'fresh'
+                        && $inaccurateRecommendation['gps_quality'] === 'low_accuracy'
+                        && $inaccurateRecommendation['location_usable'] === false
+                        && $inaccurateRecommendation['latitude'] === null
+                        && $inaccurateRecommendation['distance_km'] === null;
                 },
             );
     }

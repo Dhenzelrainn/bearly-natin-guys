@@ -289,7 +289,15 @@ class AdminFinanceController extends Controller
                 return $settlement;
             });
 
-        $providerIds = $shippingSettlements->pluck('logistics_profile_id')->unique()->all();
+        $providerIds = $shippingSettlements
+            ->flatMap(fn (ShippingSettlement $settlement): array => [
+                (int) $settlement->logistics_profile_id,
+                (int) ($settlement->origin_logistics_profile_id ?? 0),
+            ])
+            ->filter(fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
         $payoutAccountsByProvider = LogisticsPayoutAccount::query()
             ->whereIn('logistics_profile_id', $providerIds)
             ->where('status', 'verified')
@@ -339,6 +347,7 @@ class AdminFinanceController extends Controller
     ): RedirectResponse {
         $data = $request->validate([
             'settlement_id' => ['required', 'integer'],
+            'recipient' => ['sometimes', 'required', Rule::in(['origin', 'final'])],
             'remittance_confirmed' => ['required', 'accepted'],
             'actual_amount' => ['required', 'string', 'regex:/^\d{1,8}(?:\.\d{1,2})?$/'],
             'method' => ['required', Rule::in(['bank_transfer', 'gcash', 'cash', 'other'])],
@@ -365,11 +374,24 @@ class AdminFinanceController extends Controller
             $data['paid_on'],
             trim($data['reason']),
             $request,
+            $data['recipient'] ?? 'final',
         );
 
-        $successMessage = $recorded->remittance_method === 'cash'
-            ? "Cash handoff recorded. Bearly reference: {$recorded->remittance_reference}. Print the cash receipt from the settlement row."
-            : "Shipping allocation {$recorded->settlement_no} was recorded as remitted to Logistics.";
+        $recipient = $data['recipient'] ?? 'final';
+        $remittance = $recipient === 'origin'
+            ? $recorded->originRemittance
+            : $recorded;
+        $recipientProfile = $recipient === 'origin'
+            ? $recorded->originLogisticsProfile
+            : $recorded->logisticsProfile;
+        $recipientName = $recipientProfile?->display_name ?? 'Logistics';
+        $cashReceiptUrl = route('admin.shipping-settlements.cash-receipt', [
+            'settlement' => $recorded->id,
+            'recipient' => $recipient,
+        ]);
+        $successMessage = $remittance?->remittance_method === 'cash'
+            ? "Cash handoff to {$recipientName} recorded. Bearly reference: {$remittance->remittance_reference}. Receipt: {$cashReceiptUrl}"
+            : "Shipping allocation {$recorded->settlement_no} was recorded as remitted to {$recipientName}.";
 
         return back()->with('success', $successMessage);
     }
@@ -379,6 +401,9 @@ class AdminFinanceController extends Controller
         ShippingSettlement $settlement,
         AuditService $audit,
     ): Response {
+        $recipient = (string) $request->query('recipient', 'final');
+        abort_unless(in_array($recipient, ['origin', 'final'], true), 404);
+
         $settlement = ShippingSettlement::query()
             ->whereKey($settlement->id)
             ->with([
@@ -388,27 +413,57 @@ class AdminFinanceController extends Controller
                 'returnRequest.store',
                 'shipment',
                 'logisticsProfile',
+                'originLogisticsProfile',
+                'originRemittance.logisticsProfile',
+                'originRemittance.logisticsPayoutAccount',
+                'originRemittance.remitter',
                 'riderProfile.user',
                 'remitter',
             ])
             ->firstOrFail();
 
-        abort_unless($settlement->status === 'remitted'
-            && $settlement->remittance_method === 'cash'
-            && str_starts_with((string) $settlement->remittance_reference, 'SRM-'), 404);
+        $isOriginRemittance = $recipient === 'origin';
+        $remittance = $isOriginRemittance ? $settlement->originRemittance : $settlement;
+        $recipientProfile = $isOriginRemittance
+            ? $remittance?->logisticsProfile
+            : $settlement->logisticsProfile;
+        $remittedBy = $isOriginRemittance ? $remittance?->remitter : $settlement->remitter;
+
+        abort_unless($remittance
+            && ($isOriginRemittance
+                ? $remittance->status === 'remitted'
+                : $remittance->remitted_at !== null)
+            && $remittance->remittance_method === 'cash'
+            && str_starts_with((string) $remittance->remittance_reference, 'SRM-'), 404);
 
         $audit->record(
-            action: 'shipping_settlement.cash_receipt_printed',
+            action: $isOriginRemittance
+                ? 'shipping_settlement.origin_cash_receipt_printed'
+                : 'shipping_settlement.cash_receipt_printed',
             module: 'Finance',
-            subject: $settlement,
-            description: "Cash handoff receipt {$settlement->remittance_reference} viewed for {$settlement->settlement_no}.",
-            newValues: ['cash_handoff_reference' => $settlement->remittance_reference],
+            subject: $remittance,
+            description: "Cash handoff receipt {$remittance->remittance_reference} viewed for {$settlement->settlement_no}.",
+            newValues: [
+                'cash_handoff_reference' => $remittance->remittance_reference,
+                'recipient' => $recipient,
+                'logistics_profile_id' => (int) ($remittance->logistics_profile_id ?? $settlement->logistics_profile_id),
+            ],
             severity: 'info',
             request: $request,
         );
 
         return response()
-            ->view('admin.finance.shipping-settlement-cash-receipt', compact('settlement'))
+            ->view('admin.finance.shipping-settlement-cash-receipt', [
+                'settlement' => $settlement,
+                'remittance' => $remittance,
+                'recipientProfile' => $recipientProfile,
+                'remittedBy' => $remittedBy,
+                'recipientRole' => $recipient,
+                'recipientShareMinor' => $isOriginRemittance
+                    ? (int) $settlement->origin_logistics_share_minor
+                    : $settlement->expectedFinalLogisticsRemittanceMinor(),
+                'isInterHub' => $settlement->isInterHub(),
+            ])
             ->header('Cache-Control', 'private, no-store')
             ->header('X-Content-Type-Options', 'nosniff');
     }

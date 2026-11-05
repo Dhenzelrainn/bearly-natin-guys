@@ -36,6 +36,9 @@
             box-shadow: 0 0 0 2px rgba(239, 189, 113, .22) !important;
         }
     </style>
+@php
+    $isCourier = auth()->user()?->riderProfile?->work_type === \App\Enums\RiderWorkType::Courier->value;
+@endphp
 </head>
 <body
     class="ops-body"
@@ -52,18 +55,22 @@
     <aside class="ops-sidebar" aria-label="Rider navigation">
         <div class="ops-sidebar-header">
             <button class="ops-menu-button ops-collapse" type="button" data-sidebar-collapse aria-label="Toggle sidebar"><i data-lucide="menu"></i></button>
-            <a href="{{ route('rider.dashboard.deliveries') }}" class="ops-brand"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly"><span class="ops-brand-subtitle">Rider Center</span></a>
+            <a href="{{ $isCourier ? route('rider.courier.dashboard') : route('rider.dashboard.deliveries') }}" class="ops-brand"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly"><span class="ops-brand-subtitle">Rider Center</span></a>
         </div>
         <nav class="ops-nav">
             <p class="ops-nav-label">Workspace</p>
-            @if(auth()->user()?->riderProfile?->work_type === \App\Enums\RiderWorkType::Courier->value)
-                <a href="{{ route('rider.courier.dashboard') }}" class="ops-nav-link {{ request()->routeIs('rider.courier.*') ? 'is-active' : '' }}"><i data-lucide="truck"></i><span>Courier runs</span></a>
+            @if($isCourier)
+                <a href="{{ route('rider.courier.dashboard') }}" class="ops-nav-link {{ request()->routeIs('rider.courier.dashboard','rider.courier.runs.*') ? 'is-active' : '' }}"><i data-lucide="truck"></i><span>Courier runs</span></a>
+                <a href="{{ route('rider.courier.history.index') }}" class="ops-nav-link {{ request()->routeIs('rider.courier.history.*') ? 'is-active' : '' }}"><i data-lucide="history"></i><span>Line-haul History</span></a>
+                <p class="ops-nav-label">Finance & records</p>
+                <a href="{{ route('rider.earnings.index') }}" class="ops-nav-link {{ request()->routeIs('rider.earnings.*') ? 'is-active' : '' }}"><i data-lucide="wallet"></i><span>Earnings & payouts</span></a>
             @else
                 <a href="{{ route('rider.dashboard.pickups') }}" class="ops-nav-link {{ request()->routeIs('rider.dashboard.pickups','rider.orders.pickup*') ? 'is-active' : '' }}"><i data-lucide="package-plus"></i><span>Items for Pickup</span></a>
                 <a href="{{ route('rider.dashboard.deliveries') }}" class="ops-nav-link {{ request()->routeIs('rider.dashboard.deliveries','rider.orders.delivery*') ? 'is-active' : '' }}"><i data-lucide="bike"></i><span>Items for Delivery</span></a>
                 <a href="{{ route('rider.refund-cash.index') }}" class="ops-nav-link {{ request()->routeIs('rider.refund-cash.*') ? 'is-active' : '' }}"><i data-lucide="hand-coins"></i><span>Cash custody</span></a>
                 <p class="ops-nav-label">Finance & records</p>
                 <a href="{{ route('rider.earnings.index') }}" class="ops-nav-link {{ request()->routeIs('rider.earnings.*') ? 'is-active' : '' }}"><i data-lucide="wallet"></i><span>Earnings</span></a>
+                <a href="{{ route('rider.attendance.history') }}" class="ops-nav-link {{ request()->routeIs('rider.attendance.history') ? 'is-active' : '' }}"><i data-lucide="clock-4"></i><span>Attendance history</span></a>
                 <a href="{{ route('rider.history.index') }}" class="ops-nav-link {{ request()->routeIs('rider.history.*') ? 'is-active' : '' }}"><i data-lucide="history"></i><span>Delivery History</span></a>
             @endif
             <p class="ops-nav-label">Support</p>
@@ -82,14 +89,16 @@
             <div class="ops-topbar-left"><button class="icon-button mobile-menu" type="button" data-mobile-menu aria-label="Open navigation"><i data-lucide="menu"></i></button><h1>@yield('page-title','Rider Center')</h1></div>
             <div class="ops-topbar-actions">
                 @include('partials.theme-toggle')
-                <div class="rider-location-control" data-rider-location-status role="status" aria-live="polite">
-                    <span class="rider-location-dot is-off" data-rider-location-dot aria-hidden="true"></span>
-                    <span class="rider-location-copy">
-                        <strong data-rider-location-label>Location sharing is off</strong>
-                        <small data-rider-location-help>Share while Available so Logistics can recommend nearby pickups.</small>
-                    </span>
-                    <button class="button button-small" type="button" data-rider-location-toggle>Share live location</button>
-                </div>
+                @unless($isCourier)
+                    <div class="rider-location-control" data-rider-location-status role="status" aria-live="polite">
+                        <span class="rider-location-dot is-off" data-rider-location-dot aria-hidden="true"></span>
+                        <span class="rider-location-copy">
+                            <strong data-rider-location-label>Location sharing is off</strong>
+                            <small data-rider-location-help>PC and phone supported; allow device and browser location.</small>
+                        </span>
+                        <button class="button button-small" type="button" data-rider-location-toggle>Share live location</button>
+                    </div>
+                @endunless
                 <div class="popover-wrap" data-notification-center data-notification-skin="rider">
                     <button class="icon-button notification-trigger" type="button" data-popover-toggle="notifications" aria-label="Open notifications"><i data-lucide="bell"></i><span class="notification-dot" data-notification-badge="dot" hidden></span></button>
                     <div class="topbar-popover notification-popover" data-popover="notifications" hidden>
@@ -107,7 +116,7 @@
             </div>
         </header>
         <main class="ops-content">
-            @if(session('success') || session('job_status'))<div class="flash-banner is-success"><i data-lucide="circle-check"></i><span>{{ session('success') ?? session('job_status') }}</span><button type="button" data-dismiss><i data-lucide="x"></i></button></div>@endif
+            @if(session('success') || session('job_status'))<div class="flash-banner is-success" data-auto-dismiss="5000"><i data-lucide="circle-check"></i><span>{{ session('success') ?? session('job_status') }}</span><button type="button" data-dismiss><i data-lucide="x"></i></button></div>@endif
             <div
                 class="flash-banner is-danger rider-account-live-alert"
                 data-rider-account-alert

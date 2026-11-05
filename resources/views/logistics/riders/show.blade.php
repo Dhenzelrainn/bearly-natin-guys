@@ -47,6 +47,17 @@
         ?? false
     );
 
+    $canManageSpecialization = (bool) (
+        $application['can_manage_specialization']
+        ?? false
+    );
+
+    $specializationOptions = [
+        'both' => 'Pickup and delivery',
+        'pickup_only' => 'Pickup only',
+        'delivery_only' => 'Delivery only',
+    ];
+
     $statusLabels = [
         'active' => 'Active',
         'suspended' => 'Suspended',
@@ -314,6 +325,13 @@
                             <strong>{{ ucfirst($application['requested_work_type']) }} · {{ $application['vehicle_model'] }}</strong>
                         </div>
 
+                        @if($application['is_local_work'] ?? true)
+                            <div class="detail-item">
+                                <small>Pickup / delivery specialization</small>
+                                <strong>{{ $application['specialization_label'] }}</strong>
+                            </div>
+                        @endif
+
                         <div class="detail-item">
                             <small>{{ ($application['is_local_work'] ?? true) ? 'Local parcel capacity' : 'Verified line-haul capacity' }}</small>
                             <strong>
@@ -446,6 +464,53 @@
                         <button class="button button-primary" type="submit">
                             <i data-lucide="save"></i>
                             Save capacity
+                        </button>
+                    </div>
+                </form>
+            </section>
+        @endif
+
+        @if($canManageSpecialization)
+            <section class="panel" aria-labelledby="rider-specialization-heading">
+                <div class="panel-header">
+                    <div>
+                        <p class="page-kicker">Local Rider assignment</p>
+                        <h3 id="rider-specialization-heading">Pickup and delivery work</h3>
+                        <p>Choose which new local assignments this Rider may receive. Existing work remains attached and Courier line-haul stays separate.</p>
+                    </div>
+                </div>
+
+                <form
+                    class="panel-body"
+                    method="POST"
+                    action="{{ route('logistics.riders.specialization.update', $application['user_id']) }}"
+                >
+                    @csrf
+                    @method('PATCH')
+
+                    <div class="field-grid">
+                        <div class="field">
+                            <label for="rider-specialization">Specialization <span aria-hidden="true">*</span></label>
+                            <select id="rider-specialization" name="specialization" required>
+                                @foreach($specializationOptions as $value => $label)
+                                    <option value="{{ $value }}" @selected(old('specialization', $application['specialization']) === $value)>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            @error('specialization')<small role="alert">{{ $message }}</small>@enderror
+                        </div>
+
+                        <div class="field span-2">
+                            <label for="rider-specialization-reason">Reason <span aria-hidden="true">*</span></label>
+                            <textarea id="rider-specialization-reason" name="reason" rows="3" minlength="5" maxlength="1000" required>{{ old('reason') }}</textarea>
+                            <small>Saved with the Logistics actor and previous/new specialization.</small>
+                            @error('reason')<small role="alert">{{ $message }}</small>@enderror
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button class="button button-primary" type="submit">
+                            <i data-lucide="save" aria-hidden="true"></i>
+                            Save specialization
                         </button>
                     </div>
                 </form>
@@ -606,6 +671,58 @@
         </section>
     </div>
 </div>
+
+@if($application['work_type'] === \App\Enums\RiderWorkType::Courier->value && $courierDailySummary)
+    <section class="panel" style="margin-bottom:20px" aria-labelledby="courier-attendance-heading">
+        <div class="panel-header">
+            <div>
+                <p class="page-kicker">Courier monitoring</p>
+                <h3 id="courier-attendance-heading">Attendance and daily earnings</h3>
+                <p>₱650 is earned once per qualifying work date after check-in/out and full destination acceptance of at least one run assigned during the shift.</p>
+            </div>
+        </div>
+        <div class="panel-body">
+            <div class="metric-strip" aria-label="Courier daily pay summary">
+                <article class="metric-item"><span class="metric-copy"><small>Qualifying days</small><strong>{{ number_format($courierDailySummary['qualifying_days']) }}</strong><span>{{ $courierDailySummary['total'] }} recorded</span></span></article>
+                <article class="metric-item"><span class="metric-copy"><small>Ready for payout</small><strong>{{ $courierDailySummary['eligible'] }}</strong><span>Awaiting external payment</span></span></article>
+                <article class="metric-item"><span class="metric-copy"><small>Recorded as paid</small><strong>{{ $courierDailySummary['paid'] }}</strong><span>Actual payout logged by Logistics</span></span></article>
+            </div>
+
+            <div class="table-wrap" style="margin-top:18px">
+                <table class="data-table">
+                    <thead><tr><th>Work date (PHT)</th><th>Check-in (PHT)</th><th>Check-out (PHT)</th><th>Daily earning / payout</th></tr></thead>
+                    <tbody>
+                        @forelse($courierAttendance as $shift)
+                            @php($earning = $shift->earnings->first())
+                            <tr>
+                                <td>{{ $shift->checkedInAtPht()?->format('M j, Y') ?? '—' }}</td>
+                                <td>{{ $shift->checkedInAtPht()?->format('g:i A') ?? '—' }}</td>
+                                <td>{{ $shift->checked_out_at ? $shift->checkedOutAtPht()?->format('g:i A') : 'Still checked in' }}</td>
+                                <td>
+                                    @if($earning)
+                                        <strong>₱{{ number_format((int) $earning->amount_minor / 100, 2) }}</strong>
+                                        <small class="table-subline">{{ $earning->linehaulRun?->run_no ?? 'Qualifying line-haul run' }} · {{ str($earning->status)->replace('_', ' ')->title() }}</small>
+                                        @if($earning->payout)
+                                            <small class="table-subline">Paid {{ $earning->payout->paid_on?->format('M j, Y') ?? 'date unavailable' }} · {{ str($earning->payout->method)->replace('_', ' ')->title() }} · {{ $earning->payout->reference }}</small>
+                                        @elseif($earning->payoutBatchItem?->batch)
+                                            <small class="table-subline">Batch {{ $earning->payoutBatchItem->batch->batch_no }} · {{ str($earning->payoutBatchItem->batch->status)->replace('_', ' ')->title() }}</small>
+                                        @else
+                                            <small class="table-subline">Not yet included in a payout batch</small>
+                                        @endif
+                                    @else
+                                        <span class="empty-copy">No daily earning posted for this shift</span>
+                                    @endif
+                                </td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="4"><p class="empty-copy">No Courier attendance shifts have been recorded for this provider-owned profile.</p></td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+@endif
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {

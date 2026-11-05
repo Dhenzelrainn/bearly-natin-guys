@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureLocalRiderWorkType;
 use App\Http\Middleware\EnsureUserHasRole;
 use App\Http\Middleware\PreventBackCache;
 use App\Services\AnnouncementPublishingService;
@@ -39,6 +40,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'role' => EnsureUserHasRole::class,
+            'local-rider' => EnsureLocalRiderWorkType::class,
         ]);
         
         $middleware->trustProxies(
@@ -64,7 +66,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 'buyer' => route('home'),
                 'seller' => route('seller.dashboard'),
                 'logistics' => route('logistics.dashboard'),
-                'rider' => route('rider.dashboard.deliveries'),
+                'rider' => route('rider.dashboard'),
                 default => route('shop.home'),
             };
         });

@@ -1351,6 +1351,7 @@ body.profile-page.bh .order-card-foot{
 }
 body.profile-page.bh .order-total{display:none}
 body.profile-page.bh .order-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+body.profile-page.bh .order-cancel-note{flex:1 0 100%;margin:0 auto 0 0;padding:8px 10px;border:1px solid #ead5b0;border-left:3px solid #bd8731;border-radius:6px;background:#fffaf0;color:#6e532d;font-size:12px;line-height:1.5}
 body.profile-page.bh .order-btn{
   min-height:34px;
   padding:0 14px;
@@ -1409,6 +1410,7 @@ body.profile-page.bh a.order-btn{display:inline-flex;align-items:center;justify-
   body.profile-page.bh .order-price{grid-column:2;text-align:left}
   body.profile-page.bh .order-card-foot{padding:10px 12px}
   body.profile-page.bh .order-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  body.profile-page.bh .order-cancel-note{grid-column:1/-1}
   body.profile-page.bh .order-btn{width:100%;padding:0 8px;font-size:10px}
 }
 

@@ -19,6 +19,7 @@ use App\Models\SystemSetting;
 use App\Models\User;
 use App\Notifications\WorkflowNotification;
 use App\Services\PostalCodeLookup;
+use App\Services\CheckoutService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
@@ -74,6 +75,8 @@ class OrdersCheckoutIntegrationTest extends TestCase
         );
         $this->assertSame('processing', $order->status);
         $this->assertSame('unpaid', $order->payment_status);
+        $this->assertNull($order->delivery_latitude);
+        $this->assertNull($order->delivery_longitude);
         $this->assertSame('cod', $order->payments->sole()->method);
         $this->assertSame('pending', $order->payments->sole()->status);
         $this->assertNull($order->payments->sole()->provider);
@@ -113,6 +116,52 @@ class OrdersCheckoutIntegrationTest extends TestCase
             fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'seller_order_updates',
         );
         Notification::assertSentToTimes($firstSeller, WorkflowNotification::class, 1);
+    }
+
+    public function test_checkout_snapshots_optional_delivery_coordinates_without_exposing_them(): void
+    {
+        Notification::fake();
+
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $destination->update([
+            'latitude' => 14.1234567,
+            'longitude' => 121.9876543,
+        ]);
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'checkout-coordinate-snapshot');
+        $variant = $this->variant($this->product($store, $category, 'Pinned Delivery Item'), 'PINNED-001', 2500, 5);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+        $quote = $this->actingAs($buyer)->postJson(route('checkout.quote'), [
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+        ])->assertOk();
+
+        $quoteAddress = $quote->json('data.delivery_address');
+        $this->assertArrayNotHasKey('latitude', $quoteAddress);
+        $this->assertArrayNotHasKey('longitude', $quoteAddress);
+
+        $quoteToken = (string) $quote->json('data.quote_token');
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $quoteToken,
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+
+        $order = Order::query()->sole();
+        $this->assertSame(14.1234567, (float) $order->delivery_latitude);
+        $this->assertSame(121.9876543, (float) $order->delivery_longitude);
+        $this->assertArrayNotHasKey('delivery_latitude', $order->toArray());
+        $this->assertArrayNotHasKey('delivery_longitude', $order->toArray());
+
+        $destination->update([
+            'latitude' => 14.2000000,
+            'longitude' => 121.9000000,
+        ]);
+        $this->assertSame(14.1234567, (float) $order->fresh()->delivery_latitude);
+        $this->assertSame(121.9876543, (float) $order->fresh()->delivery_longitude);
     }
 
     public function test_quote_uses_one_combined_parcel_and_zone_fee_for_over_one_kg(): void
@@ -255,7 +304,53 @@ class OrdersCheckoutIntegrationTest extends TestCase
 
         $this->actingAs($buyer)->post(route('checkout.cancel', $order->id), [
             'reason' => 'Retry',
-        ])->assertConflict();
+        ])->assertRedirect(route('checkout.confirmation', $order->order_no))
+            ->assertSessionHas('warning', CheckoutService::BUYER_ORDER_ALREADY_CANCELLED_MESSAGE);
+    }
+
+    public function test_stale_buyer_cancellation_after_seller_acceptance_shows_notice_without_cancelling(): void
+    {
+        Notification::fake();
+
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'stale-cancel');
+        $variant = $this->variant($this->product($store, $category, 'Accepted Item'), 'ACCEPTED-001', 1299, 7);
+        $cartItem = $this->cartItem($buyer, $variant, 2);
+        $quoteToken = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $quoteToken,
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+
+        $order = Order::query()->with('sellerOrders')->sole();
+        $sellerOrder = $order->sellerOrders->sole();
+        $sellerOrder->update(['status' => 'accepted']);
+
+        $this->actingAs($buyer)->post(route('checkout.cancel', $order->id), [
+            'reason' => 'Buyer requested cancellation',
+        ])->assertRedirect(route('checkout.confirmation', $order->order_no))
+            ->assertSessionHas('warning', CheckoutService::BUYER_CANCELLATION_UNAVAILABLE_MESSAGE);
+
+        $this->assertSame('processing', $order->fresh()->status);
+        $this->assertSame('accepted', $sellerOrder->fresh()->status);
+        $this->assertSame(2, (int) $variant->fresh()->stock_reserved);
+        $this->assertDatabaseMissing('inventory_movements', [
+            'reference_type' => Order::class,
+            'reference_id' => $order->id,
+            'type' => 'order_reservation_released',
+        ]);
+
+        $this->actingAs($buyer)
+            ->get(route('checkout.confirmation', $order->order_no))
+            ->assertOk()
+            ->assertSee(CheckoutService::BUYER_CANCELLATION_UNAVAILABLE_MESSAGE)
+            ->assertDontSee('Cancel order before Seller processing');
     }
 
     public function test_buyer_can_still_cancel_remaining_pending_seller_orders_after_another_seller_order_was_cancelled(): void
@@ -326,8 +421,11 @@ class OrdersCheckoutIntegrationTest extends TestCase
 
         $sellerOrders = Order::query()->firstOrFail()->sellerOrders()->orderBy('store_id')->get();
         $this->actingAs($firstSeller)
+            ->withSession(['success' => 'Order marked ready for pickup.'])
             ->get(route('seller.orders'))
             ->assertOk()
+            ->assertSee('Order marked ready for pickup.')
+            ->assertSee('data-auto-dismiss="5000"', false)
             ->assertSee($sellerOrders->first()->seller_order_no)
             ->assertSee('First Seller Item')
             ->assertDontSee($sellerOrders->last()->seller_order_no)
@@ -346,8 +444,8 @@ class OrdersCheckoutIntegrationTest extends TestCase
         [$seller, $store] = $this->sellerAndStore($category, 'orders-transitions');
         $this->logisticsProviderFor('0403422000');
         $provider = $this->logisticsProviderFor((string) $destination->psgc_city_code);
-        $variant = $this->variant($this->product($store, $category, 'Transition Item'), 'TRANSITION-001', 2500, 4);
-        $cartItem = $this->cartItem($buyer, $variant, 2);
+        $variant = $this->variant($this->product($store, $category, 'Transition Item'), 'TRANSITION-001', 2500, 8);
+        $cartItem = $this->cartItem($buyer, $variant, 5);
         $quoteToken = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
 
         $this->actingAs($buyer)->post(route('checkout.place'), [
@@ -374,16 +472,21 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $this->assertNotNull($sellerOrder->fresh()->preparing_at);
         $this->assertDatabaseCount('shipments', 1);
         $this->assertDatabaseCount('waybills', 1);
-        $this->assertDatabaseCount('parcels', 1);
+        $this->assertDatabaseCount('parcels', 5);
+
+        $shipment = $sellerOrder->fresh()->shipments()->sole();
+        $this->assertSame(5, (int) $shipment->waybill->piece_count);
+        $parcels = $shipment->parcels()->orderBy('piece_sequence')->get();
+        $this->assertSame([1, 2, 3, 4, 5], $parcels->pluck('piece_sequence')->map(fn ($sequence): int => (int) $sequence)->all());
+        $this->assertSame([0.25, 0.25, 0.25, 0.25, 0.25], $parcels->pluck('weight_kg')->map(fn ($weight): float => (float) $weight)->all());
 
         $this->actingAs($seller)->patchJson($endpoint, ['action' => 'start_preparing'])
             ->assertConflict();
 
         $this->assertDatabaseCount('shipments', 1);
         $this->assertDatabaseCount('waybills', 1);
-        $this->assertDatabaseCount('parcels', 1);
+        $this->assertDatabaseCount('parcels', 5);
 
-        $shipment = $sellerOrder->fresh()->shipments()->sole();
         $this->assertSame($provider->id, $shipment->logistics_profile_id);
         $this->assertSame($provider->id, $shipment->origin_logistics_profile_id);
         $this->assertSame('pending', $shipment->status);
@@ -400,7 +503,14 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $this->actingAs($seller)->patchJson($endpoint, ['action' => 'mark_ready'])
             ->assertConflict();
 
-        $shipment->waybill->update(['printed_at' => now()]);
+        $shipment->waybill->update(['printed_at' => now(), 'piece_count' => 4]);
+
+        $this->actingAs($seller)->patchJson($endpoint, ['action' => 'mark_ready'])
+            ->assertConflict();
+        $this->assertSame('packing', $sellerOrder->fresh()->status);
+        $this->assertSame('pending', $shipment->fresh()->status);
+
+        $shipment->waybill->update(['piece_count' => 5]);
 
         $this->actingAs($seller)->patchJson($endpoint, ['action' => 'mark_ready'])
             ->assertOk()
@@ -1068,18 +1178,33 @@ class OrdersCheckoutIntegrationTest extends TestCase
             ->assertSee('Zone-based fee per Seller Order')
             ->assertSee('value="50.00"', false)
             ->assertSee('value="5.00"', false)
+            ->assertSee('value="15.00"', false)
+            ->assertSee('value="30.00"', false)
+            ->assertSee('exactly <code>bulky</code>', false)
             ->assertDontSee('additional_kg_surcharge', false);
 
-        $this->actingAs($admin)->put(route('admin.shipping-rates.update'), [
-            'base_fee' => '60.00',
-            'zone_surcharge_per_level' => '10.00',
-            'volumetric_divisor' => 4500,
-            'reason' => 'Set zone shipping base and surcharge',
-        ])->assertRedirect(route('admin.shipping-rates'));
+        $this->actingAs($admin)
+            ->followingRedirects()
+            ->put(route('admin.shipping-rates.update'), [
+                'base_fee' => '60.00',
+                'zone_surcharge_per_level' => '10.00',
+                'volumetric_divisor' => 4500,
+                'pickup_regular_rate' => '16.50',
+                'pickup_bulky_rate' => '33.00',
+                'pickup_regular_classes' => 'small, regular',
+                'reason' => 'Set zone shipping base and surcharge',
+            ])
+            ->assertOk()
+            ->assertSee('data-admin-server-toast', false)
+            ->assertSee('Saved successfully')
+            ->assertSee('Bearly shipping settings were saved.');
 
         $this->assertSame(6000, (int) SystemSetting::query()->where('key', 'shipping.base_fee_minor')->value('value'));
         $this->assertSame(1000, (int) SystemSetting::query()->where('key', 'shipping.zone_surcharge_per_level_minor')->value('value'));
         $this->assertSame(4500, (int) SystemSetting::query()->where('key', 'shipping.volumetric_divisor')->value('value'));
+        $this->assertSame(1650, (int) SystemSetting::query()->where('key', 'rider.pickup_rate_regular_minor')->value('value'));
+        $this->assertSame(3300, (int) SystemSetting::query()->where('key', 'rider.pickup_rate_bulky_minor')->value('value'));
+        $this->assertSame(['small', 'regular'], SystemSetting::query()->where('key', 'rider.pickup_regular_size_classes')->value('value'));
         $this->assertDatabaseHas('audit_logs', [
             'actor_user_id' => $admin->id,
             'action' => 'shipping_rates.updated',

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Address;
+use App\Models\Parcel;
 use App\Models\Waybill;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Collection;
@@ -19,7 +20,11 @@ class WaybillPdfService
             ? 'data:image/jpeg;base64,'.base64_encode((string) file_get_contents($logoPath))
             : null;
         $labels = $waybills
-            ->map(fn (Waybill $waybill): array => $this->label($waybill, $logoDataUri))
+            ->flatMap(function (Waybill $waybill) use ($logoDataUri): array {
+                $waybill->loadMissing('parcels');
+
+                return $this->labelsForWaybill($waybill, $logoDataUri);
+            })
             ->all();
 
         return Pdf::loadView('seller.fulfillment.waybill-pdf', ['labels' => $labels])
@@ -32,7 +37,48 @@ class WaybillPdfService
             ->output();
     }
 
-    private function label(Waybill $waybill, ?string $logoDataUri): array
+    /** @return list<array<string, mixed>> */
+    private function labelsForWaybill(Waybill $waybill, ?string $logoDataUri): array
+    {
+        $parcels = $waybill->parcels
+            ->sortBy('piece_sequence')
+            ->values();
+
+        $pieceCount = $parcels->count();
+        $shipmentParcelCount = Parcel::query()
+            ->where('shipment_id', $waybill->shipment_id)
+            ->count();
+        $expectedPieceSequences = range(1, $pieceCount);
+
+        abort_unless(
+            $pieceCount > 0
+                && $shipmentParcelCount === $pieceCount
+                && (int) $waybill->piece_count === $pieceCount
+                && $parcels->every(fn (Parcel $parcel): bool => (int) $parcel->shipment_id === (int) $waybill->shipment_id)
+                && $parcels->pluck('waybill_id')->map(fn ($id): int => (int) $id)->every(fn (int $id): bool => $id === (int) $waybill->id)
+                && $parcels->pluck('piece_sequence')->map(fn ($sequence): int => (int) $sequence)->all() === $expectedPieceSequences,
+            409,
+            'This waybill does not match its registered parcel records. Contact support before printing labels.',
+        );
+
+        return $parcels
+            ->map(fn (Parcel $parcel, int $index): array => $this->label(
+                $waybill,
+                $logoDataUri,
+                $parcel,
+                $index + 1,
+                $pieceCount,
+            ))
+            ->all();
+    }
+
+    private function label(
+        Waybill $waybill,
+        ?string $logoDataUri,
+        Parcel $parcel,
+        int $pieceSequence,
+        int $pieceCount,
+    ): array
     {
         $shipment = $waybill->shipment;
         $sellerOrder = $shipment->sellerOrder;
@@ -60,11 +106,13 @@ class WaybillPdfService
                 $order->province,
                 $order->postal_code,
             ], fn ($part): bool => filled($part))),
-            'piece_count' => max(1, (int) $waybill->piece_count),
-            'weight' => number_format((float) $waybill->total_weight_kg, 3),
+            'piece_sequence' => $pieceSequence,
+            'piece_count' => $pieceCount,
+            'package_count' => 1,
+            'weight' => number_format((float) $parcel->weight_kg, 3),
             'dimensions' => implode(' × ', array_map(
                 fn ($value): string => is_numeric($value) ? rtrim(rtrim(number_format((float) $value, 2, '.', ''), '0'), '.') : '—',
-                [$waybill->length_cm, $waybill->width_cm, $waybill->height_cm],
+                [$parcel->length_cm, $parcel->width_cm, $parcel->height_cm],
             )),
             'cod_amount' => (int) $shipment->cod_amount_minor > 0
                 ? $this->peso((int) $shipment->cod_amount_minor)

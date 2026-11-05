@@ -14,14 +14,18 @@ use App\Models\LogisticsPayoutAccount;
 use App\Models\LogisticsProfile;
 use App\Models\RiderEarning;
 use App\Models\RiderEarningPayout;
+use App\Models\RiderPayoutBatchItem;
 use App\Models\RiderProfile;
+use App\Models\RiderShift;
 use App\Models\Refund;
 use App\Models\ReturnEvent;
 use App\Models\ReturnRequest;
 use App\Models\SellerOrder;
 use App\Models\Shipment;
 use App\Models\ShipmentEvent;
+use App\Models\ShipmentTransfer;
 use App\Models\ShippingSettlement;
+use App\Models\ShippingSettlementOriginRemittance;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -64,7 +68,10 @@ class ShippingSettlementService
                 ->where('metadata->rider_profile_id', $riderProfileId));
         }
         if ($logisticsProfileId !== null) {
-            $query->where('logistics_profile_id', $logisticsProfileId);
+            $query->where(function ($providers) use ($logisticsProfileId): void {
+                $providers->where('logistics_profile_id', $logisticsProfileId)
+                    ->orWhere('origin_logistics_profile_id', $logisticsProfileId);
+            });
         }
 
         $shipmentIds = $query->orderBy('id')->pluck('id');
@@ -118,6 +125,10 @@ class ShippingSettlementService
                 'returnRequest.items.orderItem.variant',
                 'shipment',
                 'logisticsProfile',
+                'originLogisticsProfile',
+                'originRemittance.logisticsProfile',
+                'originRemittance.logisticsPayoutAccount',
+                'originRemittance.remitter',
                 'riderProfile.user',
                 'deliveryAttempt',
                 'remitter',
@@ -138,18 +149,26 @@ class ShippingSettlementService
 
         return RiderEarning::query()
             ->where('logistics_profile_id', $profile->id)
-            ->whereNotNull('shipping_settlement_id')
+            ->where(function ($query): void {
+                $query->whereNotNull('shipping_settlement_id')
+                    ->orWhereNotNull('pickup_assignment_id');
+            })
             ->with([
                 'riderProfile.user',
                 'shipment.sellerOrder.order',
                 'shipment.sellerOrder.items.product.images.variant',
                 'shipment.sellerOrder.items.variant',
+                'pickupAssignment.pickupRequest',
+                'parcel',
                 'shippingSettlement',
+                'shippingSettlement.originLogisticsProfile',
+                'shippingSettlement.originRemittance.logisticsProfile',
                 'shippingSettlement.returnRequest.order',
                 'shippingSettlement.returnRequest.refunds',
                 'shippingSettlement.returnRequest.items.orderItem.product.images.variant',
                 'shippingSettlement.returnRequest.items.orderItem.variant',
                 'payout.recorder',
+                'payoutBatchItem.batch',
             ])
             ->orderByRaw("CASE status WHEN 'posted' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END")
             ->orderByDesc('earned_at')
@@ -165,14 +184,37 @@ class ShippingSettlementService
             $this->materializeEligibleSettlements(logisticsProfileId: (int) $profile->id);
         }
 
-        $settlements = ShippingSettlement::query()
+        $finalSettlements = ShippingSettlement::query()
+            ->where('logistics_profile_id', $profile->id);
+        $originRemittances = ShippingSettlementOriginRemittance::query()
             ->where('logistics_profile_id', $profile->id);
 
         return [
-            'total_minor' => (int) (clone $settlements)->sum('logistics_share_minor'),
-            'pending_minor' => (int) (clone $settlements)->where('status', 'pending')->sum('logistics_share_minor'),
-            'remitted_minor' => (int) (clone $settlements)->where('status', 'remitted')->sum('logistics_share_minor'),
+            'total_minor' => (int) (clone $finalSettlements)->sum('logistics_share_minor')
+                + (int) (clone $originRemittances)->sum('amount_minor'),
+            'pending_minor' => (int) (clone $finalSettlements)->whereNull('remitted_at')->sum('logistics_share_minor')
+                + (int) (clone $originRemittances)->where('status', 'pending')->sum('amount_minor'),
+            'remitted_minor' => (int) (clone $finalSettlements)->whereNotNull('remitted_at')->sum('logistics_share_minor')
+                + (int) (clone $originRemittances)->where('status', 'remitted')->sum('amount_minor'),
         ];
+    }
+
+    /** @return Collection<int, ShippingSettlementOriginRemittance> */
+    public function originRemittancesForLogistics(User $user): Collection
+    {
+        $profile = $this->logisticsProfile($user);
+
+        return ShippingSettlementOriginRemittance::query()
+            ->where('logistics_profile_id', $profile->id)
+            ->with([
+                'logisticsProfile',
+                'remitter',
+                'settlement.shipment',
+                'settlement.sellerOrder.store',
+                'settlement.logisticsProfile',
+            ])
+            ->latest('id')
+            ->get();
     }
 
     public function riderEarningStatusVersionForRider(RiderProfile $rider): string
@@ -180,7 +222,11 @@ class ShippingSettlementService
         return $this->statusVersionForEarnings(
             RiderEarning::query()
                 ->where('rider_profile_id', $rider->id)
-                ->whereNotNull('shipping_settlement_id'),
+                ->where(function ($query): void {
+                    $query->whereNotNull('shipping_settlement_id')
+                        ->orWhereNotNull('pickup_assignment_id')
+                        ->orWhere('type', config('bearly_rider_compensation.courier_daily_earning_type', 'courier_daily'));
+                }),
         );
     }
 
@@ -191,11 +237,35 @@ class ShippingSettlementService
             $this->materializeEligibleSettlements(logisticsProfileId: (int) $profile->id);
         }
 
-        return $this->statusVersionForEarnings(
+        $earningVersion = $this->statusVersionForEarnings(
             RiderEarning::query()
                 ->where('logistics_profile_id', $profile->id)
-                ->whereNotNull('shipping_settlement_id'),
+                ->where(function ($query): void {
+                    $query->whereNotNull('shipping_settlement_id')
+                        ->orWhereNotNull('pickup_assignment_id')
+                        ->orWhere('type', config('bearly_rider_compensation.courier_daily_earning_type', 'courier_daily'));
+                }),
         );
+        $originVersion = ShippingSettlementOriginRemittance::query()
+            ->where('logistics_profile_id', $profile->id)
+            ->select('status')
+            ->selectRaw('COUNT(*) as entry_count')
+            ->selectRaw('COALESCE(SUM(amount_minor), 0) as amount_minor')
+            ->selectRaw('MAX(id) as latest_id')
+            ->selectRaw('MAX(updated_at) as latest_updated_at')
+            ->groupBy('status')
+            ->orderBy('status')
+            ->get()
+            ->map(fn (object $row): string => implode(':', [
+                (string) $row->status,
+                (string) $row->entry_count,
+                (string) $row->amount_minor,
+                (string) $row->latest_id,
+                (string) $row->latest_updated_at,
+            ]))
+            ->implode('|');
+
+        return hash('sha256', $earningVersion.'|'.$originVersion);
     }
 
     public function recordLogisticsRemittance(
@@ -208,6 +278,7 @@ class ShippingSettlementService
         string $paidOn,
         string $reason,
         Request $request,
+        string $recipient = 'final',
     ): ShippingSettlement {
         $this->assertAdmin($admin);
         if ((int) $request->user()?->id !== (int) $admin->id) {
@@ -216,8 +287,16 @@ class ShippingSettlementService
         $this->validatePayoutDetails($actualAmountMinor, $method, $reference, $paidOn, $reason);
         $paidDate = $this->paidDate($paidOn);
 
+        if (! in_array($recipient, ['origin', 'final'], true)) {
+            throw ValidationException::withMessages(['recipient' => 'Choose a valid Logistics remittance recipient.']);
+        }
+
         $stub = ShippingSettlement::query()->findOrFail($settlementId);
         if ($stub->settlement_type === 'return') {
+            if ($recipient !== 'final') {
+                throw new ConflictHttpException('Return-shipping settlements keep their existing single-provider remittance.');
+            }
+
             return $this->recordReturnLogisticsRemittance(
                 $admin,
                 $stub,
@@ -230,6 +309,21 @@ class ShippingSettlementService
                 $request,
             );
         }
+
+        if ($recipient === 'origin') {
+            return $this->recordOriginLogisticsRemittance(
+                $admin,
+                $stub,
+                $actualAmountMinor,
+                $method,
+                $payoutAccountId,
+                $reference,
+                $paidDate,
+                $reason,
+                $request,
+            );
+        }
+
         $sellerOrderId = (int) $stub->seller_order_id;
 
         return DB::transaction(function () use ($admin, $settlementId, $sellerOrderId, $actualAmountMinor, $method, $payoutAccountId, $reference, $paidDate, $reason, $request): ShippingSettlement {
@@ -237,15 +331,20 @@ class ShippingSettlementService
             $eligible = $sellerOrder !== null
                 && $this->wallets->isSellerOrderSettlementEligible($sellerOrder);
             $settlement = ShippingSettlement::query()->whereKey($settlementId)->lockForUpdate()->firstOrFail();
-            $expectedAmount = (int) $settlement->logistics_share_minor + (int) $settlement->rider_share_minor;
+            $expectedAmount = $settlement->expectedFinalLogisticsRemittanceMinor();
+            $expectedTotal = $expectedAmount + ($settlement->isInterHub()
+                ? (int) $settlement->origin_logistics_share_minor
+                : 0);
 
-            if ($actualAmountMinor !== $expectedAmount || $expectedAmount !== (int) $settlement->original_shipping_fee_minor) {
+            if ($actualAmountMinor !== $expectedAmount
+                || $expectedTotal !== (int) $settlement->original_shipping_fee_minor
+                || ($settlement->isInterHub() && $expectedAmount < 1)) {
                 throw ValidationException::withMessages([
-                    'actual_amount' => 'Record the exact shipping allocation of ₱'.number_format($expectedAmount / 100, 2).'.',
+                    'actual_amount' => 'Record the exact remittance of ₱'.number_format($expectedAmount / 100, 2).' to the destination Logistics provider.',
                 ]);
             }
 
-            if ($settlement->status === 'remitted') {
+            if ($settlement->remitted_at !== null) {
                 $referenceMatches = $method === 'cash'
                     ? filled($settlement->remittance_reference)
                     : hash_equals((string) $settlement->remittance_reference, trim($reference));
@@ -255,16 +354,29 @@ class ShippingSettlementService
                     && $referenceMatches
                     && $settlement->remitted_on?->toDateString() === $paidDate->toDateString()
                     && trim((string) $settlement->remittance_reason) === trim($reason)) {
-                    return $settlement->fresh(['riderEarning']);
+                    return $settlement->fresh(['riderEarning', 'originRemittance']);
                 }
 
-                throw new ConflictHttpException('This shipping allocation has already been remitted to Logistics.');
+                throw new ConflictHttpException('This destination Logistics remittance has already been recorded.');
             }
             if (! $eligible) {
                 throw new ConflictHttpException('This shipping allocation is no longer settlement-eligible.');
             }
-            if ($settlement->status !== 'pending' || $settlement->remitted_at !== null) {
+            if (! in_array($settlement->status, ['pending', 'partially_remitted'], true)) {
                 throw new ConflictHttpException('Only an eligible, unpaid shipping allocation can be remitted.');
+            }
+
+            if ($settlement->isInterHub() && $method !== 'cash') {
+                $originRemittance = ShippingSettlementOriginRemittance::query()
+                    ->where('shipping_settlement_id', $settlement->id)
+                    ->lockForUpdate()
+                    ->first();
+                if ($originRemittance?->status === 'remitted'
+                    && hash_equals((string) $originRemittance->remittance_reference, trim($reference))) {
+                    throw ValidationException::withMessages([
+                        'reference' => 'Use the separate external transaction reference for the destination remittance.',
+                    ]);
+                }
             }
 
             $payoutAccount = $this->verifiedPayoutAccount($settlement, $method, $payoutAccountId);
@@ -289,7 +401,6 @@ class ShippingSettlementService
                 'remittance_reference' => $settlement->remittance_reference,
             ];
             $settlement->update([
-                'status' => 'remitted',
                 'remitted_amount_minor' => $actualAmountMinor,
                 'remittance_method' => $method,
                 'remittance_reference' => $remittanceReference,
@@ -303,15 +414,8 @@ class ShippingSettlementService
                 'remitted_to_last4' => $payoutAccount?->destination_last4,
             ]);
 
-            if ($earning->status === 'pending') {
-                $earning->update([
-                    'status' => 'posted',
-                    'posted_at' => now(),
-                ]);
-            } elseif ($earning->status !== 'posted' && $earning->status !== 'paid') {
-                throw new ConflictHttpException('The linked Rider earning is not payable.');
-            }
-            $this->broadcastRiderEarningUpdated($earning);
+            $this->refreshOutboundRemittanceState($settlement, $earning);
+            $settlement->refresh();
 
             $this->audit->record(
                 action: 'shipping_settlement.remitted_to_logistics',
@@ -320,7 +424,8 @@ class ShippingSettlementService
                 description: "Shipping settlement {$settlement->settlement_no} was recorded as remitted to Logistics.",
                 oldValues: $oldValues,
                 newValues: [
-                    'status' => 'remitted',
+                    'status' => $settlement->status,
+                    'remittance_recipient' => 'final',
                     'seller_order_id' => (int) $settlement->seller_order_id,
                     'shipment_id' => (int) $settlement->shipment_id,
                     'logistics_profile_id' => (int) $settlement->logistics_profile_id,
@@ -330,6 +435,8 @@ class ShippingSettlementService
                     'buyer_paid_shipping_fee_minor' => (int) $settlement->buyer_paid_shipping_fee_minor,
                     'platform_shipping_subsidy_minor' => (int) $settlement->platform_shipping_subsidy_minor,
                     'shipping_funding_source' => $settlement->shipping_funding_source,
+                    'origin_logistics_profile_id' => $settlement->origin_logistics_profile_id,
+                    'origin_logistics_share_minor' => (int) $settlement->origin_logistics_share_minor,
                     'logistics_share_minor' => (int) $settlement->logistics_share_minor,
                     'rider_share_minor' => (int) $settlement->rider_share_minor,
                     'amount_minor' => $actualAmountMinor,
@@ -345,14 +452,212 @@ class ShippingSettlementService
                 request: $request,
             );
 
-            return $settlement->fresh(['riderEarning']);
+            return $settlement->fresh(['riderEarning', 'originRemittance']);
         }, attempts: 3);
+    }
+
+    private function recordOriginLogisticsRemittance(
+        User $admin,
+        ShippingSettlement $stub,
+        int $actualAmountMinor,
+        string $method,
+        ?int $payoutAccountId,
+        string $reference,
+        Carbon $paidDate,
+        string $reason,
+        Request $request,
+    ): ShippingSettlement {
+        $sellerOrderId = (int) $stub->seller_order_id;
+
+        return DB::transaction(function () use ($admin, $stub, $sellerOrderId, $actualAmountMinor, $method, $payoutAccountId, $reference, $paidDate, $reason, $request): ShippingSettlement {
+            $sellerOrder = SellerOrder::query()->whereKey($sellerOrderId)->first();
+            $eligible = $sellerOrder !== null
+                && $this->wallets->isSellerOrderSettlementEligible($sellerOrder);
+            $settlement = ShippingSettlement::query()->whereKey($stub->id)->lockForUpdate()->firstOrFail();
+
+            if (! $settlement->isInterHub()) {
+                throw new ConflictHttpException('Only a snapshotted inter-hub outbound settlement has an origin-provider remittance.');
+            }
+
+            $originRemittance = ShippingSettlementOriginRemittance::query()
+                ->where('shipping_settlement_id', $settlement->id)
+                ->lockForUpdate()
+                ->first();
+            if (! $originRemittance
+                || (int) $originRemittance->logistics_profile_id !== (int) $settlement->origin_logistics_profile_id
+                || (int) $originRemittance->amount_minor !== (int) $settlement->origin_logistics_share_minor
+                || (int) $originRemittance->amount_minor < 1) {
+                throw new ConflictHttpException('The origin Logistics remittance does not match the immutable settlement allocation.');
+            }
+
+            $expectedAmount = (int) $settlement->origin_logistics_share_minor;
+            if ($actualAmountMinor !== $expectedAmount) {
+                throw ValidationException::withMessages([
+                    'actual_amount' => 'Record the exact origin Logistics remittance of ₱'.number_format($expectedAmount / 100, 2).'.',
+                ]);
+            }
+
+            if ($originRemittance->status === 'remitted') {
+                $referenceMatches = $method === 'cash'
+                    ? filled($originRemittance->remittance_reference)
+                    : hash_equals((string) $originRemittance->remittance_reference, trim($reference));
+                if ((int) $originRemittance->amount_minor === $actualAmountMinor
+                    && $originRemittance->remittance_method === $method
+                    && (int) ($originRemittance->logistics_payout_account_id ?? 0) === (int) ($payoutAccountId ?? 0)
+                    && $referenceMatches
+                    && $originRemittance->remitted_on?->toDateString() === $paidDate->toDateString()
+                    && trim((string) $originRemittance->remittance_reason) === trim($reason)) {
+                    return $settlement->fresh(['riderEarning', 'originRemittance']);
+                }
+
+                throw new ConflictHttpException('The origin Logistics remittance has already been recorded.');
+            }
+
+            if (! $eligible) {
+                throw new ConflictHttpException('This shipping allocation is no longer settlement-eligible.');
+            }
+            if ($originRemittance->status !== 'pending' || $originRemittance->remitted_at !== null
+                || ! in_array($settlement->status, ['pending', 'partially_remitted'], true)) {
+                throw new ConflictHttpException('Only an eligible, unpaid origin Logistics allocation can be remitted.');
+            }
+
+            if ($method !== 'cash'
+                && $settlement->remitted_at !== null
+                && hash_equals((string) $settlement->remittance_reference, trim($reference))) {
+                throw ValidationException::withMessages([
+                    'reference' => 'Use the separate external transaction reference for the origin remittance.',
+                ]);
+            }
+
+            $payoutAccount = $this->verifiedPayoutAccount(
+                $settlement,
+                $method,
+                $payoutAccountId,
+                (int) $originRemittance->logistics_profile_id,
+            );
+            $remittanceReference = $method === 'cash'
+                ? $this->cashRemittanceReference()
+                : trim($reference);
+            $oldValues = [
+                'status' => $settlement->status,
+                'origin_remittance_status' => $originRemittance->status,
+                'amount_minor' => (int) $originRemittance->amount_minor,
+            ];
+
+            $originRemittance->update([
+                'status' => 'remitted',
+                'remittance_method' => $method,
+                'remittance_reference' => $remittanceReference,
+                'remitted_on' => $paidDate->toDateString(),
+                'remitted_at' => now(),
+                'remitted_by' => $admin->id,
+                'remittance_reason' => trim($reason),
+                'logistics_payout_account_id' => $payoutAccount?->id,
+                'remitted_to_provider' => $payoutAccount?->provider_name,
+                'remitted_to_account_name' => $payoutAccount?->account_name,
+                'remitted_to_last4' => $payoutAccount?->destination_last4,
+            ]);
+
+            $earning = RiderEarning::query()
+                ->where('shipping_settlement_id', $settlement->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $this->refreshOutboundRemittanceState($settlement, $earning);
+            $settlement->refresh();
+
+            $this->audit->record(
+                action: 'shipping_settlement.remitted_to_origin_logistics',
+                module: 'Finance',
+                subject: $originRemittance,
+                description: "Origin Logistics share for settlement {$settlement->settlement_no} was recorded as remitted.",
+                oldValues: $oldValues,
+                newValues: [
+                    'status' => $settlement->status,
+                    'settlement_id' => (int) $settlement->id,
+                    'settlement_no' => $settlement->settlement_no,
+                    'shipment_id' => (int) $settlement->shipment_id,
+                    'origin_logistics_profile_id' => (int) $originRemittance->logistics_profile_id,
+                    'origin_logistics_share_minor' => (int) $originRemittance->amount_minor,
+                    'destination_logistics_profile_id' => (int) $settlement->logistics_profile_id,
+                    'rider_profile_id' => (int) $settlement->rider_profile_id,
+                    'method' => $method,
+                    'reference' => $remittanceReference,
+                    'logistics_payout_account_id' => $payoutAccount?->id,
+                    'remitted_to_provider' => $payoutAccount?->provider_name,
+                    'remitted_to_last4' => $payoutAccount?->destination_last4,
+                    'paid_on' => $paidDate->toDateString(),
+                    'reason' => trim($reason),
+                ],
+                severity: 'warning',
+                request: $request,
+            );
+
+            return $settlement->fresh(['riderEarning', 'originRemittance']);
+        }, attempts: 3);
+    }
+
+    private function refreshOutboundRemittanceState(ShippingSettlement $settlement, RiderEarning $earning): void
+    {
+        $finalExpectedMinor = $settlement->expectedFinalLogisticsRemittanceMinor();
+        $allocationTotalMinor = $finalExpectedMinor + ($settlement->isInterHub()
+            ? (int) $settlement->origin_logistics_share_minor
+            : 0);
+        if ($allocationTotalMinor !== (int) $settlement->original_shipping_fee_minor) {
+            throw new ConflictHttpException('The shipping allocations no longer reconcile to the original fee snapshot.');
+        }
+
+        $finalRemitted = $settlement->remitted_at !== null;
+        if ($finalRemitted && (int) $settlement->remitted_amount_minor !== $finalExpectedMinor) {
+            throw new ConflictHttpException('The destination Logistics remittance no longer matches the settlement snapshot.');
+        }
+
+        $originRemittance = null;
+        if ($settlement->isInterHub()) {
+            $originRemittance = ShippingSettlementOriginRemittance::query()
+                ->where('shipping_settlement_id', $settlement->id)
+                ->lockForUpdate()
+                ->first();
+            if (! $originRemittance
+                || (int) $originRemittance->logistics_profile_id !== (int) $settlement->origin_logistics_profile_id
+                || (int) $originRemittance->amount_minor !== (int) $settlement->origin_logistics_share_minor) {
+                throw new ConflictHttpException('The origin Logistics remittance no longer matches the settlement snapshot.');
+            }
+        }
+
+        $originRemitted = ! $settlement->isInterHub()
+            || ($originRemittance?->status === 'remitted'
+                && $originRemittance->remitted_at !== null
+                && (int) $originRemittance->amount_minor === (int) $settlement->origin_logistics_share_minor);
+        $allRemitted = $finalRemitted && $originRemitted;
+        $anyRemitted = $finalRemitted || $originRemittance?->status === 'remitted';
+        $nextStatus = $allRemitted ? 'remitted' : ($anyRemitted ? 'partially_remitted' : 'pending');
+
+        if ($settlement->status !== $nextStatus) {
+            $settlement->update(['status' => $nextStatus]);
+        }
+
+        if ($allRemitted) {
+            if ((int) $earning->logistics_profile_id !== (int) $settlement->logistics_profile_id
+                || (int) $earning->rider_profile_id !== (int) $settlement->rider_profile_id
+                || (int) $earning->amount_minor !== (int) $settlement->rider_share_minor) {
+                throw new ConflictHttpException('The Rider earning no longer matches this shipping allocation.');
+            }
+            if ($earning->status === 'pending') {
+                $earning->update(['status' => 'posted', 'posted_at' => now()]);
+                $this->broadcastRiderEarningUpdated($earning);
+            } elseif ($earning->status !== 'posted' && $earning->status !== 'paid') {
+                throw new ConflictHttpException('The linked Rider earning is not payable.');
+            }
+        } elseif ($earning->status !== 'pending') {
+            throw new ConflictHttpException('The Rider earning cannot be released before every provider remittance is complete.');
+        }
     }
 
     private function verifiedPayoutAccount(
         ShippingSettlement $settlement,
         string $method,
         ?int $payoutAccountId,
+        ?int $logisticsProfileId = null,
     ): ?LogisticsPayoutAccount {
         $requiresAccount = in_array($method, ['bank_transfer', 'gcash'], true);
         if (! $requiresAccount) {
@@ -373,7 +678,7 @@ class ShippingSettlementService
 
         $account = LogisticsPayoutAccount::query()
             ->whereKey($payoutAccountId)
-            ->where('logistics_profile_id', $settlement->logistics_profile_id)
+            ->where('logistics_profile_id', $logisticsProfileId ?? $settlement->logistics_profile_id)
             ->where('status', 'verified')
             ->lockForUpdate()
             ->first();
@@ -615,34 +920,24 @@ class ShippingSettlementService
         $this->validatePayoutDetails($actualAmountMinor, $method, $reference, $paidOn, $reason);
         $paidDate = $this->paidDate($paidOn);
 
-        return DB::transaction(function () use ($logisticsUser, $profile, $earningId, $actualAmountMinor, $method, $reference, $paidDate, $reason, $request): RiderEarningPayout {
-            $earningStub = RiderEarning::query()
+        return DB::transaction(function () use ($profile, $earningId, $actualAmountMinor, $method, $reference, $paidDate, $reason): RiderEarningPayout {
+            $earning = RiderEarning::query()
                 ->whereKey($earningId)
                 ->where('logistics_profile_id', $profile->id)
                 ->whereNotNull('shipping_settlement_id')
-                ->firstOrFail();
-            $settlement = ShippingSettlement::query()
-                ->whereKey($earningStub->shipping_settlement_id)
-                ->where('logistics_profile_id', $profile->id)
                 ->lockForUpdate()
                 ->firstOrFail();
-            $earning = RiderEarning::query()
-                ->whereKey($earningStub->id)
-                ->where('logistics_profile_id', $profile->id)
-                ->lockForUpdate()
-                ->firstOrFail();
-            $rider = RiderProfile::query()
-                ->whereKey($earning->rider_profile_id)
-                ->where('logistics_profile_id', $profile->id)
-                ->first();
-            if (! $rider) {
-                throw new AuthorizationException('This Rider does not belong to your Logistics provider.');
-            }
 
             $existing = RiderEarningPayout::query()
                 ->where('rider_earning_id', $earning->id)
+                ->where('logistics_profile_id', $profile->id)
                 ->lockForUpdate()
                 ->first();
+            if (RiderPayoutBatchItem::query()->where('rider_earning_id', $earning->id)->exists()) {
+                throw new ConflictHttpException(
+                    'This earning is reserved in a consolidated payout batch; use the batch review and payment workflow.'
+                );
+            }
             if ($existing) {
                 $referenceMatches = $method === 'cash'
                     ? str_starts_with((string) $existing->reference, 'LRP-')
@@ -657,64 +952,9 @@ class ShippingSettlementService
                 throw new ConflictHttpException('A payout has already been recorded for this Rider earning.');
             }
 
-            if ($settlement->status !== 'remitted' || ! $settlement->remitted_at) {
-                throw new ConflictHttpException('Admin/Finance must remit the shipping allocation before Rider payout.');
-            }
-            if ($earning->status !== 'posted' || $earning->paid_at !== null) {
-                throw new ConflictHttpException('Only a posted, unpaid Rider earning can be paid.');
-            }
-            if ($actualAmountMinor !== (int) $settlement->rider_share_minor
-                || $actualAmountMinor !== (int) $earning->amount_minor) {
-                throw ValidationException::withMessages([
-                    'actual_amount' => 'Record the exact Rider pool payout of ₱'.number_format((int) $settlement->rider_share_minor / 100, 2).'.',
-                ]);
-            }
-
-            $payoutReference = $method === 'cash'
-                ? $this->riderCashPayoutReference()
-                : trim($reference);
-
-            $payout = RiderEarningPayout::query()->create([
-                'rider_earning_id' => $earning->id,
-                'logistics_profile_id' => $profile->id,
-                'amount_minor' => $actualAmountMinor,
-                'method' => $method,
-                'reference' => $payoutReference,
-                'paid_on' => $paidDate->toDateString(),
-                'recorded_by' => $logisticsUser->id,
-                'reason' => trim($reason),
-            ]);
-            $earning->update([
-                'status' => 'paid',
-                'paid_at' => now(),
-            ]);
-
-            $this->audit->record(
-                action: 'rider_earning.externally_paid',
-                module: 'Logistics',
-                subject: $payout,
-                description: "Rider earning {$earning->id} was recorded as paid by Logistics.",
-                oldValues: ['status' => 'posted', 'paid_at' => null],
-                newValues: [
-                    'status' => 'paid',
-                    'settlement_type' => $settlement->settlement_type,
-                    'rider_earning_id' => (int) $earning->id,
-                    'shipping_settlement_id' => (int) $settlement->id,
-                    'return_request_id' => $settlement->return_request_id === null ? null : (int) $settlement->return_request_id,
-                    'rider_profile_id' => (int) $rider->id,
-                    'logistics_profile_id' => (int) $profile->id,
-                    'amount_minor' => $actualAmountMinor,
-                    'method' => $method,
-                    'reference' => $payoutReference,
-                    'paid_on' => $paidDate->toDateString(),
-                    'reason' => trim($reason),
-                ],
-                severity: 'warning',
-                request: $request,
+            throw new ConflictHttpException(
+                'New Rider payments must go through a consolidated payout batch and Logistics approval.'
             );
-            $this->broadcastRiderEarningUpdated($earning);
-
-            return $payout->fresh(['riderEarning', 'logisticsProfile', 'recorder']);
         }, attempts: 3);
     }
 
@@ -840,16 +1080,51 @@ class ShippingSettlementService
                 return;
             }
 
-            $logisticsShareMinor = intdiv($feeMinor * 40, 100);
-            $riderShareMinor = $feeMinor - $logisticsShareMinor;
+            $transfer = ShipmentTransfer::query()
+                ->where('shipment_id', $shipment->id)
+                ->lockForUpdate()
+                ->first();
+            $currentProviderId = (int) $shipment->logistics_profile_id;
+            $shipmentOriginId = (int) ($shipment->origin_logistics_profile_id ?? $currentProviderId);
+            $originProviderId = null;
+            $settlementMode = 'single_provider';
+
+            if ($transfer) {
+                if ($transfer->status !== 'accepted'
+                    || $transfer->accepted_at === null
+                    || (int) $transfer->from_logistics_profile_id !== $shipmentOriginId
+                    || (int) $transfer->to_logistics_profile_id !== $currentProviderId
+                    || (int) $transfer->from_logistics_profile_id === $currentProviderId) {
+                    throw new ConflictHttpException('The accepted shipment transfer does not match the immutable origin and final Logistics providers.');
+                }
+
+                $originProviderId = (int) $transfer->from_logistics_profile_id;
+                $settlementMode = 'inter_hub';
+            } elseif ($shipmentOriginId !== $currentProviderId) {
+                throw new ConflictHttpException('The shipment origin and final Logistics providers differ, but no accepted transfer is recorded.');
+            }
+
+            if ($settlementMode === 'inter_hub') {
+                $originLogisticsShareMinor = intdiv($feeMinor * 10, 100);
+                $logisticsShareMinor = intdiv($feeMinor * 30, 100);
+                $riderShareMinor = $feeMinor - $originLogisticsShareMinor - $logisticsShareMinor;
+            } else {
+                $originLogisticsShareMinor = 0;
+                $logisticsShareMinor = intdiv($feeMinor * 40, 100);
+                $riderShareMinor = $feeMinor - $logisticsShareMinor;
+            }
             $fundingSource = (string) ($sellerOrder->shipping_funding_source
                 ?: data_get($quote, 'shipping_fee_breakdown.funding_source', $subsidyMinor > 0 ? 'buyer_and_platform' : 'buyer'));
             $settlement = ShippingSettlement::query()->firstOrCreate(
                 ['shipment_id' => $shipment->id],
                 [
                     'settlement_no' => 'SPS-'.Str::upper((string) Str::ulid()),
+                    'settlement_type' => 'outbound',
+                    'settlement_mode' => $settlementMode,
                     'seller_order_id' => $sellerOrder->id,
                     'logistics_profile_id' => $shipment->logistics_profile_id,
+                    'origin_logistics_profile_id' => $originProviderId,
+                    'origin_logistics_share_minor' => $originLogisticsShareMinor,
                     'rider_profile_id' => $rider->id,
                     'delivery_attempt_id' => $finalAttempt->id,
                     'zone_level' => $zoneLevel,
@@ -871,6 +1146,28 @@ class ShippingSettlementService
                 throw new ConflictHttpException('An existing shipping settlement does not match the immutable order snapshot.');
             }
 
+            if ($settlement->isInterHub()) {
+                if ((int) $settlement->origin_logistics_profile_id !== (int) $originProviderId
+                    || (int) $settlement->origin_logistics_share_minor !== $originLogisticsShareMinor
+                    || (int) $settlement->logistics_share_minor !== $logisticsShareMinor
+                    || (int) $settlement->rider_share_minor !== $riderShareMinor) {
+                    throw new ConflictHttpException('An existing inter-hub settlement does not match its immutable provider allocation.');
+                }
+
+                $originRemittance = ShippingSettlementOriginRemittance::query()->firstOrCreate(
+                    ['shipping_settlement_id' => $settlement->id],
+                    [
+                        'logistics_profile_id' => $originProviderId,
+                        'amount_minor' => $originLogisticsShareMinor,
+                        'status' => 'pending',
+                    ],
+                );
+                if ((int) $originRemittance->logistics_profile_id !== $originProviderId
+                    || (int) $originRemittance->amount_minor !== $originLogisticsShareMinor) {
+                    throw new ConflictHttpException('The origin Logistics remittance does not match its immutable settlement allocation.');
+                }
+            }
+
             $earning = RiderEarning::query()->firstOrCreate(
                 ['shipping_settlement_id' => $settlement->id],
                 [
@@ -883,8 +1180,13 @@ class ShippingSettlementService
                     'status' => 'pending',
                     'description' => '60% Rider pool for '.$shipment->shipment_no,
                     'earned_at' => $settlement->eligible_at,
+                    'rider_shift_id' => $this->riderShiftIdForEvent(
+                        (int) $rider->id,
+                        Carbon::parse($finalAttempt->attempted_at),
+                    ),
                 ],
             );
+            $this->attachEventShiftIfMissing($earning, (int) $rider->id, Carbon::parse($finalAttempt->attempted_at));
             if ($earning->wasRecentlyCreated) {
                 $this->broadcastRiderEarningUpdated($earning);
             }
@@ -1043,8 +1345,13 @@ class ShippingSettlementService
                     'status' => 'pending',
                     'description' => '60% return Rider pool for final Seller delivery '.$shipment->shipment_no,
                     'earned_at' => $settlement->eligible_at,
+                    'rider_shift_id' => $this->riderShiftIdForEvent(
+                        (int) $rider->id,
+                        Carbon::parse($finalAttempt->attempted_at),
+                    ),
                 ],
             );
+            $this->attachEventShiftIfMissing($earning, (int) $rider->id, Carbon::parse($finalAttempt->attempted_at));
             if ((int) $earning->rider_profile_id !== (int) $rider->id
                 || (int) $earning->shipment_id !== (int) $shipment->id
                 || (int) $earning->logistics_profile_id !== (int) $shipment->logistics_profile_id
@@ -1057,6 +1364,37 @@ class ShippingSettlementService
                 $this->broadcastRiderEarningUpdated($earning);
             }
         }, attempts: 3);
+    }
+
+    private function attachEventShiftIfMissing(
+        RiderEarning $earning,
+        int $riderProfileId,
+        Carbon $occurredAt,
+    ): void {
+        if ($earning->rider_shift_id !== null) {
+            return;
+        }
+
+        $shiftId = $this->riderShiftIdForEvent($riderProfileId, $occurredAt);
+
+        if ($shiftId !== null) {
+            $earning->update(['rider_shift_id' => $shiftId]);
+        }
+    }
+
+    private function riderShiftIdForEvent(int $riderProfileId, Carbon $occurredAt): ?int
+    {
+        $shiftId = RiderShift::query()
+            ->where('rider_profile_id', $riderProfileId)
+            ->where('checked_in_at', '<=', $occurredAt)
+            ->where(function ($query) use ($occurredAt): void {
+                $query->whereNull('checked_out_at')
+                    ->orWhere('checked_out_at', '>=', $occurredAt);
+            })
+            ->orderByDesc('checked_in_at')
+            ->value('id');
+
+        return $shiftId === null ? null : (int) $shiftId;
     }
 
     private function statusVersionForEarnings(EloquentBuilder $earnings): string

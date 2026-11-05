@@ -18,14 +18,17 @@ use App\Models\SortingZone;
 use App\Models\PickupAssignment;
 use App\Models\PickupRequest;
 use App\Models\RiderProfile;
+use App\Models\RiderEarning;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
 use App\Services\ParcelIntakeService;
 use App\Services\LinehaulRunService;
 use App\Services\ShipmentHandoffService;
+use App\Services\RiderShiftService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Tests\TestCase;
 
@@ -1121,6 +1124,326 @@ class WaybillIntakeTest extends TestCase
 
         $this->expectException(ConflictHttpException::class);
         $service->accept($record['waybill']->waybill_no, $this->logisticsB);
+    }
+
+    public function test_courier_linehaul_history_is_scoped_to_verified_courier_and_denies_local_rider(): void
+    {
+        $ownRecord = $this->makeCrossCityShipment('COURIER-HISTORY-OWN');
+        $otherRecord = $this->makeCrossCityShipment('COURIER-HISTORY-OTHER');
+        [$courierUser, $courier] = $this->makeCourier('COURIER-HISTORY-OWN');
+        [, $otherCourier] = $this->makeCourier('COURIER-HISTORY-OTHER');
+
+        $runs = app(LinehaulRunService::class);
+        $ownRun = $runs->assign([$ownRecord['shipment']->id], $courier->id, $this->logisticsA);
+        $otherRun = $runs->assign([$otherRecord['shipment']->id], $otherCourier->id, $this->logisticsA);
+
+        $this->actingAs($courierUser)
+            ->get(route('rider.courier.history.index'))
+            ->assertOk()
+            ->assertSee('Line-haul History')
+            ->assertSee('href="'.route('rider.courier.history.index').'" class="ops-nav-link is-active"', false)
+            ->assertSee($ownRun->run_no)
+            ->assertSee($ownRecord['waybill']->waybill_no)
+            ->assertDontSee($otherRun->run_no);
+
+        $localRiderUser = User::factory()->create([
+            'name' => 'Local Rider History Test',
+            'email' => 'local-rider-history-test@example.test',
+            'role' => 'rider',
+            'status' => 'active',
+            'logistics_id' => $this->logisticsA->id,
+            'vehicle_type' => 'Motorcycle',
+            'plate_number' => 'LOCAL-HISTORY-TEST',
+        ]);
+        RiderProfile::query()->create([
+            'user_id' => $localRiderUser->id,
+            'logistics_profile_id' => $this->profileA->id,
+            'home_sorting_center_id' => $this->centerA->id,
+            'vehicle_type' => 'Motorcycle',
+            'plate_number' => 'LOCAL-HISTORY-TEST',
+            'work_type' => 'local',
+            'availability_status' => 'available',
+            'verification_status' => 'approved',
+        ]);
+
+        $this->actingAs($localRiderUser)
+            ->get(route('rider.courier.history.index'))
+            ->assertForbidden();
+    }
+
+    public function test_courier_check_in_and_check_out_are_reported_in_philippine_time(): void
+    {
+        [$courierUser, $courier] = $this->makeCourier('PHT-ATTENDANCE');
+        $this->travelTo(Carbon::parse('2026-11-04 06:45:00', 'UTC'));
+
+        $this->from(route('rider.courier.dashboard'))
+            ->actingAs($courierUser)
+            ->post(route('rider.attendance.check-in'))
+            ->assertRedirect(route('rider.courier.dashboard'))
+            ->assertSessionHas('success', fn (string $message): bool => str_contains($message, '2:45 PM PHT'));
+
+        $shift = $courier->shifts()->sole();
+        $this->assertSame('06:45', $shift->checked_in_at?->format('H:i'));
+        $this->assertSame('14:45', $shift->checkedInAtPht()?->format('H:i'));
+
+        $this->actingAs($courierUser)
+            ->get(route('rider.courier.dashboard'))
+            ->assertOk()
+            ->assertSee('Checked in Nov 4, 2026 · 2:45 PM PHT');
+
+        $this->travelTo(Carbon::parse('2026-11-04 07:45:00', 'UTC'));
+        $this->from(route('rider.courier.dashboard'))
+            ->actingAs($courierUser)
+            ->post(route('rider.attendance.check-out'))
+            ->assertRedirect(route('rider.courier.dashboard'))
+            ->assertSessionHas('success', fn (string $message): bool => str_contains($message, '3:45 PM PHT'));
+
+        $shift->refresh();
+        $this->assertSame('15:45', $shift->checkedOutAtPht()?->format('H:i'));
+    }
+
+    public function test_courier_daily_pay_requires_a_closed_shift_and_full_destination_acceptance(): void
+    {
+        $first = $this->makeCrossCityShipment('DAILY-PAY-MANIFEST-A');
+        $second = $this->makeCrossCityShipment('DAILY-PAY-MANIFEST-B');
+        [$courierUser, $courier] = $this->makeCourier('DAILY-PAY-MANIFEST');
+        $this->travelTo(Carbon::parse('2026-11-03 20:00:00', 'Asia/Manila'));
+        $shiftService = app(RiderShiftService::class);
+        $shiftService->checkIn($courier, $courierUser);
+
+        $runs = app(LinehaulRunService::class);
+        $run = $runs->assign(
+            [$first['shipment']->id, $second['shipment']->id],
+            $courier->id,
+            $this->logisticsA,
+        );
+        $runs->startLoading($run, $courierUser);
+        $runs->markLoaded($run, $courierUser);
+        $runs->depart($run, $courierUser);
+        $runs->arrive($run, $courierUser);
+        $shift = $shiftService->checkOut($courier, $courierUser);
+
+        // Courier arrival and a closed shift are not enough while even one
+        // shipment remains unaccepted at the destination.
+        $this->assertDatabaseMissing('rider_earnings', [
+            'rider_profile_id' => $courier->id,
+            'type' => 'courier_daily',
+        ]);
+
+        $handoffs = app(ShipmentHandoffService::class);
+        $handoffs->accept($first['waybill']->waybill_no, $this->logisticsB);
+
+        $this->assertSame('arrived', $run->fresh()->status);
+        $this->assertDatabaseMissing('rider_earnings', [
+            'rider_profile_id' => $courier->id,
+            'type' => 'courier_daily',
+        ]);
+
+        // Acceptance may happen the next calendar day; credit remains on the
+        // shift's work date, while earned_at reflects when eligibility closed.
+        $this->travelTo(Carbon::parse('2026-11-04 01:00:00', 'Asia/Manila'));
+        $handoffs->accept($second['waybill']->waybill_no, $this->logisticsB);
+
+        $earning = RiderEarning::query()
+            ->where('rider_profile_id', $courier->id)
+            ->where('type', 'courier_daily')
+            ->sole();
+
+        $this->assertSame('completed', $run->fresh()->status);
+        $this->assertSame('posted', $earning->status);
+        $this->assertSame(65000, (int) $earning->amount_minor);
+        $this->assertSame(65000, (int) $earning->rate_minor);
+        $this->assertSame((int) $shift->id, (int) $earning->rider_shift_id);
+        $this->assertSame((int) $run->id, (int) $earning->linehaul_run_id);
+        $this->assertSame($shift->checked_in_at->timezone('Asia/Manila')->toDateString(), $earning->work_date->toDateString());
+        $this->assertTrue($earning->earned_at->greaterThanOrEqualTo($run->fresh()->completed_at));
+
+        $riderSummary = app(\App\Services\RiderEarningsService::class)->summary($courier);
+        $this->assertSame(0, $riderSummary['today']['amount_minor']);
+        $this->assertSame(65000, $riderSummary['week']['amount_minor']);
+        $this->assertSame(65000, $riderSummary['month']['amount_minor']);
+
+        $dailyEarnings = app(\App\Services\CourierDailyEarningService::class);
+        $dailyEarnings->reconcileShift($shift->fresh());
+        $dailyEarnings->reconcileRun($run->fresh());
+
+        $this->assertSame(1, RiderEarning::query()
+            ->where('rider_profile_id', $courier->id)
+            ->where('type', 'courier_daily')
+            ->count());
+
+        $migration = require database_path('migrations/2026_11_04_000001_add_courier_daily_earnings.php');
+
+        try {
+            $migration->down();
+            $this->fail('Rollback must preserve Courier daily earnings history.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('Courier daily earning history exists', $exception->getMessage());
+        }
+
+        $this->assertTrue(\Illuminate\Support\Facades\Schema::hasColumn('rider_earnings', 'work_date'));
+
+    }
+
+    public function test_courier_daily_pay_is_reconciled_at_check_out_and_only_once_for_multiple_runs(): void
+    {
+        $first = $this->makeCrossCityShipment('DAILY-PAY-RUN-FIRST');
+        $second = $this->makeCrossCityShipment('DAILY-PAY-RUN-SECOND');
+        [$courierUser, $courier] = $this->makeCourier('DAILY-PAY-MULTIPLE-RUNS');
+        $shiftService = app(RiderShiftService::class);
+        $shiftService->checkIn($courier, $courierUser);
+        $runs = app(LinehaulRunService::class);
+
+        $firstRun = $runs->assign([$first['shipment']->id], $courier->id, $this->logisticsA);
+        $this->completeRunAtDestination($firstRun, $courierUser, $first['waybill']->waybill_no);
+
+        $this->assertDatabaseMissing('rider_earnings', [
+            'rider_profile_id' => $courier->id,
+            'type' => 'courier_daily',
+        ]);
+
+        // A second run assigned inside the same shift also qualifies, but one
+        // work date must still produce only one daily ledger row.
+        $secondRun = $runs->assign([$second['shipment']->id], $courier->id, $this->logisticsA);
+        $runs->startLoading($secondRun, $courierUser);
+        $runs->markLoaded($secondRun, $courierUser);
+        $runs->depart($secondRun, $courierUser);
+        $runs->arrive($secondRun, $courierUser);
+
+        $shift = $shiftService->checkOut($courier, $courierUser);
+        $earning = RiderEarning::query()
+            ->where('rider_profile_id', $courier->id)
+            ->where('type', 'courier_daily')
+            ->sole();
+
+        $this->assertSame(65000, (int) $earning->amount_minor);
+        $this->assertSame((int) $firstRun->id, (int) $earning->linehaul_run_id);
+
+        app(ShipmentHandoffService::class)->accept($second['waybill']->waybill_no, $this->logisticsB);
+        app(\App\Services\CourierDailyEarningService::class)->reconcileShift($shift->fresh());
+
+        $this->assertSame(1, RiderEarning::query()
+            ->where('rider_profile_id', $courier->id)
+            ->where('type', 'courier_daily')
+            ->count());
+
+        // Another qualifying shift on the same work date must not create a
+        // second daily earning.
+        $secondShift = $shiftService->checkIn($courier, $courierUser);
+        $third = $this->makeCrossCityShipment('DAILY-PAY-SECOND-SHIFT');
+        $thirdRun = $runs->assign([$third['shipment']->id], $courier->id, $this->logisticsA);
+        $runs->startLoading($thirdRun, $courierUser);
+        $runs->markLoaded($thirdRun, $courierUser);
+        $runs->depart($thirdRun, $courierUser);
+        $runs->arrive($thirdRun, $courierUser);
+        $shiftService->checkOut($courier, $courierUser);
+        app(ShipmentHandoffService::class)->accept($third['waybill']->waybill_no, $this->logisticsB);
+
+        $this->assertSame($earning->work_date->toDateString(), $secondShift->checked_in_at->timezone('Asia/Manila')->toDateString());
+        $this->assertSame(1, RiderEarning::query()
+            ->where('rider_profile_id', $courier->id)
+            ->where('type', 'courier_daily')
+            ->count());
+    }
+
+    public function test_attendance_without_a_qualifying_assigned_run_does_not_create_courier_daily_pay(): void
+    {
+        [$attendingCourierUser, $attendingCourier] = $this->makeCourier('DAILY-PAY-ATTENDANCE-ONLY');
+        $shifts = app(RiderShiftService::class);
+        $shifts->checkIn($attendingCourier, $attendingCourierUser);
+        $shifts->checkOut($attendingCourier, $attendingCourierUser);
+
+        $this->assertDatabaseMissing('rider_earnings', [
+            'rider_profile_id' => $attendingCourier->id,
+            'type' => 'courier_daily',
+        ]);
+
+        $record = $this->makeCrossCityShipment('DAILY-PAY-WITHOUT-SHIFT');
+        [$unattendedCourierUser, $unattendedCourier] = $this->makeCourier('DAILY-PAY-WITHOUT-SHIFT');
+        $run = app(LinehaulRunService::class)->assign(
+            [$record['shipment']->id],
+            $unattendedCourier->id,
+            $this->logisticsA,
+        );
+        $this->completeRunAtDestination($run, $unattendedCourierUser, $record['waybill']->waybill_no);
+
+        $this->assertDatabaseMissing('rider_earnings', [
+            'rider_profile_id' => $unattendedCourier->id,
+            'type' => 'courier_daily',
+        ]);
+    }
+
+    public function test_logistics_can_record_the_actual_courier_daily_payout_and_only_for_its_own_courier(): void
+    {
+        $record = $this->makeCrossCityShipment('DAILY-PAY-PAYOUT');
+        [$courierUser, $courier] = $this->makeCourier('DAILY-PAY-PAYOUT');
+        $shifts = app(RiderShiftService::class);
+        $shifts->checkIn($courier, $courierUser);
+        $run = app(LinehaulRunService::class)->assign([$record['shipment']->id], $courier->id, $this->logisticsA);
+        $this->completeRunAtDestination($run, $courierUser, $record['waybill']->waybill_no);
+        $shifts->checkOut($courier, $courierUser);
+
+        $this->actingAs($this->logisticsB)
+            ->post(route('logistics.settlements.payout-batches.store'), [
+                'rider_profile_id' => $courier->id,
+            ])
+            ->assertNotFound();
+
+        $this->actingAs($this->logisticsA)
+            ->post(route('logistics.settlements.payout-batches.store'), [
+                'rider_profile_id' => $courier->id,
+                'notes' => 'Courier daily earnings payout.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $batch = \App\Models\RiderPayoutBatch::query()->sole();
+        $this->assertSame(65000, (int) $batch->total_minor);
+
+        $this->actingAs($this->logisticsA)
+            ->post(route('logistics.settlements.payout-batches.approve', $batch->id))
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($this->logisticsA)
+            ->post(route('logistics.settlements.payout-batches.record-paid', $batch->id), [
+                'method' => 'gcash',
+                'reference' => 'GCASH-COURIER-650',
+                'paid_on' => today()->toDateString(),
+                'reason' => 'Paid the Courier daily earning.',
+                'payout_confirmed' => '1',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('rider_earnings', [
+            'rider_profile_id' => $courier->id,
+            'type' => 'courier_daily',
+            'amount_minor' => 65000,
+            'status' => 'paid',
+        ]);
+        $this->assertDatabaseHas('rider_earning_payouts', [
+            'logistics_profile_id' => $this->profileA->id,
+            'amount_minor' => 65000,
+            'method' => 'gcash',
+            'reference' => 'GCASH-COURIER-650',
+        ]);
+
+        $this->actingAs($courierUser)
+            ->get(route('rider.earnings.index'))
+            ->assertOk()
+            ->assertSee('₱650.00')
+            ->assertSee('GCASH-COURIER-650');
+    }
+
+    private function completeRunAtDestination(LinehaulRun $run, User $courier, string $waybillNo): void
+    {
+        $runs = app(LinehaulRunService::class);
+        $runs->startLoading($run, $courier);
+        $runs->markLoaded($run, $courier);
+        $runs->depart($run, $courier);
+        $runs->arrive($run, $courier);
+        app(ShipmentHandoffService::class)->accept($waybillNo, $this->logisticsB);
     }
 
     /** @return array{0: User, 1: LogisticsProfile, 2: SortingCenter} */

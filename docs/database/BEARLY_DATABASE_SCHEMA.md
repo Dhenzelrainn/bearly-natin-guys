@@ -421,8 +421,13 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `dispatched_at` | `timestamp` | YES | — |  |
 | `completed_at` | `timestamp` | YES | — |  |
 | `cancelled_at` | `timestamp` | YES | — |  |
+| `planned_window_start` | `timestamp` | YES | — |  |
+| `planned_window_end` | `timestamp` | YES | — |  |
 | `created_at` | `timestamp` | YES | — |  |
 | `updated_at` | `timestamp` | YES | — |  |
+| `assignment_mode` | `varchar(24)` | YES | — |  |
+| `rider_zone_id` | `bigint unsigned` | YES | — | MUL |
+| `assignment_reason` | `text` | YES | — |  |
 
 **Foreign keys**
 
@@ -430,14 +435,17 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 - `rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete RESTRICT.
 - `sorting_center_id` → `sorting_centers.id`; update NO ACTION, delete RESTRICT.
 - `sorting_zone_id` → `sorting_zones.id`; update NO ACTION, delete SET NULL.
+- `rider_zone_id` → `sorting_zones.id`; update NO ACTION, delete SET NULL. Shipment event metadata retains the zone ID/code snapshot after a zone is archived and permanently removed.
 
 **Indexes**
 
 - `dispatch_batches_batch_no_unique` (batch_no) — unique.
 - `dispatch_batches_prepared_by_foreign` (prepared_by) — index.
+- `dispatch_batches_rider_planned_window_idx` (rider_profile_id,planned_window_start) — index.
 - `dispatch_batches_rider_profile_id_foreign` (rider_profile_id) — index.
 - `dispatch_batches_sorting_center_id_foreign` (sorting_center_id) — index.
 - `dispatch_batches_sorting_zone_id_foreign` (sorting_zone_id) — index.
+- `dispatch_batches_rider_zone_idx` (rider_zone_id) — index.
 
 ## `dispute_events`
 
@@ -853,6 +861,8 @@ Finance-verified bank-transfer or GCash destinations owned by one Logistics prof
 | `created_at` | `timestamp` | YES | — |  |
 | `updated_at` | `timestamp` | YES | — |  |
 | `checkout_request_key` | `char(36)` | YES | — | MUL |
+| `delivery_latitude` | `decimal(10,7)` | YES | — |  |
+| `delivery_longitude` | `decimal(10,7)` | YES | — |  |
 
 **Foreign keys**
 
@@ -1638,21 +1648,36 @@ Append-only refund custody history with payout ID, event type, from/to statuses,
 | `paid_at` | `timestamp` | YES | — |  |
 | `created_at` | `timestamp` | YES | — |  |
 | `updated_at` | `timestamp` | YES | — |  |
+| `parcel_id` | `bigint unsigned` | YES | — | MUL |
+| `rider_shift_id` | `bigint unsigned` | YES | — | MUL |
+| `linehaul_run_id` | `bigint unsigned` | YES | — | MUL |
+| `work_date` | `date` | YES | — | MUL |
+| `size_class_snapshot` | `varchar(20)` | YES | — |  |
+| `rate_minor` | `bigint unsigned` | YES | — |  |
 
 **Foreign keys**
 
 - `delivery_attempt_id` → `delivery_attempts.id`; update NO ACTION, delete SET NULL.
 - `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `linehaul_run_id` → `linehaul_runs.id`; update NO ACTION, delete SET NULL.
+- `parcel_id` → `parcels.id`; update NO ACTION, delete SET NULL.
 - `pickup_assignment_id` → `pickup_assignments.id`; update NO ACTION, delete SET NULL.
 - `rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete RESTRICT.
+- `rider_shift_id` → `rider_shifts.id`; update NO ACTION, delete SET NULL.
 - `shipping_settlement_id` → `shipping_settlements.id`; update NO ACTION, delete RESTRICT.
 - `shipment_id` → `shipments.id`; update NO ACTION, delete SET NULL.
 
 **Indexes**
 
 - `rider_earnings_delivery_attempt_id_foreign` (delivery_attempt_id) — index.
+- `rider_earnings_parcel_id_foreign` (parcel_id) — index.
 - `rider_earnings_pickup_assignment_id_foreign` (pickup_assignment_id) — index.
 - `rider_earnings_rider_profile_id_foreign` (rider_profile_id) — index.
+- `rider_earnings_rider_shift_id_foreign` (rider_shift_id) — index.
+- `rider_earnings_linehaul_run_id_foreign` (linehaul_run_id) — index.
+- `rider_earnings_courier_work_date_idx` (rider_profile_id,work_date) — index.
+- `rider_earnings_pickup_parcel_unique` (pickup_assignment_id,parcel_id) — unique.
+- `rider_earnings_courier_daily_unique` (rider_profile_id,type,work_date) — unique; `work_date` remains null for non-Courier ledger rows.
 - `rider_earnings_provider_status_idx` (logistics_profile_id,status,earned_at) — index.
 - `rider_earnings_shipping_settlement_id_unique` (shipping_settlement_id) — unique.
 
@@ -1683,12 +1708,106 @@ Append-only refund custody history with payout ID, event type, from/to statuses,
 - `rider_earning_payouts_provider_created_idx` (logistics_profile_id,created_at) — index.
 - `rider_earning_payouts_rider_earning_id_unique` (rider_earning_id) — unique.
 
+## `rider_payout_batches` (added by `2026_11_03_000001_add_flexible_rider_assignment_and_payouts`)
+
+One reviewed, provider-owned external payout for one Rider; batch items snapshot the eligible posted earning amounts/types across assignments and attendance shifts. The batch is not a wallet or transfer instruction.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `batch_no` | `varchar(40)` | NO | — | UNI |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `rider_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `status` | `varchar(24)` | NO | pending_review |  |
+| `total_minor` | `bigint unsigned` | NO | 0 |  |
+| `review_notes` | `text` | YES | — |  |
+| `reviewed_by` | `bigint unsigned` | YES | — | MUL |
+| `reviewed_at` | `timestamp` | YES | — |  |
+| `approved_by` | `bigint unsigned` | YES | — | MUL |
+| `approved_at` | `timestamp` | YES | — |  |
+| `method` | `varchar(30)` | YES | — |  |
+| `reference` | `varchar(150)` | YES | — |  |
+| `paid_on` | `date` | YES | — |  |
+| `recorded_by` | `bigint unsigned` | YES | — | MUL |
+| `reason` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `approved_by`, `recorded_by`, and `reviewed_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `rider_payout_batches_batch_no_unique` (batch_no) — unique.
+- `rider_payout_batches_provider_status_idx` (logistics_profile_id,status,created_at) — index.
+- `rider_payout_batches_rider_status_idx` (rider_profile_id,status) — index.
+
+## `rider_payout_batch_items` (added by `2026_11_03_000001_add_flexible_rider_assignment_and_payouts`)
+
+Unique earning allocation within a payout batch. External payment details and the actual paid transition are retained on the batch and the existing per-earning `rider_earning_payouts` records.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `rider_payout_batch_id` | `bigint unsigned` | NO | — | MUL |
+| `rider_earning_id` | `bigint unsigned` | NO | — | UNI |
+| `amount_minor` | `bigint unsigned` | NO | — |  |
+| `earning_type` | `varchar(30)` | NO | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `rider_earning_id` → `rider_earnings.id`; update NO ACTION, delete RESTRICT.
+- `rider_payout_batch_id` → `rider_payout_batches.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `rider_payout_batch_items_rider_earning_id_unique` (rider_earning_id) — unique.
+- `rider_payout_batch_items_batch_type_idx` (rider_payout_batch_id,earning_type) — index.
+
+## `rider_shifts` (added by `2026_11_03_000001_add_flexible_rider_assignment_and_payouts`)
+
+Local Rider attendance is report-only and does not gate existing per-job earnings. Courier daily compensation requires a closed check-in/out shift and a run assigned during that shift that is completed after destination Logistics accepts the full manifest; the ₱650 (65,000-centavo) earning is linked to the work-date shift and completed run. One Courier daily row is allowed per Rider/work date, and actual payout remains in the existing reviewed payout batch rather than a wallet.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `rider_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `checked_in_at` | `timestamp` | NO | — |  |
+| `checked_out_at` | `timestamp` | YES | — |  |
+| `check_in_source` | `varchar(30)` | NO | rider |  |
+| `check_out_source` | `varchar(30)` | YES | — |  |
+| `notes` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `rider_shifts_rider_checked_in_idx` (rider_profile_id,checked_in_at) — index.
+- `rider_shifts_rider_profile_id_foreign` (rider_profile_id) — index.
+
 ## `shipping_settlements`
 
 The `settlement_type` is `outbound` or `return`. Outbound rows use
 `original_shipping_fee_minor`; return rows use `return_shipping_fee_minor` and
-link the approved physical `return_request_id`. Both share the same audited
-Finance remittance and one-per-earning Rider payout lifecycle.
+link the approved physical `return_request_id`. A nullable `settlement_mode`
+preserves legacy snapshots: new single-provider outbound rows store
+`single_provider`, and new outbound rows with one accepted inter-hub transfer
+store `inter_hub`. Inter-hub rows snapshot the origin provider and 10% origin
+share here; their separate L1 remittance is stored in
+`shipping_settlement_origin_remittances`, while the existing remittance fields
+record L2's 90%. The row is `partially_remitted` until both are recorded, and
+the Rider earning remains pending until then. Returns remain on their existing
+40/60 split even when transferred. Existing settlement rows are not backfilled
+or rewritten by the inter-hub migration.
 The additive `2026_10_30_000001_add_logistics_payout_destinations` migration adds a nullable verified payout-account link and masked remittance destination snapshots; legacy remittance rows remain null.
 
 | Column | MySQL type | Null | Default | Key |
@@ -1703,6 +1822,8 @@ The additive `2026_10_30_000001_add_logistics_payout_destinations` migration add
 | `rider_profile_id` | `bigint unsigned` | NO | — | MUL |
 | `delivery_attempt_id` | `bigint unsigned` | NO | — | MUL |
 | `zone_level` | `tinyint unsigned` | NO | — |  |
+| `settlement_mode` | `varchar(24)` | YES | — |  |
+| `origin_logistics_profile_id` | `bigint unsigned` | YES | — | MUL |
 | `original_shipping_fee_minor` | `bigint unsigned` | NO | — |  |
 | `return_shipping_fee_minor` | `bigint unsigned` | YES | — |  |
 | `buyer_paid_shipping_fee_minor` | `bigint unsigned` | NO | — |  |
@@ -1710,6 +1831,7 @@ The additive `2026_10_30_000001_add_logistics_payout_destinations` migration add
 | `shipping_funding_source` | `varchar(40)` | NO | — |  |
 | `financially_responsible_party` | `varchar(20)` | YES | — |  |
 | `logistics_share_minor` | `bigint unsigned` | NO | — |  |
+| `origin_logistics_share_minor` | `bigint unsigned` | NO | 0 |  |
 | `rider_share_minor` | `bigint unsigned` | NO | — |  |
 | `status` | `varchar(24)` | NO | pending |  |
 | `eligible_at` | `timestamp` | NO | — |  |
@@ -1732,6 +1854,7 @@ The additive `2026_10_30_000001_add_logistics_payout_destinations` migration add
 - `delivery_attempt_id` → `delivery_attempts.id`; update NO ACTION, delete RESTRICT.
 - `financially_responsible_party` is a Seller/Platform snapshot for return rows; it has no FK.
 - `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `origin_logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
 - `logistics_payout_account_id` → `logistics_payout_accounts.id`; update NO ACTION, delete RESTRICT.
 - `remitted_by` → `users.id`; update NO ACTION, delete SET NULL.
 - `return_request_id` → `return_requests.id`; update NO ACTION, delete RESTRICT.
@@ -1742,11 +1865,52 @@ The additive `2026_10_30_000001_add_logistics_payout_destinations` migration add
 **Indexes**
 
 - `shipping_settlement_provider_status_idx` (logistics_profile_id,status,eligible_at) — index.
+- `origin_logistics_profile_id` foreign-key index — index.
 - `shipping_settlements_logistics_payout_account_id_foreign` (logistics_payout_account_id) — index.
 - `shipping_settlement_type_status_idx` (settlement_type,status,eligible_at) — index.
 - `shipping_settlements_return_request_id_unique` (return_request_id) — unique.
 - `shipping_settlements_settlement_no_unique` (settlement_no) — unique.
 - `shipping_settlements_shipment_id_unique` (shipment_id) — unique.
+
+## `shipping_settlement_origin_remittances`
+
+This table stores the independent Finance transfer of an inter-hub outbound
+shipment's 10% origin Logistics share. It is unique per settlement and
+snapshots its recipient, amount, payment reference/date/actor, verified
+destination link, and masked destination. It is created only for newly
+materialized inter-hub settlements; it does not backfill old settlements.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `shipping_settlement_id` | `bigint unsigned` | NO | — | UNI |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `amount_minor` | `bigint unsigned` | NO | — |  |
+| `status` | `varchar(24)` | NO | pending |  |
+| `logistics_payout_account_id` | `bigint unsigned` | YES | — | MUL |
+| `remittance_method` | `varchar(30)` | YES | — |  |
+| `remittance_reference` | `varchar(150)` | YES | — |  |
+| `remitted_on` | `date` | YES | — |  |
+| `remitted_at` | `timestamp` | YES | — |  |
+| `remitted_by` | `bigint unsigned` | YES | — | MUL |
+| `remittance_reason` | `text` | YES | — |  |
+| `remitted_to_provider` | `varchar(120)` | YES | — |  |
+| `remitted_to_account_name` | `varchar(160)` | YES | — |  |
+| `remitted_to_last4` | `char(4)` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `shipping_settlement_id` → `shipping_settlements.id`; update NO ACTION, delete RESTRICT.
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `logistics_payout_account_id` → `logistics_payout_accounts.id`; update NO ACTION, delete RESTRICT.
+- `remitted_by` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `ss_origin_remit_settlement_unique` (shipping_settlement_id) — unique.
+- `ss_origin_remittances_provider_status_idx` (logistics_profile_id,status) — index.
 
 ## `rider_profiles`
 
@@ -1766,6 +1930,7 @@ The additive `2026_10_30_000001_add_logistics_payout_destinations` migration add
 | `availability_status` | `varchar(30)` | NO | offline |  |
 | `verification_status` | `varchar(30)` | NO | pending |  |
 | `work_type` | `varchar(20)` | YES | — |  |
+| `specialization` | `varchar(20)` | NO | both | MUL |
 | `linehaul_parcel_capacity` | `smallint unsigned` | YES | — |  |
 | `courier_vehicle_verified_by` | `bigint unsigned` | YES | — | MUL |
 | `courier_vehicle_verified_at` | `timestamp` | YES | — |  |
@@ -1786,6 +1951,7 @@ The additive `2026_10_30_000001_add_logistics_payout_destinations` migration add
 - `rider_profiles_current_zone_id_foreign` (current_zone_id) — index.
 - `rider_profiles_home_sorting_center_id_foreign` (home_sorting_center_id) — index.
 - `rider_profiles_logistics_profile_id_availability_status_index` (logistics_profile_id,availability_status) — index.
+- `rider_profiles_provider_specialization_idx` (logistics_profile_id,specialization) — index.
 - `rider_profiles_courier_vehicle_verified_by_foreign` (courier_vehicle_verified_by) — index.
 - `rider_profiles_plate_number_unique` (plate_number) — unique.
 - `rider_profiles_user_id_unique` (user_id) — unique.

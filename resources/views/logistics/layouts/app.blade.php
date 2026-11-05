@@ -100,7 +100,7 @@
             </div>
         </header>
         <main class="ops-content">
-            @if(session('success'))<div class="flash-banner is-success" role="status"><i data-lucide="circle-check"></i><span>{{ session('success') }}</span><button type="button" data-dismiss><i data-lucide="x"></i></button></div>@endif
+            @if(session('success'))<div class="flash-banner is-success" data-auto-dismiss="5000" role="status"><i data-lucide="circle-check"></i><span>{{ session('success') }}</span><button type="button" data-dismiss><i data-lucide="x"></i></button></div>@endif
             @if($errors->any())<div class="flash-banner is-danger" role="alert"><i data-lucide="circle-alert"></i><span>Please check the highlighted information and try again.</span><button type="button" data-dismiss><i data-lucide="x"></i></button></div>@endif
             @yield('content')
         </main>

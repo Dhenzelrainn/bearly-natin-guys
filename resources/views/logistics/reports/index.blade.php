@@ -36,7 +36,7 @@
         style="margin-bottom: 20px"
     >
         <form
-            class="table-toolbar"
+            class="table-toolbar date-range-toolbar"
             method="GET"
             action="{{ route('logistics.reports.index') }}"
         >

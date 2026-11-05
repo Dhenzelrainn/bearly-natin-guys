@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\ShipmentStatus;
 use App\Models\Address;
+use App\Models\Parcel;
 use App\Models\PickupRequest;
 use App\Models\Refund;
 use App\Models\ReturnEvidence;
@@ -799,10 +800,12 @@ class SellerWorkflowController extends Controller
                 ->map(function (SellerOrder $sellerOrder): array {
                     $quote = (array) $sellerOrder->shipping_quote;
                     $shipment = $sellerOrder->shipments->first();
-                    $parcel = $shipment?->parcels->first();
-                    $weight = $parcel?->weight_kg ?? ($quote['actual_weight_kg'] ?? null);
+                    $parcels = $shipment?->parcels ?? collect();
+                    $weight = $parcels->isNotEmpty()
+                        ? $parcels->sum(fn (Parcel $parcel): float => (float) $parcel->weight_kg)
+                        : ($quote['actual_weight_kg'] ?? null);
                     $order = $sellerOrder->order;
-                    $packages = max(1, (int) ($shipment?->parcels->count() ?? 0));
+                    $packages = $parcels->count();
 
                     return [
                         'id' => (int) $sellerOrder->id,

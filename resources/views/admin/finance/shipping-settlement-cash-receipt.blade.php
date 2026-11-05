@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ $settlement->remittance_reference }} | Bearly Cash Handoff Receipt</title>
+    <title>{{ $remittance->remittance_reference }} | Bearly Cash Handoff Receipt</title>
     <style>
         @page { size: A4; margin: 14mm; }
         * { box-sizing: border-box; }
@@ -75,7 +75,7 @@
     <section class="receipt-number" aria-label="Cash handoff reference">
         <div>
             <span>Bearly cash handoff reference</span>
-            <code>{{ $settlement->remittance_reference }}</code>
+        <code>{{ $remittance->remittance_reference }}</code>
         </div>
         <strong class="receipt-status">CASH REMITTED</strong>
     </section>
@@ -90,10 +90,10 @@
             <div><dt>{{ $isReturnSettlement ? 'Return case' : 'Seller Order' }}</dt><dd>{{ $isReturnSettlement ? ($settlement->returnRequest?->return_no ?? 'Not available') : ($sellerOrder?->seller_order_no ?? 'Not available') }}</dd></div>
             <div><dt>Marketplace order</dt><dd>{{ $order?->order_no ?? 'Not available' }}</dd></div>
             <div><dt>Store</dt><dd>{{ $isReturnSettlement ? ($settlement->returnRequest?->store?->name ?? 'Seller') : ($sellerOrder?->store?->name ?? 'Seller') }}</dd></div>
-            <div><dt>Receiving Logistics provider</dt><dd>{{ $settlement->logisticsProfile?->display_name ?? 'Not available' }}</dd></div>
+            <div><dt>Receiving Logistics provider</dt><dd>{{ $recipientProfile?->display_name ?? 'Not available' }}{{ $recipientRole === 'origin' ? ' · Origin' : ($isInterHub ? ' · Destination' : '') }}</dd></div>
             <div><dt>Final delivery Rider</dt><dd>{{ $settlement->riderProfile?->user?->name ?? 'Not available' }}</dd></div>
-            <div><dt>Handoff recorded on</dt><dd>{{ $settlement->remitted_at?->format('M d, Y h:i A') ?? 'Not available' }}</dd></div>
-            <div><dt>Recorded by</dt><dd>{{ $settlement->remitter?->name ?? 'Finance' }}</dd></div>
+            <div><dt>Handoff recorded on</dt><dd>{{ $remittance->remitted_at?->format('M d, Y h:i A') ?? 'Not available' }}</dd></div>
+            <div><dt>Recorded by</dt><dd>{{ $remittedBy?->name ?? 'Finance' }}</dd></div>
         </dl>
     </section>
 
@@ -101,17 +101,27 @@
         <h2 id="cash-summary-heading">Cash allocation</h2>
         <table class="receipt-amounts">
             <tbody>
-                <tr><th scope="row">Logistics provider · 40%</th><td>₱{{ number_format((int) $settlement->logistics_share_minor / 100, 2) }}</td></tr>
-                <tr><th scope="row">Final delivery Rider pool · 60%</th><td>₱{{ number_format((int) $settlement->rider_share_minor / 100, 2) }}</td></tr>
-                <tr><th scope="row">Total cash handed to Logistics</th><td>₱{{ number_format((int) $settlement->remitted_amount_minor / 100, 2) }}</td></tr>
+                @if($recipientRole === 'origin')
+                    <tr><th scope="row">Origin Logistics · 10%</th><td>₱{{ number_format((int) $settlement->origin_logistics_share_minor / 100, 2) }}</td></tr>
+                    <tr><th scope="row">Total cash handed to origin Logistics</th><td>₱{{ number_format((int) $recipientShareMinor / 100, 2) }}</td></tr>
+                @elseif($isInterHub)
+                    <tr><th scope="row">Origin Logistics · 10% (separate remittance)</th><td>₱{{ number_format((int) $settlement->origin_logistics_share_minor / 100, 2) }}</td></tr>
+                    <tr><th scope="row">Destination Logistics · 30%</th><td>₱{{ number_format((int) $settlement->logistics_share_minor / 100, 2) }}</td></tr>
+                    <tr><th scope="row">Final delivery Rider pool · 60%</th><td>₱{{ number_format((int) $settlement->rider_share_minor / 100, 2) }}</td></tr>
+                    <tr><th scope="row">Total cash handed to destination Logistics</th><td>₱{{ number_format((int) $recipientShareMinor / 100, 2) }}</td></tr>
+                @else
+                    <tr><th scope="row">Logistics provider · 40%</th><td>₱{{ number_format((int) $settlement->logistics_share_minor / 100, 2) }}</td></tr>
+                    <tr><th scope="row">Final delivery Rider pool · 60%</th><td>₱{{ number_format((int) $settlement->rider_share_minor / 100, 2) }}</td></tr>
+                    <tr><th scope="row">Total cash handed to Logistics</th><td>₱{{ number_format((int) $recipientShareMinor / 100, 2) }}</td></tr>
+                @endif
             </tbody>
         </table>
-        @if($settlement->remittance_reason)<p class="receipt-notice">Reason / note: {{ $settlement->remittance_reason }}</p>@endif
+        @if($remittance->remittance_reason)<p class="receipt-notice">Reason / note: {{ $remittance->remittance_reason }}</p>@endif
     </section>
 
     <section class="receipt-signatures" aria-label="Cash handoff signatures">
-        <div class="receipt-signature"><small>Finance / Admin — released by</small><strong>{{ $settlement->remitter?->name ?? 'Finance' }}</strong><small>Signature and date</small></div>
-        <div class="receipt-signature"><small>Logistics — cash received by</small><strong>{{ $settlement->logisticsProfile?->display_name ?? 'Provider representative' }}</strong><small>Printed name, signature, and date</small></div>
+        <div class="receipt-signature"><small>Finance / Admin — released by</small><strong>{{ $remittedBy?->name ?? 'Finance' }}</strong><small>Signature and date</small></div>
+        <div class="receipt-signature"><small>Logistics — cash received by</small><strong>{{ $recipientProfile?->display_name ?? 'Provider representative' }}</strong><small>Printed name, signature, and date</small></div>
     </section>
 
     <footer class="receipt-footer">The Finance confirmation records that cash was physically handed to Logistics. Keep this printed receipt with the provider's cash-custody records.</footer>

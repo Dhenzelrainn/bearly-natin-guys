@@ -9,10 +9,13 @@ use App\Models\OrderItem;
 use App\Models\RefundCashPayout;
 use App\Models\ReturnItem;
 use App\Models\RiderEarning;
+use App\Models\RiderPayoutBatch;
 use App\Services\AuditService;
 use App\Services\BuyerCatalogService;
 use App\Services\CodCashCollectionService;
 use App\Services\RefundCashPayoutService;
+use App\Services\RiderPayoutBatchService;
+use App\Services\RiderPickupEarningService;
 use App\Services\ShippingSettlementService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -62,6 +65,7 @@ class LogisticsCashController extends Controller
         Request $request,
         ShippingSettlementService $settlements,
         BuyerCatalogService $catalog,
+        RiderPayoutBatchService $payoutBatches,
     ): View {
         $earningsStatusVersion = $settlements->riderEarningStatusVersionForLogistics($request->user());
         $earningsSummary = $settlements->logisticsEarningsSummary($request->user(), materialize: false);
@@ -100,8 +104,13 @@ class LogisticsCashController extends Controller
 
         return view('logistics.cash.shipping-settlements', $this->layoutData($request) + [
             'earnings' => $earnings,
+            'originRemittances' => $settlements->originRemittancesForLogistics($request->user()),
             'earningsSummary' => $earningsSummary,
             'earningsStatusVersion' => $earningsStatusVersion,
+            'payoutCandidates' => $payoutBatches->eligibleEarningsByRider($request->user()),
+            'heldPickupEarnings' => $payoutBatches->heldPickupEarningsFor($request->user()),
+            'payoutBatches' => $payoutBatches->batchesFor($request->user()),
+            'pickupRates' => app(RiderPickupEarningService::class)->rates(),
         ]);
     }
 
@@ -182,6 +191,40 @@ class LogisticsCashController extends Controller
                 'riderEarning' => $riderEarning,
                 'settlement' => $settlement,
                 'riderName' => $riderName,
+            ])
+            ->header('Cache-Control', 'private, no-store')
+            ->header('X-Content-Type-Options', 'nosniff');
+    }
+
+    public function printRiderCashPayoutBatchReceipt(
+        Request $request,
+        int $batch,
+        RiderPayoutBatchService $payoutBatches,
+        AuditService $audit,
+    ): Response {
+        $batch = $payoutBatches->cashBatchForLogistics($request->user(), $batch);
+
+        $audit->record(
+            action: 'rider_payout_batch.cash_receipt_printed',
+            module: 'Logistics',
+            subject: $batch,
+            description: "Cash Rider payout receipt {$batch->reference} viewed for batch {$batch->batch_no}.",
+            newValues: [
+                'batch_no' => $batch->batch_no,
+                'cash_payout_reference' => $batch->reference,
+                'earning_ids' => $batch->items->pluck('rider_earning_id')->map(fn ($id): int => (int) $id)->all(),
+            ],
+            severity: 'info',
+            request: $request,
+        );
+
+        return response()
+            ->view('logistics.cash.rider-payout-receipt', $this->layoutData($request) + [
+                'batch' => $batch,
+                'payout' => null,
+                'riderEarning' => null,
+                'settlement' => null,
+                'riderName' => $batch->riderProfile?->user?->name ?? 'Rider',
             ])
             ->header('Cache-Control', 'private, no-store')
             ->header('X-Content-Type-Options', 'nosniff');
@@ -299,6 +342,107 @@ class LogisticsCashController extends Controller
             $this->safeDownloadName($verifiedPayout->acknowledgment_original_name ?: 'buyer-acknowledgment'),
             ['Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff'],
         );
+    }
+
+    public function prepareRiderPayoutBatch(
+        Request $request,
+        RiderPayoutBatchService $payoutBatches,
+    ): RedirectResponse {
+        $data = $request->validate([
+            'rider_profile_id' => ['required', 'integer'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $profile = $request->user()->logisticsProfile()->first();
+
+        abort_unless($profile, 404);
+
+        $rider = \App\Models\RiderProfile::query()
+            ->whereKey($data['rider_profile_id'])
+            ->where('logistics_profile_id', $profile->id)
+            ->firstOrFail();
+
+        $batch = $payoutBatches->createBatch(
+            $request->user(),
+            $rider,
+            $data['notes'] ?? null,
+            $request,
+        );
+
+        return redirect()
+            ->route('logistics.settlements.index')
+            ->with('success', "Payout batch {$batch->batch_no} is ready for review.");
+    }
+
+    public function approveRiderPayoutBatch(
+        Request $request,
+        int $batch,
+        RiderPayoutBatchService $payoutBatches,
+    ): RedirectResponse {
+        $approved = $payoutBatches->approveBatch($request->user(), $batch, $request);
+
+        return redirect()
+            ->route('logistics.settlements.index')
+            ->with('success', "Payout batch {$approved->batch_no} was approved. Record the external payment after paying the Rider.");
+    }
+
+    public function recordRiderPayoutBatchPayment(
+        Request $request,
+        int $batch,
+        RiderPayoutBatchService $payoutBatches,
+    ): RedirectResponse {
+        $data = $request->validate([
+            'method' => ['required', 'in:bank_transfer,gcash,cash,other'],
+            'reference' => ['nullable', 'required_unless:method,cash', 'string', 'max:150'],
+            'paid_on' => ['required', 'date_format:Y-m-d', 'before_or_equal:today'],
+            'reason' => ['required', 'string', 'min:5', 'max:1000'],
+            'payout_confirmed' => ['required', 'accepted'],
+        ], [
+            'payout_confirmed.accepted' => 'Confirm that the Rider already received the external payout.',
+        ]);
+
+        $paid = $payoutBatches->recordPayment(
+            $request->user(),
+            $batch,
+            $data['method'],
+            $data['method'] === 'cash' ? '' : trim((string) ($data['reference'] ?? '')),
+            $data['paid_on'],
+            trim($data['reason']),
+            $request,
+        );
+
+        return redirect()
+            ->route('logistics.settlements.index')
+            ->with('success', "Payout batch {$paid->batch_no} was recorded as paid.");
+    }
+
+    public function classifyPickupEarning(
+        Request $request,
+        int $earning,
+        RiderPickupEarningService $pickupEarnings,
+    ): RedirectResponse {
+        $data = $request->validate([
+            'size_class' => ['required', 'string', 'max:20'],
+        ]);
+
+        $profile = $request->user()->logisticsProfile()->first();
+
+        abort_unless($profile, 404);
+
+        $record = RiderEarning::query()
+            ->whereKey($earning)
+            ->where('logistics_profile_id', $profile->id)
+            ->firstOrFail();
+
+        $pickupEarnings->classifyHeldEarning(
+            $record,
+            $data['size_class'],
+            $request->user(),
+        );
+
+        return redirect()
+            ->route('logistics.settlements.index')
+            ->with('success', 'The held pickup earning was classified and is now payout-eligible.');
     }
 
     private function amountToMinor(string $amount): int

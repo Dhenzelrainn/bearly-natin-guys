@@ -105,7 +105,7 @@
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="M3 8v9l9 5 9-5V8M12 13v9M7.5 5.5l9 5"/></svg>
                     <span class="meta-label">Package</span>
                 </div>
-                <div class="meta-value">{{ $label['piece_count'] }} {{ $label['piece_count'] === 1 ? 'piece' : 'pieces' }} · {{ $label['weight'] }} kg</div>
+                <div class="meta-value">{{ $label['package_count'] }} {{ $label['package_count'] === 1 ? 'piece' : 'pieces' }} · {{ $label['weight'] }} kg</div>
                 <div class="meta-subvalue">{{ $label['dimensions'] }} cm</div>
             </div>
             <div class="meta-cell">
@@ -121,7 +121,7 @@
         <section class="cod">
             <span class="cod-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M16 15h2M7 4h11"/></svg></span>
             <div class="cod-copy">
-                <div class="cod-label">COD amount to collect</div>
+                <div class="cod-label">COD total for this waybill</div>
             @if ($label['cod_amount'])
                 <div class="cod-amount">{{ $label['cod_amount'] }}</div>
             @else
@@ -135,7 +135,7 @@
                 @if ($label['logo_data_uri'])<img src="{{ $label['logo_data_uri'] }}" alt="">@else Bearly @endif
             </span>
             <span class="footer-message">Thank you for shipping with Bearly!<br>Generated {{ $label['generated_at'] }}</span>
-            <span class="footer-piece">Piece 1 of {{ $label['piece_count'] }}</span>
+            <span class="footer-piece">Piece {{ $label['piece_sequence'] }} of {{ $label['piece_count'] }}</span>
         </footer>
     </main>
 @endforeach

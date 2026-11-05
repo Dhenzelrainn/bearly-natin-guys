@@ -2826,6 +2826,14 @@ const bootSeller = () => {
         applyCampaignFilter();
     }
 
+    document.querySelectorAll('.orders-success-note[data-auto-dismiss]').forEach((notice) => {
+        const delay = Number.parseInt(notice.dataset.autoDismiss || '', 10);
+
+        if (Number.isFinite(delay) && delay > 0) {
+            window.setTimeout(() => notice.remove(), delay);
+        }
+    });
+
     const serverToast = document.querySelector('[data-server-toast]');
     if (serverToast) window.setTimeout(() => serverToast.classList.remove('is-visible'), 3200);
 };

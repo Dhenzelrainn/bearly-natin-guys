@@ -16,6 +16,7 @@ use App\Models\PlatformCommission;
 use App\Models\Refund;
 use App\Models\RiderEarning;
 use App\Models\RiderEarningPayout;
+use App\Models\RiderPayoutBatch;
 use App\Models\RiderProfile;
 use App\Models\ReturnEvent;
 use App\Models\ReturnItem;
@@ -25,6 +26,7 @@ use App\Models\SellerProfile;
 use App\Models\SellerRefundRecovery;
 use App\Models\Shipment;
 use App\Models\ShipmentEvent;
+use App\Models\ShipmentTransfer;
 use App\Models\ShippingSettlement;
 use App\Models\SortingCenter;
 use App\Models\SortingZone;
@@ -63,7 +65,7 @@ class ZoneShippingSettlementTest extends TestCase
     {
         $scenario = $this->scenario('final-rider', ['shipping_fee_minor' => 5001, 'platform_subsidy_minor' => 1000]);
         $originProvider = $this->provider('origin-custodian');
-        $scenario['shipment']->update(['origin_logistics_profile_id' => $originProvider['profile']->id]);
+        $this->acceptInterHubTransfer($scenario['shipment'], $originProvider, $scenario['provider']);
         $service = app(ShippingSettlementService::class);
 
         $service->materializeEligibleSettlements();
@@ -74,12 +76,26 @@ class ZoneShippingSettlementTest extends TestCase
         $this->assertSame(4001, (int) $settlement->buyer_paid_shipping_fee_minor);
         $this->assertSame(1000, (int) $settlement->platform_shipping_subsidy_minor);
         $this->assertSame('buyer_and_platform', $settlement->shipping_funding_source);
-        $this->assertSame(2000, (int) $settlement->logistics_share_minor);
+        $this->assertTrue($settlement->isInterHub());
+        $this->assertSame('inter_hub', $settlement->settlement_mode);
+        $this->assertSame((int) $originProvider['profile']->id, (int) $settlement->origin_logistics_profile_id);
+        $this->assertSame(500, (int) $settlement->origin_logistics_share_minor);
+        $this->assertSame(1500, (int) $settlement->logistics_share_minor);
         $this->assertSame(3001, (int) $settlement->rider_share_minor);
         $this->assertSame(
             (int) $settlement->original_shipping_fee_minor,
-            (int) $settlement->logistics_share_minor + (int) $settlement->rider_share_minor,
+            (int) $settlement->origin_logistics_share_minor
+                + (int) $settlement->logistics_share_minor
+                + (int) $settlement->rider_share_minor,
         );
+        $this->assertDatabaseHas('shipping_settlement_origin_remittances', [
+            'shipping_settlement_id' => $settlement->id,
+            'logistics_profile_id' => $originProvider['profile']->id,
+            'amount_minor' => 500,
+            'status' => 'pending',
+        ]);
+        $this->assertSame('pending', $settlement->originRemittance->status);
+        $this->assertSame(500, (int) $settlement->originRemittance->amount_minor);
         $this->assertSame($scenario['finalAttempt']->id, (int) $settlement->delivery_attempt_id);
         $this->assertSame($scenario['finalRider']->id, (int) $settlement->rider_profile_id);
         $this->assertSame($scenario['provider']['profile']->id, (int) $settlement->logistics_profile_id);
@@ -98,6 +114,263 @@ class ZoneShippingSettlementTest extends TestCase
             'rider_profile_id' => $scenario['earlierRider']->id,
             'shipping_settlement_id' => $settlement->id,
         ]);
+    }
+
+    public function test_inter_hub_finance_records_origin_10_percent_and_destination_90_percent_before_releasing_rider_pool(): void
+    {
+        $scenario = $this->scenario('interhub-remittance', [
+            'shipping_fee_minor' => 5001,
+            'platform_subsidy_minor' => 1000,
+        ]);
+        $originProvider = $this->provider('interhub-origin');
+        $this->acceptInterHubTransfer($scenario['shipment'], $originProvider, $scenario['provider']);
+        app(ShippingSettlementService::class)->materializeEligibleSettlements();
+
+        $settlement = ShippingSettlement::query()->sole();
+        $earning = RiderEarning::query()->sole();
+        $originRemittance = $settlement->originRemittance;
+        $originAccount = $this->verifiedPayoutAccount($originProvider['profile']);
+        $destinationAccount = $this->verifiedPayoutAccount($scenario['provider']['profile']);
+        $admin = $this->user('admin', 'Inter-hub Finance');
+
+        $destinationData = [
+            'settlement_id' => $settlement->id,
+            'recipient' => 'final',
+            'remittance_confirmed' => '1',
+            'actual_amount' => '45.01',
+            'method' => 'bank_transfer',
+            'logistics_payout_account_id' => $destinationAccount->id,
+            'reference' => 'BANK-L2-4501',
+            'paid_on' => now()->toDateString(),
+            'reason' => 'Destination 90 percent sent to L2.',
+        ];
+
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), $destinationData)
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $settlement->refresh();
+        $earning->refresh();
+        $this->assertSame('partially_remitted', $settlement->status);
+        $this->assertSame(4501, (int) $settlement->remitted_amount_minor);
+        $this->assertSame($destinationAccount->id, (int) $settlement->logistics_payout_account_id);
+        $this->assertSame('pending', $originRemittance->fresh()->status);
+        $this->assertSame('pending', $earning->status, 'L2 receiving 90% alone must not release the Rider payout before L1 is paid.');
+
+        $this->actingAs($scenario['provider']['user'])
+            ->get(route('logistics.settlements.index'))
+            ->assertOk()
+            ->assertSee('No payout-eligible earnings are waiting for a batch.')
+            ->assertDontSee('Prepare payout batch');
+
+        $originData = [
+            'settlement_id' => $settlement->id,
+            'recipient' => 'origin',
+            'remittance_confirmed' => '1',
+            'actual_amount' => '5.00',
+            'method' => 'bank_transfer',
+            'logistics_payout_account_id' => $destinationAccount->id,
+            'reference' => 'BANK-L1-WRONG-ACCOUNT',
+            'paid_on' => now()->toDateString(),
+            'reason' => 'Attempt to use the destination provider account.',
+        ];
+
+        $sameReferenceData = $originData;
+        $sameReferenceData['logistics_payout_account_id'] = $originAccount->id;
+        $sameReferenceData['reference'] = 'BANK-L2-4501';
+        $sameReferenceData['reason'] = 'Attempt to reuse the destination transfer reference.';
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), $sameReferenceData)
+            ->assertSessionHasErrors('reference');
+
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), $originData)
+            ->assertSessionHasErrors('logistics_payout_account_id');
+        $this->assertSame('pending', $originRemittance->fresh()->status);
+
+        $originData['logistics_payout_account_id'] = $originAccount->id;
+        $originData['reference'] = 'BANK-L1-500';
+        $originData['reason'] = 'Origin 10 percent sent to L1.';
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), $originData)
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), $originData)
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $settlement->refresh();
+        $originRemittance->refresh();
+        $earning->refresh();
+        $this->assertSame('remitted', $settlement->status);
+        $this->assertSame(4501, (int) $settlement->remitted_amount_minor);
+        $this->assertSame(500, (int) $originRemittance->amount_minor);
+        $this->assertSame('remitted', $originRemittance->status);
+        $this->assertSame($originAccount->id, (int) $originRemittance->logistics_payout_account_id);
+        $this->assertSame(5001, $settlement->remittedAmountTotalMinor());
+        $this->assertSame('posted', $earning->status);
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'shipping_settlement.remitted_to_origin_logistics')->count());
+
+        $this->actingAs($scenario['provider']['user'])
+            ->get(route('logistics.settlements.index'))
+            ->assertOk()
+            ->assertSee('Destination Logistics 30%')
+            ->assertSee('Rider pool 60%')
+            ->assertSee('Prepare payout batch');
+
+        $this->actingAs($originProvider['user'])
+            ->get(route('logistics.settlements.index'))
+            ->assertOk()
+            ->assertSee('Origin-provider allocations')
+            ->assertSee('10% of original shipping fee')
+            ->assertSee('BANK-L1-500')
+            ->assertDontSee($scenario['finalRiderUser']->name);
+
+        $this->actingAs($admin)
+            ->get(route('admin.shipping-settlements.index'))
+            ->assertOk()
+            ->assertSee('Origin Logistics · 10%')
+            ->assertSee('Destination Logistics · 30%')
+            ->assertSee('Final Rider · 60%');
+
+        $originData['reference'] = 'BANK-L1-DIFFERENT-RETRY';
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), $originData)
+            ->assertStatus(409);
+    }
+
+    public function test_inter_hub_cash_remittances_have_recipient_specific_receipts(): void
+    {
+        $scenario = $this->scenario('interhub-cash', ['shipping_fee_minor' => 5000]);
+        $originProvider = $this->provider('interhub-cash-origin');
+        $this->acceptInterHubTransfer($scenario['shipment'], $originProvider, $scenario['provider']);
+        app(ShippingSettlementService::class)->materializeEligibleSettlements();
+        $settlement = ShippingSettlement::query()->sole();
+        $admin = $this->user('admin', 'Inter-hub Cash Finance');
+
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), [
+                'settlement_id' => $settlement->id,
+                'recipient' => 'final',
+                'remittance_confirmed' => '1',
+                'actual_amount' => '45.00',
+                'method' => 'cash',
+                'paid_on' => now()->toDateString(),
+                'reason' => 'Cash handed to destination Logistics.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $settlement->refresh();
+        $this->assertSame('partially_remitted', $settlement->status);
+        $this->assertStringStartsWith('SRM-', (string) $settlement->remittance_reference);
+        $this->actingAs($admin)
+            ->get(route('admin.shipping-settlements.cash-receipt', [
+                'settlement' => $settlement->id,
+                'recipient' => 'final',
+            ]))
+            ->assertOk()
+            ->assertSee('Destination Logistics · 30%')
+            ->assertSee('Final delivery Rider pool · 60%')
+            ->assertSee('Total cash handed to destination Logistics');
+
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), [
+                'settlement_id' => $settlement->id,
+                'recipient' => 'origin',
+                'remittance_confirmed' => '1',
+                'actual_amount' => '5.00',
+                'method' => 'cash',
+                'paid_on' => now()->toDateString(),
+                'reason' => 'Cash handed to origin Logistics.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $originRemittance = $settlement->originRemittance()->firstOrFail();
+        $this->assertStringStartsWith('SRM-', (string) $originRemittance->remittance_reference);
+        $this->actingAs($admin)
+            ->get(route('admin.shipping-settlements.cash-receipt', [
+                'settlement' => $settlement->id,
+                'recipient' => 'origin',
+            ]))
+            ->assertOk()
+            ->assertSee('Origin Logistics · 10%')
+            ->assertSee('Total cash handed to origin Logistics')
+            ->assertSee($originProvider['profile']->display_name);
+
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'shipping_settlement.cash_receipt_printed')->count());
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'shipping_settlement.origin_cash_receipt_printed')->count());
+    }
+
+    public function test_inter_hub_origin_remittance_may_be_recorded_before_destination_remittance(): void
+    {
+        $scenario = $this->scenario('interhub-origin-first', ['shipping_fee_minor' => 5001]);
+        $originProvider = $this->provider('interhub-origin-first-origin');
+        $this->acceptInterHubTransfer($scenario['shipment'], $originProvider, $scenario['provider']);
+        app(ShippingSettlementService::class)->materializeEligibleSettlements();
+        $settlement = ShippingSettlement::query()->sole();
+        $earning = RiderEarning::query()->sole();
+        $admin = $this->user('admin', 'Inter-hub Origin-first Finance');
+
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), [
+                'settlement_id' => $settlement->id,
+                'recipient' => 'origin',
+                'remittance_confirmed' => '1',
+                'actual_amount' => '5.00',
+                'method' => 'cash',
+                'paid_on' => now()->toDateString(),
+                'reason' => 'Origin share handed over before destination.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $settlement->refresh();
+        $earning->refresh();
+        $this->assertSame('partially_remitted', $settlement->status);
+        $this->assertSame('remitted', $settlement->originRemittance->status);
+        $this->assertNull($settlement->remitted_at);
+        $this->assertSame('pending', $earning->status);
+
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), [
+                'settlement_id' => $settlement->id,
+                'recipient' => 'final',
+                'remittance_confirmed' => '1',
+                'actual_amount' => '45.01',
+                'method' => 'cash',
+                'paid_on' => now()->toDateString(),
+                'reason' => 'Destination share handed over after origin.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('remitted', $settlement->fresh()->status);
+        $this->assertSame('posted', $earning->fresh()->status);
+    }
+
+    public function test_outbound_settlement_rejects_a_transfer_that_has_not_been_accepted(): void
+    {
+        $scenario = $this->scenario('unaccepted-interhub-transfer');
+        $originProvider = $this->provider('unaccepted-interhub-origin');
+        $transfer = $this->acceptInterHubTransfer($scenario['shipment'], $originProvider, $scenario['provider']);
+        $transfer->update([
+            'status' => 'sent',
+            'accepted_at' => null,
+            'accepted_by' => null,
+        ]);
+
+        $admin = $this->user('admin', 'Unaccepted Transfer Finance');
+        $this->actingAs($admin)
+            ->get(route('admin.shipping-settlements.index'))
+            ->assertStatus(409);
+
+        $this->assertDatabaseCount('shipping_settlements', 0);
+        $this->assertDatabaseCount('shipping_settlement_origin_remittances', 0);
+        $this->assertDatabaseCount('rider_earnings', 0);
     }
 
     public function test_cod_shipping_settlement_waits_for_exact_finance_reconciliation(): void
@@ -233,6 +506,9 @@ class ZoneShippingSettlementTest extends TestCase
             $riderShare = $fee - $logisticsShare;
 
             $this->assertSame($fee, (int) $settlement->original_shipping_fee_minor);
+            $this->assertSame('single_provider', $settlement->settlement_mode);
+            $this->assertNull($settlement->origin_logistics_profile_id);
+            $this->assertSame(0, (int) $settlement->origin_logistics_share_minor);
             $this->assertSame($logisticsShare, (int) $settlement->logistics_share_minor);
             $this->assertSame($riderShare, (int) $settlement->rider_share_minor);
             $this->assertSame($fee, (int) $settlement->logistics_share_minor + (int) $settlement->rider_share_minor);
@@ -387,7 +663,8 @@ class ZoneShippingSettlementTest extends TestCase
             ->assertSee($scenario['finalRiderUser']->name)
             ->assertSee('Rider pool: ₱30.00')
             ->assertSeeText('3-day return period ended Oct 15, 2026')
-            ->assertSee('Actual Rider payout');
+            ->assertSee('Consolidated Rider payout batches')
+            ->assertSee('Prepare payout batch');
 
         $this->actingAs($scenario['finalRiderUser'])
             ->get(route('rider.earnings.index'))
@@ -407,16 +684,59 @@ class ZoneShippingSettlementTest extends TestCase
         ];
         $this->actingAs($scenario['provider']['user'])
             ->post(route('logistics.settlements.rider-earnings.record-paid', $earning->id), $payoutData)
-            ->assertRedirect();
+            ->assertStatus(409);
+        $this->assertSame('posted', $earning->fresh()->status, 'An individual payout must not bypass batch review and approval.');
+        $this->assertDatabaseCount('rider_earning_payouts', 0);
+
         $this->actingAs($scenario['provider']['user'])
-            ->post(route('logistics.settlements.rider-earnings.record-paid', $earning->id), $payoutData)
-            ->assertRedirect();
+            ->post(route('logistics.settlements.payout-batches.store'), [
+                'rider_profile_id' => $scenario['finalRider']->id,
+                'notes' => 'Review the remitted delivery earning.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+        $batch = RiderPayoutBatch::query()->sole();
+        $this->assertSame('pending_review', $batch->status);
+        $this->assertSame(3000, (int) $batch->total_minor);
+        $this->assertDatabaseHas('rider_payout_batch_items', [
+            'rider_payout_batch_id' => $batch->id,
+            'rider_earning_id' => $earning->id,
+            'amount_minor' => 3000,
+            'earning_type' => 'shipping_delivery',
+        ]);
+
+        $this->actingAs($scenario['provider']['user'])
+            ->post(route('logistics.settlements.payout-batches.approve', $batch->id))
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+        $batch->refresh();
+        $this->assertSame('approved', $batch->status);
+        $this->assertSame((int) $scenario['provider']['user']->id, (int) $batch->reviewed_by);
+        $this->assertSame((int) $scenario['provider']['user']->id, (int) $batch->approved_by);
+
+        $batchPaymentData = [
+            'method' => 'gcash',
+            'reference' => 'GCASH-RIDER-3000',
+            'paid_on' => now()->toDateString(),
+            'reason' => 'Rider received shipping pool payout.',
+            'payout_confirmed' => '1',
+        ];
+        $this->actingAs($scenario['provider']['user'])
+            ->post(route('logistics.settlements.payout-batches.record-paid', $batch->id), $batchPaymentData)
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+        $this->actingAs($scenario['provider']['user'])
+            ->post(route('logistics.settlements.payout-batches.record-paid', $batch->id), $batchPaymentData)
+            ->assertStatus(409);
 
         $earning->refresh();
+        $batch->refresh();
         $this->assertSame('paid', $earning->status);
         $this->assertNotNull($earning->paid_at);
+        $this->assertSame('paid', $batch->status);
+        $this->assertSame('GCASH-RIDER-3000', $batch->reference);
         $this->assertSame(1, RiderEarningPayout::query()->count());
-        $this->assertSame(1, \App\Models\AuditLog::query()->where('action', 'rider_earning.externally_paid')->count());
+        $this->assertSame(1, \App\Models\AuditLog::query()->where('action', 'rider_payout_batch.externally_paid')->count());
         $riderVersionAfterPayout = $this->actingAs($scenario['finalRiderUser'])
             ->get(route('rider.earnings.status-version'))
             ->assertOk()
@@ -438,7 +758,7 @@ class ZoneShippingSettlementTest extends TestCase
 
         $otherProvider = $this->provider('other-provider');
         $this->actingAs($otherProvider['user'])
-            ->post(route('logistics.settlements.rider-earnings.record-paid', $earning->id), $payoutData)
+            ->post(route('logistics.settlements.payout-batches.record-paid', $batch->id), $batchPaymentData)
             ->assertNotFound();
         $this->assertSame(1, RiderEarningPayout::query()->count());
 
@@ -447,6 +767,7 @@ class ZoneShippingSettlementTest extends TestCase
             ->assertOk()
             ->assertSee('Paid')
             ->assertSee('GCASH-RIDER-3000')
+            ->assertSee($batch->batch_no)
             ->assertSee('Rider received shipping pool payout.');
 
         $this->actingAs($scenario['provider']['user'])
@@ -488,80 +809,125 @@ class ZoneShippingSettlementTest extends TestCase
 
         $providerUser = $scenario['provider']['user'];
         $this->actingAs($providerUser)
-            ->withSession(['_old_input' => ['earning_id' => $earning->id, 'method' => 'cash']])
             ->get(route('logistics.settlements.index'))
             ->assertOk()
-            ->assertSee('data-rider-payout-form', false)
-            ->assertSee('data-external-rider-payout-reference', false)
-            ->assertSee('data-generated-rider-cash-reference hidden', false)
-            ->assertSee('Cash only: leave the external reference blank.');
+            ->assertSee('Prepare payout batch')
+            ->assertSee('Consolidated Rider payout batches');
 
         $cashPayoutData = [
-            'earning_id' => $earning->id,
-            'actual_amount' => '30.00',
             'method' => 'cash',
             'paid_on' => now()->toDateString(),
             'reason' => 'Cash physically handed to the Rider.',
             'payout_confirmed' => '1',
         ];
 
-        $digitalPayoutData = $cashPayoutData;
+        $digitalPayoutData = $cashPayoutData + [
+            'earning_id' => $earning->id,
+            'actual_amount' => '30.00',
+            'reference' => 'GCASH-BYPASS-ATTEMPT',
+        ];
         $digitalPayoutData['method'] = 'gcash';
         $this->actingAs($providerUser)
             ->post(route('logistics.settlements.rider-earnings.record-paid', $earning->id), $digitalPayoutData)
-            ->assertSessionHasErrors('reference');
+            ->assertStatus(409);
         $this->assertSame('posted', $earning->fresh()->status);
         $this->assertSame(0, RiderEarningPayout::query()->count());
 
         $this->actingAs($providerUser)
-            ->post(route('logistics.settlements.rider-earnings.record-paid', $earning->id), $cashPayoutData)
-            ->assertRedirect()
-            ->assertSessionHasNoErrors()
-            ->assertSessionHas('success', fn (string $message): bool => str_contains($message, 'Bearly reference: LRP-')
-                && str_contains($message, 'Print the receipt from the settlement row.'));
-        $this->actingAs($providerUser)
-            ->post(route('logistics.settlements.rider-earnings.record-paid', $earning->id), $cashPayoutData)
+            ->post(route('logistics.settlements.payout-batches.store'), [
+                'rider_profile_id' => $scenario['finalRider']->id,
+            ])
             ->assertRedirect()
             ->assertSessionHasNoErrors();
+        $batch = RiderPayoutBatch::query()->sole();
+        $this->actingAs($providerUser)
+            ->post(route('logistics.settlements.payout-batches.approve', $batch->id))
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+        $this->actingAs($providerUser)
+            ->post(route('logistics.settlements.payout-batches.record-paid', $batch->id), [
+                'method' => 'cash',
+                'paid_on' => now()->toDateString(),
+                'reason' => 'Cash physically handed to the Rider.',
+                'payout_confirmed' => '1',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success', fn (string $message): bool => str_contains($message, 'was recorded as paid'));
+        $this->actingAs($providerUser)
+            ->post(route('logistics.settlements.payout-batches.record-paid', $batch->id), [
+                'method' => 'cash',
+                'paid_on' => now()->toDateString(),
+                'reason' => 'Cash physically handed to the Rider.',
+                'payout_confirmed' => '1',
+            ])
+            ->assertStatus(409);
 
         $payout = RiderEarningPayout::query()->sole();
         $reference = (string) $payout->reference;
+        $batch->refresh();
         $this->assertMatchesRegularExpression('/^LRP-[0-9A-HJKMNP-TV-Z]{26}$/', $reference);
         $this->assertSame('cash', $payout->method);
         $this->assertSame(3000, (int) $payout->amount_minor);
         $this->assertSame('paid', $earning->fresh()->status);
-        $this->assertSame(1, \App\Models\AuditLog::query()->where('action', 'rider_earning.externally_paid')->count());
+        $this->assertSame('paid', $batch->status);
+        $this->assertSame($reference, $batch->reference);
+        $this->assertSame(1, \App\Models\AuditLog::query()->where('action', 'rider_payout_batch.externally_paid')->count());
 
         $this->actingAs($providerUser)
             ->get(route('logistics.settlements.index'))
             ->assertOk()
             ->assertSee('Bearly cash payout reference:')
             ->assertSee($reference)
-            ->assertSee(route('logistics.settlements.rider-earnings.cash-receipt', $earning->id), false)
+            ->assertSee($batch->batch_no)
+            ->assertSee(route('logistics.settlements.payout-batches.cash-receipt', $batch->id), false)
             ->assertSee('Print cash receipt');
 
         $receiptResponse = $this->actingAs($providerUser)
-            ->get(route('logistics.settlements.rider-earnings.cash-receipt', $earning->id))
+            ->get(route('logistics.settlements.payout-batches.cash-receipt', $batch->id))
             ->assertOk();
         $this->assertStringContainsString('no-store', (string) $receiptResponse->headers->get('Cache-Control'));
         $this->assertSame('nosniff', $receiptResponse->headers->get('X-Content-Type-Options'));
         $receiptResponse
             ->assertSee($reference)
-            ->assertSee($settlement->settlement_no)
+            ->assertSee($batch->batch_no)
             ->assertSee($scenario['shipment']->shipment_no)
             ->assertSee($scenario['finalRiderUser']->name)
             ->assertSee('Rider amount physically paid')
             ->assertSee('Print / Save as PDF')
             ->assertSee('not a bank or GCash transaction number');
-        $this->assertSame(1, \App\Models\AuditLog::query()->where('action', 'rider_earning.cash_receipt_printed')->count());
+        $this->assertSame(1, \App\Models\AuditLog::query()->where('action', 'rider_payout_batch.cash_receipt_printed')->count());
 
         $otherProvider = $this->provider('other-cash-payout-provider');
         $this->actingAs($otherProvider['user'])
-            ->get(route('logistics.settlements.rider-earnings.cash-receipt', $earning->id))
+            ->get(route('logistics.settlements.payout-batches.cash-receipt', $batch->id))
             ->assertNotFound();
         $this->actingAs($scenario['finalRiderUser'])
-            ->get(route('logistics.settlements.rider-earnings.cash-receipt', $earning->id))
+            ->get(route('logistics.settlements.payout-batches.cash-receipt', $batch->id))
             ->assertForbidden();
+    }
+
+    public function test_delivery_earning_cannot_enter_a_payout_batch_before_finance_remittance(): void
+    {
+        $scenario = $this->scenario('batch-finance-gate', ['shipping_fee_minor' => 5000]);
+        app(ShippingSettlementService::class)->materializeEligibleSettlements();
+        $earning = RiderEarning::query()->sole();
+
+        $this->assertSame('pending', $earning->status);
+        $this->actingAs($scenario['provider']['user'])
+            ->get(route('logistics.settlements.index'))
+            ->assertOk()
+            ->assertSee('No payout-eligible earnings are waiting for a batch.')
+            ->assertDontSee('Prepare payout batch');
+
+        $this->actingAs($scenario['provider']['user'])
+            ->post(route('logistics.settlements.payout-batches.store'), [
+                'rider_profile_id' => $scenario['finalRider']->id,
+            ])
+            ->assertSessionHasErrors('rider_profile_id');
+
+        $this->assertDatabaseCount('rider_payout_batches', 0);
+        $this->assertSame('pending', $earning->fresh()->status);
     }
 
     public function test_new_zone_orders_exclude_shipping_from_seller_commission_and_proceeds_but_legacy_orders_keep_their_basis(): void
@@ -668,7 +1034,7 @@ class ZoneShippingSettlementTest extends TestCase
             ->assertSee(Storage::disk('public')->url($productImagePath), false)
             ->assertSee('Rider pool: ₱30.00')
             ->assertSeeText('Awaiting Admin/Finance remittance to your provider.')
-            ->assertSeeText('Outbound settlements wait for Seller Order eligibility checks.')
+            ->assertSeeText('Outbound and return delivery earnings keep their existing eligibility and Finance remittance gates.')
             ->assertSeeText('3-day return period ended Oct 15, 2026');
 
         $this->actingAs($this->user('admin', 'Shipping Admin'))
@@ -762,6 +1128,8 @@ class ZoneShippingSettlementTest extends TestCase
             'cod_amount_minor' => 0,
             'delivered_at' => now(),
         ]);
+        $returnOriginProvider = $this->provider('return-interhub-origin');
+        $this->acceptInterHubTransfer($returnShipment, $returnOriginProvider, $scenario['provider']);
         $returnRequest->update(['return_shipment_id' => $returnShipment->id]);
         ReturnItem::query()->create([
             'return_request_id' => $returnRequest->id,
@@ -849,6 +1217,8 @@ class ZoneShippingSettlementTest extends TestCase
         $settlement = ShippingSettlement::query()->sole();
         $earning = RiderEarning::query()->sole();
         $this->assertSame('return', $settlement->settlement_type);
+        $this->assertFalse($settlement->isInterHub(), 'Transferred returns remain on the existing 40/60 settlement rule.');
+        $this->assertNull($settlement->originRemittance);
         $this->assertSame($returnRequest->id, (int) $settlement->return_request_id);
         $this->assertSame(5501, (int) $settlement->return_shipping_fee_minor);
         $this->assertSame(2200, (int) $settlement->logistics_share_minor);
@@ -944,7 +1314,6 @@ class ZoneShippingSettlementTest extends TestCase
 
         $payoutData = [
             'earning_id' => $earning->id,
-            'actual_amount' => '33.01',
             'method' => 'gcash',
             'reference' => 'GCASH-RETURN-RIDER-3301',
             'paid_on' => now()->toDateString(),
@@ -952,9 +1321,21 @@ class ZoneShippingSettlementTest extends TestCase
             'payout_confirmed' => '1',
         ];
         $this->actingAs($scenario['provider']['user'])
-            ->post(route('logistics.settlements.rider-earnings.record-paid', $earning->id), $payoutData)
+            ->post(route('logistics.settlements.payout-batches.store'), [
+                'rider_profile_id' => $scenario['finalRider']->id,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+        $batch = RiderPayoutBatch::query()->sole();
+        $this->actingAs($scenario['provider']['user'])
+            ->post(route('logistics.settlements.payout-batches.approve', $batch->id))
+            ->assertRedirect();
+        $this->actingAs($scenario['provider']['user'])
+            ->post(route('logistics.settlements.payout-batches.record-paid', $batch->id), $payoutData)
             ->assertRedirect();
         $this->assertSame('paid', $earning->fresh()->status);
+        $this->assertSame('paid', $batch->fresh()->status);
+        $this->assertSame((int) $settlement->rider_share_minor, (int) $batch->fresh()->total_minor);
         $this->assertSame(1, RiderEarningPayout::query()->count());
     }
 
@@ -990,7 +1371,10 @@ class ZoneShippingSettlementTest extends TestCase
             ->assertRedirect()
             ->assertSessionHasNoErrors()
             ->assertSessionHas('success', fn (string $message): bool => str_contains($message, 'Bearly reference: SRM-')
-                && str_contains($message, 'Print the cash receipt from the settlement row.'));
+                && str_contains($message, route('admin.shipping-settlements.cash-receipt', [
+                    'settlement' => $settlement->id,
+                    'recipient' => 'final',
+                ])));
 
         $settlement->refresh();
         $reference = (string) $settlement->remittance_reference;
@@ -1333,6 +1717,54 @@ class ZoneShippingSettlementTest extends TestCase
         return ['user' => $user, 'profile' => $profile];
     }
 
+    /** @param array{user:User,profile:LogisticsProfile} $originProvider
+     *  @param array{user:User,profile:LogisticsProfile} $destinationProvider
+     */
+    private function acceptInterHubTransfer(
+        Shipment $shipment,
+        array $originProvider,
+        array $destinationProvider,
+    ): ShipmentTransfer {
+        $originAddress = Address::query()->create([
+            'user_id' => $originProvider['user']->id,
+            'label' => 'Origin Sorting Center',
+            'recipient_name' => $originProvider['user']->name,
+            'phone' => '+639171234569',
+            'street' => '1 Origin Logistics Street',
+            'barangay' => 'San Rafael',
+            'city_municipality' => 'Santa Rosa',
+            'province' => 'Laguna',
+            'postal_code' => '4026',
+        ]);
+        $originCenter = SortingCenter::query()->create([
+            'logistics_profile_id' => $originProvider['profile']->id,
+            'address_id' => $originAddress->id,
+            'name' => 'Origin Center '.$originProvider['profile']->id,
+            'code' => 'ORIGIN-'.Str::upper(Str::random(8)),
+            'status' => 'active',
+        ]);
+        $destinationCenterId = SortingCenter::query()
+            ->where('logistics_profile_id', $destinationProvider['profile']->id)
+            ->value('id');
+
+        $shipment->update([
+            'origin_logistics_profile_id' => $originProvider['profile']->id,
+        ]);
+
+        return ShipmentTransfer::query()->create([
+            'shipment_id' => $shipment->id,
+            'from_logistics_profile_id' => $originProvider['profile']->id,
+            'to_logistics_profile_id' => $destinationProvider['profile']->id,
+            'from_sorting_center_id' => $originCenter->id,
+            'to_sorting_center_id' => $destinationCenterId,
+            'status' => 'accepted',
+            'sent_by' => $originProvider['user']->id,
+            'sent_at' => now()->subDays(2),
+            'accepted_by' => $destinationProvider['user']->id,
+            'accepted_at' => now()->subDay(),
+        ]);
+    }
+
     private function riderProfile(
         User $user,
         LogisticsProfile $provider,
@@ -1346,7 +1778,7 @@ class ZoneShippingSettlementTest extends TestCase
             'home_sorting_center_id' => $center->id,
             'current_zone_id' => $zone->id,
             'vehicle_type' => 'motorcycle',
-            'plate_number' => Str::upper(Str::limit($suffix, 20, '')),
+            'plate_number' => Str::upper(Str::limit($suffix, 11, '')).'-'.Str::upper(Str::random(8)),
             'parcel_capacity' => 20,
             'availability_status' => 'available',
             'verification_status' => 'approved',

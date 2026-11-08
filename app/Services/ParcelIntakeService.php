@@ -6,31 +6,42 @@ use App\Enums\ParcelStatus;
 use App\Enums\ReturnDeliveryMethod;
 use App\Enums\ReturnRequestStatus;
 use App\Enums\ShipmentStatus;
+use App\Models\Parcel;
 use App\Models\PickupRequest;
+use App\Models\RiderEarning;
 use App\Models\ReturnRequest;
 use App\Models\Shipment;
 use App\Models\SortingCenter;
 use App\Models\User;
 use App\Models\Waybill;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class ParcelIntakeService
 {
-    public function __construct(private readonly ReturnRefundService $returns) {}
+    public function __construct(
+        private readonly ReturnRefundService $returns,
+        private readonly RiderPickupEarningService $pickupEarnings,
+    ) {}
 
     public function receive(
         Waybill $waybill,
         SortingCenter $center,
         User $actor,
-        string $method = 'camera'
+        string $method = 'camera',
+        ?array $parcelSizeClasses = null,
+        ?int $parcelId = null,
     ): Waybill {
         return DB::transaction(function () use (
             $waybill,
             $center,
             $actor,
-            $method
+            $method,
+            $parcelSizeClasses,
+            $parcelId,
         ) {
             $logisticsProfileId = $actor->logisticsProfile?->id;
 
@@ -73,9 +84,28 @@ class ParcelIntakeService
                 ->with([
                     'shipment.sellerOrder.store',
                     'shipment.returnRequest',
-                    'parcels',
                 ])
                 ->findOrFail($waybill->id);
+
+            $parcels = Parcel::query()
+                ->where('waybill_id', $waybill->id)
+                ->orderBy('piece_sequence')
+                ->lockForUpdate()
+                ->get();
+            $waybill->setRelation('parcels', $parcels);
+            $selectedParcels = $parcelId === null
+                ? $parcels->filter(fn (Parcel $parcel): bool => in_array(
+                    $parcel->status,
+                    [ParcelStatus::Created->value, ParcelStatus::PickedUp->value],
+                    true,
+                ))->values()
+                : $parcels->where('id', $parcelId)->values();
+
+            if ($selectedParcels->isEmpty()) {
+                throw new ConflictHttpException($parcelId === null
+                    ? 'This Waybill has no parcels awaiting intake.'
+                    : 'The selected parcel does not belong to this Waybill.');
+            }
 
             $shipment = $waybill->shipment;
 
@@ -116,19 +146,12 @@ class ParcelIntakeService
                         throw new ConflictHttpException('This return is expired or is no longer awaiting Buyer drop-off.');
                     }
                 } elseif ($returnRequest->return_delivery_method === ReturnDeliveryMethod::RiderPickup->value
-                    && $waybill->parcels->contains(fn ($parcel): bool => $parcel->status === ParcelStatus::Created->value)) {
+                    && $selectedParcels->contains(fn ($parcel): bool => $parcel->status === ParcelStatus::Created->value)) {
                     throw new ConflictHttpException('The Rider must collect this return parcel before Logistics can receive it.');
                 }
             }
 
-            foreach ($waybill->parcels as $parcel) {
-                /*
-                 * A parcel may enter a sorting center only from one of the
-                 * legitimate pre-intake states.
-                 *
-                 * Everything else is considered already received or an
-                 * invalid lifecycle transition.
-                 */
+            foreach ($selectedParcels as $parcel) {
                 if (! in_array($parcel->status, [
                     ParcelStatus::Created->value,
                     ParcelStatus::PickedUp->value,
@@ -137,8 +160,26 @@ class ParcelIntakeService
                         "Parcel {$parcel->parcel_no} has already been received or cannot be received in its current state."
                     );
                 }
+            }
 
+            $parcelSizeClasses = $this->validateParcelSizeClasses(
+                $parcelSizeClasses,
+                $selectedParcels,
+            );
+
+            foreach ($selectedParcels as $parcel) {
                 $fromStatus = $parcel->status;
+                $previousSizeClass = $parcel->size_class;
+                $sizeClass = $parcelSizeClasses[(int) $parcel->id] ?? null;
+
+                if ($sizeClass !== null) {
+                    $this->saveParcelSizeClass(
+                        $parcel,
+                        $sizeClass,
+                        $actor,
+                        (int) $logisticsProfileId,
+                    );
+                }
 
                 $parcel->update([
                     'status' => ParcelStatus::Received->value,
@@ -155,15 +196,31 @@ class ParcelIntakeService
                     'actor_user_id' => $actor->id,
                     'source' => 'scan',
                     'scan_method' => $method,
+                    'metadata' => $sizeClass === null ? null : [
+                        'parcel_size_class' => $sizeClass,
+                        'previous_parcel_size_class' => $previousSizeClass,
+                    ],
                     'occurred_at' => now(),
                 ]);
             }
 
-            $shipment->update([
-                'status' => ShipmentStatus::AtSortingCenter->value,
-            ]);
+            $parcelIds = $parcels->pluck('id')->map(fn ($id): int => (int) $id)->all();
+            $arrivedParcelCount = DB::table('shipment_events')
+                ->where('shipment_id', $shipment->id)
+                ->whereIn('parcel_id', $parcelIds)
+                ->where('event_type', 'received_at_center')
+                ->distinct()
+                ->count('parcel_id');
+            $allParcelsReceived = $parcels->isNotEmpty()
+                && $arrivedParcelCount === $parcels->count();
 
-            if ($isBuyerReturnDropoff && $returnRequest) {
+            if ($allParcelsReceived) {
+                $shipment->update([
+                    'status' => ShipmentStatus::AtSortingCenter->value,
+                ]);
+            }
+
+            if ($isBuyerReturnDropoff && $returnRequest && $allParcelsReceived) {
                 $shipment->events()->create([
                     'event_type' => 'buyer_return_dropoff_received',
                     'from_status' => ShipmentStatus::AwaitingBuyerDropoff->value,
@@ -186,11 +243,8 @@ class ParcelIntakeService
             }
 
             $this->completeReceivedPickups(
-                $waybill
-                    ->parcels
-                    ->pluck('id')
-                    ->all(),
-                $logisticsProfileId
+                $selectedParcels->pluck('id')->map(fn ($id): int => (int) $id)->all(),
+                (int) $logisticsProfileId,
             );
 
             return $waybill->fresh([
@@ -198,6 +252,98 @@ class ParcelIntakeService
                 'parcels',
             ]);
         });
+    }
+
+    /**
+     * @param  array<int|string, mixed>|null  $submitted
+     * @param  Collection<int, Parcel>  $parcels
+     * @return array<int, string>
+     */
+    private function validateParcelSizeClasses(?array $submitted, Collection $parcels): array
+    {
+        if ($submitted === null) {
+            return [];
+        }
+
+        $expectedIds = $parcels
+            ->map(fn (Parcel $parcel): string => (string) $parcel->id)
+            ->sort()
+            ->values()
+            ->all();
+        $submittedIds = collect(array_keys($submitted))
+            ->map(fn ($id): string => (string) $id)
+            ->sort()
+            ->values()
+            ->all();
+
+        if ($expectedIds !== $submittedIds) {
+            throw ValidationException::withMessages([
+                'parcel_size_classes' => 'Choose a size class for every parcel on this waybill.',
+            ]);
+        }
+
+        $normalized = [];
+        $errors = [];
+        $allowedSizeClasses = $this->pickupEarnings->sizeClasses();
+
+        foreach ($submitted as $parcelId => $sizeClass) {
+            $parcelId = (int) $parcelId;
+
+            if (
+                ! is_string($sizeClass)
+                || ! in_array($sizeClass, $allowedSizeClasses, true)
+            ) {
+                $errors["parcel_size_classes.{$parcelId}"] = 'Choose a recognized parcel size class.';
+
+                continue;
+            }
+
+            $normalized[$parcelId] = $sizeClass;
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
+
+        return $normalized;
+    }
+
+    private function saveParcelSizeClass(
+        Parcel $parcel,
+        string $sizeClass,
+        User $actor,
+        int $logisticsProfileId,
+    ): void {
+        $pickupEarning = RiderEarning::query()
+            ->where('parcel_id', $parcel->id)
+            ->where('type', config('bearly_rider_compensation.pickup_earning_type', 'pickup_parcel'))
+            ->lockForUpdate()
+            ->latest('id')
+            ->first();
+
+        if ($pickupEarning?->status === RiderPickupEarningService::STATUS_HELD) {
+            if ((int) $pickupEarning->logistics_profile_id !== $logisticsProfileId) {
+                throw new ConflictHttpException(
+                    'The held Rider pickup earning belongs to a different Logistics provider and cannot be classified here.'
+                );
+            }
+
+            $this->pickupEarnings->classifyHeldEarning(
+                $pickupEarning,
+                $sizeClass,
+                $actor,
+            );
+        } elseif (
+            $pickupEarning
+            && $pickupEarning->status !== RiderPickupEarningService::STATUS_HELD
+            && (string) $pickupEarning->size_class_snapshot !== $sizeClass
+        ) {
+            throw new ConflictHttpException(
+                'This parcel size cannot be changed because its Rider pickup earning has already been classified.'
+            );
+        }
+
+        $parcel->update(['size_class' => $sizeClass]);
     }
 
     private function completeReceivedPickups(

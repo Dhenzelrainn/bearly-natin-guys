@@ -12,6 +12,9 @@ class RiderEarning extends Model
     {
         return [
             'amount_minor' => 'integer',
+            'rate_minor' => 'integer',
+            'worked_seconds_snapshot' => 'integer',
+            'daily_cap_minor_snapshot' => 'integer',
             'earned_at' => 'datetime',
             'posted_at' => 'datetime',
             'paid_at' => 'datetime',

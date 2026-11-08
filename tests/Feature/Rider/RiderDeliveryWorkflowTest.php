@@ -830,6 +830,16 @@ class RiderDeliveryWorkflowTest extends TestCase
 
         );
 
+        $own['shipment']
+            ->sellerOrder()
+            ->firstOrFail()
+            ->order()
+            ->firstOrFail()
+            ->update([
+                'delivery_latitude' => 14.1234567,
+                'delivery_longitude' => 121.1234567,
+            ]);
+
         $own['shipment']->sellerOrder()->firstOrFail()->items()->create([
             'product_name' => 'Rider Delivery Preview Product',
             'variant_name' => 'Black / Standard',
@@ -879,6 +889,14 @@ class RiderDeliveryWorkflowTest extends TestCase
             ->assertOk()
 
             ->assertSee('Start delivery')
+
+            ->assertSee('data-rider-delivery-map', false)
+
+            ->assertSee('data-latitude="14.1234567"', false)
+
+            ->assertSee('data-longitude="121.1234567"', false)
+
+            ->assertSee('Buyer live GPS is not used.')
 
             ->assertSee('Products in shipment')
 
@@ -962,6 +980,27 @@ class RiderDeliveryWorkflowTest extends TestCase
 
     }
 
+    public function test_delivery_map_keeps_address_directions_when_order_has_no_saved_pin(): void
+    {
+        $rider = $this->makeRider('DELIVERY-MAP-NO-PIN');
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'DELIVERY-MAP-NO-PIN',
+            1,
+            0,
+            'Map Fallback Recipient'
+        );
+
+        $this->actingAs($rider->user)
+            ->get(route('rider.orders.delivery', $assignment['shipment']->shipment_no))
+            ->assertOk()
+            ->assertSee('data-rider-delivery-map', false)
+            ->assertSee('data-latitude=""', false)
+            ->assertSee('data-longitude=""', false)
+            ->assertSee('No destination pin was saved with this order')
+            ->assertSee('Open directions');
+    }
+
     public function test_out_for_delivery_detail_prioritizes_handoff_and_collapses_failure_form(): void
     {
         $rider = $this->makeRider('DELIVERY-DETAIL-UI');
@@ -994,6 +1033,7 @@ class RiderDeliveryWorkflowTest extends TestCase
             ->assertSee('Delivery proof photo')
             ->assertSee('delivery-form', false)
             ->assertSee('class="delivery-failure"', false)
+            ->assertSee('data-delivery-active="true"', false)
             ->assertSee('Report a failed attempt');
     }
 

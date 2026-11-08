@@ -17,6 +17,7 @@ use App\Models\Shipment;
 use App\Models\ShipmentTransfer;
 use App\Models\SortingCenter;
 use App\Models\User;
+use App\Notifications\WorkflowNotification;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -29,6 +30,7 @@ class LinehaulRunService
     public function __construct(
         private readonly ShipmentHandoffService $handoffs,
         private readonly CourierDailyEarningService $courierDaily,
+        private readonly NotificationService $notifications,
     ) {}
 
     /**
@@ -163,6 +165,28 @@ class LinehaulRunService
                 'parcel_count' => $pieces,
             ], $now);
 
+            $this->notifyOriginOfRunMilestone(
+                $run,
+                'logistics_linehaul_assigned',
+                'Courier assigned',
+                "Run {$run->run_no} was assigned to a Courier and is ready for loading at {$center->name}.",
+                ['shipment_count' => $shipments->count(), 'parcel_count' => $pieces],
+            );
+
+            $this->notifications->sendAfterCommit($courier->user, new WorkflowNotification(
+                eventKey: 'rider_linehaul_assigned',
+                title: 'Courier run assigned',
+                body: "Run {$run->run_no} is ready for loading: {$center->name} to {$targetProfile->display_name} ({$pieces} parcels).",
+                actionUrl: route('rider.courier.dashboard'),
+                type: 'info',
+                meta: [
+                    'linehaul_run_id' => (int) $run->id,
+                    'run_no' => $run->run_no,
+                    'shipment_count' => $shipments->count(),
+                    'parcel_count' => $pieces,
+                ],
+            ));
+
             return $run->fresh([
                 'originLogisticsProfile',
                 'destinationLogisticsProfile',
@@ -197,6 +221,14 @@ class LinehaulRunService
             $this->event($lockedRun, 'cargo_loaded', 'loading', 'loaded', $actor, null, [
                 'shipment_count' => $lockedRun->shipments()->count(),
             ], $now);
+
+            $this->notifyOriginOfRunMilestone(
+                $lockedRun,
+                'logistics_linehaul_cargo_loaded',
+                'Courier cargo loaded',
+                "The Courier confirmed that all cargo on run {$lockedRun->run_no} is loaded and ready to depart.",
+                ['shipment_count' => $lockedRun->shipments()->count()],
+            );
 
             return $lockedRun->fresh(['shipments.waybill', 'events']);
         }, attempts: 3);
@@ -264,13 +296,52 @@ class LinehaulRunService
                 'shipment_count' => $shipments->count(),
             ], $now);
 
+            $destinationName = $lockedRun->destinationLogisticsProfile?->display_name ?? 'destination Logistics';
+            $this->notifyOriginOfRunMilestone(
+                $lockedRun,
+                'logistics_linehaul_departed',
+                'Courier departed',
+                "Transfer {$lockedRun->run_no} departed for {$destinationName} with {$shipments->count()} shipment(s).",
+                ['shipment_count' => $shipments->count()],
+            );
+
             return $lockedRun->fresh(['shipments.waybill', 'events']);
         }, attempts: 3);
     }
 
     public function arrive(LinehaulRun $run, User $actor): LinehaulRun
     {
-        return $this->transitionForCourier($run, $actor, 'departed', 'arrived', 'arrived');
+        return DB::transaction(function () use ($run, $actor): LinehaulRun {
+            $lockedRun = $this->lockRun($run);
+            $this->assertCourierOwnsRun($lockedRun, $actor);
+
+            if ($lockedRun->status !== 'departed') {
+                throw new ConflictHttpException("This run cannot move from {$lockedRun->status} to arrived.");
+            }
+
+            if (! $lockedRun->departed_at) {
+                throw new ConflictHttpException('A run must depart before the Courier can record arrival.');
+            }
+
+            $now = now();
+            $lockedRun->update(['status' => 'arrived', 'arrived_at' => $now]);
+            $this->event($lockedRun, 'arrived', 'departed', 'arrived', $actor, null, null, $now);
+
+            $destinationUser = $lockedRun->destinationLogisticsProfile?->user;
+
+            if ($destinationUser) {
+                $this->notifications->sendAfterCommit($destinationUser, new WorkflowNotification(
+                    eventKey: 'logistics_linehaul_arrived',
+                    title: 'Courier arrived',
+                    body: "Courier run {$lockedRun->run_no} has arrived. Scan and accept its shipments at your facility.",
+                    actionUrl: route('logistics.transfers.index'),
+                    type: 'info',
+                    meta: ['linehaul_run_id' => (int) $lockedRun->id, 'run_no' => $lockedRun->run_no],
+                ));
+            }
+
+            return $lockedRun->fresh(['shipments.waybill', 'events']);
+        }, attempts: 3);
     }
 
     public function reportException(LinehaulRun $run, User $actor, string $reason): LinehaulRun
@@ -295,6 +366,14 @@ class LinehaulRunService
                 'status_before_exception' => $from,
             ]);
             $this->event($lockedRun, 'exception_reported', $from, 'exception', $actor, $reason, null, now());
+
+            $this->notifyLogisticsOfRunException(
+                $lockedRun,
+                $from,
+                'logistics_linehaul_exception_reported',
+                'Courier reported a run exception',
+                "Courier reported an exception on run {$lockedRun->run_no}. Review the run in City Handoffs.",
+            );
 
             return $lockedRun->fresh(['shipments.waybill', 'events']);
         }, attempts: 3);
@@ -324,6 +403,44 @@ class LinehaulRunService
                 'status_before_exception' => null,
             ]);
             $this->event($lockedRun, 'exception_resolved', $from, $resume, $actor, $resolution, null, now());
+
+            if ($actor->role === UserRole::Rider->value) {
+                $this->notifyLogisticsOfRunException(
+                    $lockedRun,
+                    $resume,
+                    'logistics_linehaul_exception_resolved',
+                    'Courier run exception resolved',
+                    "The Courier resolved the exception on run {$lockedRun->run_no}. Current status: ".str($resume)->replace('_', ' ')->title().'.',
+                );
+            } else {
+                $courierUser = $lockedRun->courierRiderProfile?->user;
+
+                if ($courierUser) {
+                    $this->notifications->sendAfterCommit($courierUser, new WorkflowNotification(
+                        eventKey: 'rider_linehaul_exception_resolved',
+                        title: 'Run exception resolved',
+                        body: "The exception on run {$lockedRun->run_no} was resolved. Current status: ".str($resume)->replace('_', ' ')->title().'.',
+                        actionUrl: route('rider.courier.dashboard'),
+                        type: 'success',
+                        meta: ['linehaul_run_id' => (int) $lockedRun->id, 'run_no' => $lockedRun->run_no],
+                    ));
+                }
+
+                $destinationUser = in_array($resume, ['departed', 'arrived'], true)
+                    ? $lockedRun->destinationLogisticsProfile?->user
+                    : null;
+
+                if ($destinationUser) {
+                    $this->notifications->sendAfterCommit($destinationUser, new WorkflowNotification(
+                        eventKey: 'logistics_linehaul_exception_resolved',
+                        title: 'Courier run exception resolved',
+                        body: "Origin Logistics resolved the exception on run {$lockedRun->run_no}. Current status: ".str($resume)->replace('_', ' ')->title().'.',
+                        actionUrl: route('logistics.transfers.index'),
+                        type: 'success',
+                        meta: ['linehaul_run_id' => (int) $lockedRun->id, 'run_no' => $lockedRun->run_no],
+                    ));
+                }
+            }
 
             return $lockedRun->fresh(['shipments.waybill', 'events']);
         }, attempts: 3);
@@ -362,7 +479,10 @@ class LinehaulRunService
 
     public function recordDestinationAcceptance(LinehaulRun $run, User $actor): void
     {
-        $lockedRun = LinehaulRun::query()->whereKey($run->id)->lockForUpdate()->firstOrFail();
+        $lockedRun = LinehaulRun::query()
+            ->with('courierRiderProfile.user')
+            ->lockForUpdate()
+            ->findOrFail($run->id);
 
         if ($lockedRun->status !== 'arrived') {
             return;
@@ -398,6 +518,19 @@ class LinehaulRunService
         ], $now);
 
         $this->courierDaily->reconcileRun($lockedRun);
+
+        $courierUser = $lockedRun->courierRiderProfile?->user;
+
+        if ($courierUser) {
+            $this->notifications->sendAfterCommit($courierUser, new WorkflowNotification(
+                eventKey: 'rider_linehaul_completed',
+                title: 'Courier run completed',
+                body: "All shipments on run {$lockedRun->run_no} were accepted by destination Logistics.",
+                actionUrl: route('rider.courier.dashboard'),
+                type: 'success',
+                meta: ['linehaul_run_id' => (int) $lockedRun->id, 'run_no' => $lockedRun->run_no],
+            ));
+        }
     }
 
     private function transitionForCourier(
@@ -426,6 +559,16 @@ class LinehaulRunService
             };
             $lockedRun->update(['status' => $to] + $timestamps);
             $this->event($lockedRun, $eventType, $from, $to, $actor, null, null, $now);
+
+            if ($eventType === 'loading_started') {
+                $originName = $lockedRun->originLogisticsProfile?->display_name ?? 'your facility';
+                $this->notifyOriginOfRunMilestone(
+                    $lockedRun,
+                    'logistics_linehaul_loading_started',
+                    'Courier started loading',
+                    "The Courier started loading run {$lockedRun->run_no} at {$originName}.",
+                );
+            }
 
             return $lockedRun->fresh(['shipments.waybill', 'events']);
         }, attempts: 3);
@@ -567,9 +710,73 @@ class LinehaulRunService
             ->with([
                 'courierRiderProfile.user',
                 'courierRiderProfile.courierVehicleVerifier.logisticsProfile',
+                'originLogisticsProfile.user',
+                'destinationLogisticsProfile.user',
             ])
             ->lockForUpdate()
             ->findOrFail($run->id);
+    }
+
+    /**
+     * Notify the Logistics providers responsible for the run at the point the
+     * exception occurred or was resolved. Before departure, only the origin
+     * provider owns the operational response; after departure, both providers
+     * need the update.
+     */
+    private function notifyLogisticsOfRunException(
+        LinehaulRun $run,
+        string $operationalStatus,
+        string $eventKey,
+        string $title,
+        string $body,
+    ): void {
+        $run->loadMissing(['originLogisticsProfile.user', 'destinationLogisticsProfile.user']);
+
+        $recipients = [$run->originLogisticsProfile?->user];
+
+        if (in_array($operationalStatus, ['departed', 'arrived'], true)) {
+            $recipients[] = $run->destinationLogisticsProfile?->user;
+        }
+
+        $this->notifications->sendManyAfterCommit($recipients, new WorkflowNotification(
+            eventKey: $eventKey,
+            title: $title,
+            body: $body,
+            actionUrl: route('logistics.transfers.index'),
+            type: $eventKey === 'logistics_linehaul_exception_reported' ? 'warning' : 'success',
+            meta: ['linehaul_run_id' => (int) $run->id, 'run_no' => $run->run_no],
+        ));
+    }
+
+    /**
+     * Send one preference-aware operational update to the run's origin account.
+     * The helper is called inside the transition transaction so no notice is
+     * emitted if the corresponding activity fails to commit.
+     *
+     * @param  array<string, mixed>  $meta
+     */
+    private function notifyOriginOfRunMilestone(
+        LinehaulRun $run,
+        string $eventKey,
+        string $title,
+        string $body,
+        array $meta = [],
+    ): void {
+        $run->loadMissing('originLogisticsProfile.user');
+        $originUser = $run->originLogisticsProfile?->user;
+
+        if (! $originUser) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($originUser, new WorkflowNotification(
+            eventKey: $eventKey,
+            title: $title,
+            body: $body,
+            actionUrl: route('logistics.transfers.index'),
+            type: 'info',
+            meta: ['linehaul_run_id' => (int) $run->id, 'run_no' => $run->run_no] + $meta,
+        ));
     }
 
     private function event(

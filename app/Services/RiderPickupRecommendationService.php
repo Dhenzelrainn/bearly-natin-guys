@@ -18,11 +18,11 @@ class RiderPickupRecommendationService
     /**
      * Rank provider-owned, already eligible Riders for a Seller pickup.
      *
-     * Fresh GPS distance is used when both the pickup and at least one eligible
-     * Rider have usable coordinates. If GPS is missing or stale, the existing
-     * barangay/Sorting Zone assignment becomes the primary fallback, followed
-     * by the existing shipment-level workload metric. This only recommends; it
-     * never creates or moves an assignment.
+     * A matching assigned Sorting Zone is the primary recommendation tier. Fresh
+     * GPS distance ranks Riders within each tier and ranks non-matching Riders
+     * as fallback candidates. If GPS is missing or stale, service-area match is
+     * followed by shipment-level workload. This only recommends; it never
+     * creates or moves an assignment.
      *
      * @param  Collection<int, RiderProfile>  $riders
      * @param  Collection<int, array{active_jobs: int, completed_today: int}>|null  $workloadMetrics
@@ -132,9 +132,9 @@ class RiderPickupRecommendationService
     {
         if ($hasUsableGps) {
             return [
+                $rider['area_match'] ? 0 : 1,
                 $rider['distance_km'] === null ? 1 : 0,
                 $rider['distance_km'] ?? PHP_FLOAT_MAX,
-                $rider['area_match'] ? 0 : 1,
                 $rider['active_jobs'],
                 $rider['completed_today'],
                 strtolower((string) $rider['name']),
@@ -211,14 +211,15 @@ class RiderPickupRecommendationService
     /** @param array<string, mixed> $rider */
     private function recommendationReason(array $rider): string
     {
-        if ($rider['distance_label']) {
-            return 'Recommended · '.$rider['distance_label'];
-        }
-
         if ($rider['area_match']) {
-            return 'Recommended · same service area';
+            return 'Recommended · same service area'
+                .($rider['distance_label']
+                    ? ' · '.$rider['distance_label']
+                    : ' · lowest active workload');
         }
 
-        return 'Recommended · lowest active workload';
+        return $rider['distance_label']
+            ? 'Fallback · nearest available Rider · '.$rider['distance_label']
+            : 'Fallback · lowest active workload; distance unavailable';
     }
 }

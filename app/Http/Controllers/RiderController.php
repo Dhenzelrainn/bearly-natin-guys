@@ -33,6 +33,7 @@ use App\Services\RiderAccountStatusService;
 use App\Services\RiderDeliveryHistoryService;
 use App\Services\RiderDeliveryService;
 use App\Services\RiderEarningsService;
+use App\Services\RiderAttendanceQrService;
 use App\Services\RiderPickupRouteService;
 use App\Services\RiderPickupService;
 use App\Services\RiderLocationService;
@@ -196,12 +197,16 @@ class RiderController extends Controller
             'parcels.shipment.waybill',
             'parcels.shipment.sellerOrder.order',
             'parcels.shipment.sellerOrder.store',
+            'parcels.shipment.sellerOrders.order',
+            'parcels.shipment.sellerOrders.store',
             'parcels.shipment.destinationAddress',
         ];
 
         if ($catalog) {
             $relations[] = 'parcels.shipment.sellerOrder.items.product.images.variant';
             $relations[] = 'parcels.shipment.sellerOrder.items.variant';
+            $relations[] = 'parcels.shipment.sellerOrders.items.product.images.variant';
+            $relations[] = 'parcels.shipment.sellerOrders.items.variant';
         }
 
         $batches = $batchQuery
@@ -267,7 +272,7 @@ class RiderController extends Controller
                                         ?? 0
                                     );
 
-                                return [
+                                $row = [
                                     'shipment_id' => $shipment->id,
 
                                     'id' => $shipment
@@ -300,7 +305,7 @@ class RiderController extends Controller
 
                                     'products' => $catalog
                                         ? $this->orderItemPreviewData(
-                                            $shipment->sellerOrder?->items ?? collect(),
+                                            $shipment->includedOrderItems(),
                                             $catalog,
                                         )
                                         : [],
@@ -341,6 +346,17 @@ class RiderController extends Controller
                                         )
                                         ->values(),
                                 ];
+
+                                if ($catalog) {
+                                    $row['destination_latitude'] = $isReturn
+                                        ? $destination?->latitude
+                                        : $order->delivery_latitude;
+                                    $row['destination_longitude'] = $isReturn
+                                        ? $destination?->longitude
+                                        : $order->delivery_longitude;
+                                }
+
+                                return $row;
                             }
                         );
                 }
@@ -560,7 +576,7 @@ class RiderController extends Controller
                         ?: $firstParcel?->waybill?->waybill_no,
                     'products' => $catalog
                         ? $this->orderItemPreviewData(
-                            $shipment?->sellerOrder?->items ?? collect(),
+                            $shipment?->includedOrderItems() ?? collect(),
                             $catalog,
                         )
                         : [],
@@ -1291,10 +1307,13 @@ class RiderController extends Controller
         return back()->with('success', $message);
     }
 
-    public function attendanceCheckIn(
+    public function scanAttendance(
         Request $request,
-        RiderShiftService $shifts,
-    ): RedirectResponse {
+        RiderAttendanceQrService $attendanceQr,
+    ): JsonResponse {
+        $validated = $request->validate([
+            'qr_payload' => ['required', 'string', 'max:256'],
+        ]);
         $profile = $this->authenticatedRiderProfile($request);
 
         abort_unless(
@@ -1302,35 +1321,25 @@ class RiderController extends Controller
             403
         );
 
-        $shift = $shifts->checkIn($profile, $request->user());
+        $result = $attendanceQr->scan($profile, $request->user(), $validated['qr_payload']);
+        $time = Carbon::parse($result['scanned_at'])
+            ->timezone(RiderShift::TIMEZONE)
+            ->format('g:i A');
         $isCourier = $profile->work_type === RiderWorkType::Courier->value;
+        $message = $result['scan_type'] === 'check_in'
+            ? "QR attendance checked in at {$time} ".RiderShift::TIMEZONE_LABEL.'.'
+            : "QR attendance checked out at {$time} ".RiderShift::TIMEZONE_LABEL.'.';
 
-        return back()->with(
-            'success',
-            'Attendance checked in at '.$shift->checkedInAtPht()?->format('g:i A').' '.RiderShift::TIMEZONE_LABEL.'. '
-                .($isCourier
-                    ? 'Daily pay requires check-out and at least one assigned line-haul run accepted by destination Logistics.'
-                    : 'Attendance is for reporting only and does not affect assignments or existing per-job earnings.')
-        );
-    }
+        if ($isCourier && $result['scan_type'] === 'check_out') {
+            $message .= ' Courier pay is based on QR-recorded hours and requires a completed run accepted in full by destination Logistics.';
+        } elseif (! $isCourier) {
+            $message .= ' Local Rider per-job earnings remain unchanged.';
+        }
 
-    public function attendanceCheckOut(
-        Request $request,
-        RiderShiftService $shifts,
-    ): RedirectResponse {
-        $profile = $this->authenticatedRiderProfile($request);
-        abort_unless($profile->verification_status === 'approved', 403);
-
-        $shift = $shifts->checkOut($profile, $request->user());
-        $isCourier = $profile->work_type === RiderWorkType::Courier->value;
-
-        return back()->with(
-            'success',
-            'Attendance checked out at '.$shift->checkedOutAtPht()?->format('g:i A').' '.RiderShift::TIMEZONE_LABEL.'. '
-                .($isCourier
-                    ? 'Any daily earning is posted only after destination Logistics accepts every shipment on at least one run assigned during this shift.'
-                    : 'Your existing per-job earnings remain recorded normally.')
-        );
+        return response()->json([
+            'data' => $result,
+            'message' => $message,
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     public function updateLocation(
@@ -1557,6 +1566,8 @@ class RiderController extends Controller
                 'pickupRequest.parcels.waybill',
                 'pickupRequest.parcels.shipment.sellerOrder.items.product.images.variant',
                 'pickupRequest.parcels.shipment.sellerOrder.items.variant',
+                'pickupRequest.parcels.shipment.sellerOrders.items.product.images.variant',
+                'pickupRequest.parcels.shipment.sellerOrders.items.variant',
             ])
             ->orderByDesc('id')
             ->firstOrFail();
@@ -1623,7 +1634,7 @@ class RiderController extends Controller
         return response()->json([
             'data' => $routeService->routeForAcceptedPickup($assignment),
             'message' => 'Pickup road route loaded.',
-        ]);
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     public function confirmPickup(

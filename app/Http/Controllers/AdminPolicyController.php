@@ -25,6 +25,7 @@ class AdminPolicyController extends Controller
     public function index(Request $request): View
     {
         $policies = Policy::query()
+            ->where('scope', 'platform')
             ->with([
                 'latestVersion.creator',
                 'versions' => fn ($query) => $query->with('creator')->orderByDesc('id'),
@@ -60,6 +61,8 @@ class AdminPolicyController extends Controller
                 'code' => $this->newPolicyCode(),
                 'title' => $validated['title'],
                 'category' => $validated['category'],
+                'scope' => 'platform',
+                'scope_key' => null,
                 'status' => $publish ? 'active' : 'draft',
             ]);
 
@@ -88,6 +91,8 @@ class AdminPolicyController extends Controller
 
     public function update(Request $request, Policy $policy): RedirectResponse
     {
+        abort_unless($policy->scope === 'platform', 404);
+
         if ($policy->status === 'archived') {
             return back()->with('warning', 'Archived policies cannot be edited.');
         }
@@ -133,6 +138,8 @@ class AdminPolicyController extends Controller
 
     public function publish(Request $request, Policy $policy): RedirectResponse
     {
+        abort_unless($policy->scope === 'platform', 404);
+
         if ($policy->status === 'archived') {
             return back()->with('warning', 'Archived policies cannot be published.');
         }
@@ -180,6 +187,8 @@ class AdminPolicyController extends Controller
 
     public function archive(Request $request, Policy $policy): RedirectResponse
     {
+        abort_unless($policy->scope === 'platform', 404);
+
         if ($policy->status === 'archived') {
             return back()->with('warning', 'This policy is already archived.');
         }

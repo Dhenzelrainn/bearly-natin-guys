@@ -25,6 +25,7 @@ use App\Models\Shipment;
 use App\Models\ShipmentEvent;
 use App\Models\ShipmentTransfer;
 use App\Models\ShippingSettlement;
+use App\Models\ShippingSettlementAllocation;
 use App\Models\ShippingSettlementOriginRemittance;
 use App\Models\User;
 use Carbon\Carbon;
@@ -120,6 +121,11 @@ class ShippingSettlementService
                 'sellerOrder.store',
                 'sellerOrder.items.product.images.variant',
                 'sellerOrder.items.variant',
+                'allocations.sellerOrder.items.product.images.variant',
+                'allocations.sellerOrder.items.variant',
+                'shipment.sellerOrders.store',
+                'shipment.sellerOrders.items.product.images.variant',
+                'shipment.sellerOrders.items.variant',
                 'returnRequest.refunds',
                 'returnRequest.items.orderItem.product.images.variant',
                 'returnRequest.items.orderItem.variant',
@@ -158,6 +164,8 @@ class ShippingSettlementService
                 'shipment.sellerOrder.order',
                 'shipment.sellerOrder.items.product.images.variant',
                 'shipment.sellerOrder.items.variant',
+                'shipment.sellerOrders.items.product.images.variant',
+                'shipment.sellerOrders.items.variant',
                 'pickupAssignment.pickupRequest',
                 'parcel',
                 'shippingSettlement',
@@ -328,8 +336,8 @@ class ShippingSettlementService
 
         return DB::transaction(function () use ($admin, $settlementId, $sellerOrderId, $actualAmountMinor, $method, $payoutAccountId, $reference, $paidDate, $reason, $request): ShippingSettlement {
             $sellerOrder = SellerOrder::query()->whereKey($sellerOrderId)->first();
-            $eligible = $sellerOrder !== null
-                && $this->wallets->isSellerOrderSettlementEligible($sellerOrder);
+            $settlementStub = ShippingSettlement::query()->whereKey($settlementId)->firstOrFail();
+            $eligible = $sellerOrder !== null && $this->settlementEligibleForSellerWallet($settlementStub, $sellerOrder);
             $settlement = ShippingSettlement::query()->whereKey($settlementId)->lockForUpdate()->firstOrFail();
             $expectedAmount = $settlement->expectedFinalLogisticsRemittanceMinor();
             $expectedTotal = $expectedAmount + ($settlement->isInterHub()
@@ -471,8 +479,8 @@ class ShippingSettlementService
 
         return DB::transaction(function () use ($admin, $stub, $sellerOrderId, $actualAmountMinor, $method, $payoutAccountId, $reference, $paidDate, $reason, $request): ShippingSettlement {
             $sellerOrder = SellerOrder::query()->whereKey($sellerOrderId)->first();
-            $eligible = $sellerOrder !== null
-                && $this->wallets->isSellerOrderSettlementEligible($sellerOrder);
+            $settlementStub = ShippingSettlement::query()->whereKey($stub->id)->firstOrFail();
+            $eligible = $sellerOrder !== null && $this->settlementEligibleForSellerWallet($settlementStub, $sellerOrder);
             $settlement = ShippingSettlement::query()->whereKey($stub->id)->lockForUpdate()->firstOrFail();
 
             if (! $settlement->isInterHub()) {
@@ -994,60 +1002,67 @@ class ShippingSettlementService
                 return;
             }
 
-            $sellerOrderStub = SellerOrder::query()
-                ->whereKey($shipmentStub->seller_order_id)
-                ->first(['id', 'order_id']);
-            if (! $sellerOrderStub || ! $this->wallets->isSellerOrderSettlementEligible($sellerOrderStub)) {
+            $memberStubs = $shipmentStub->sellerOrders()
+                ->orderBy('seller_orders.id')
+                ->get(['seller_orders.id', 'seller_orders.order_id']);
+            if ($memberStubs->isEmpty()) {
                 return;
             }
 
-            $sellerOrder = SellerOrder::query()->whereKey($sellerOrderStub->id)->lockForUpdate()->first();
+            $orderIds = $memberStubs->pluck('order_id')->unique()->sort()->values();
+            $orders = \App\Models\Order::query()
+                ->whereIn('id', $orderIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+            if ($orders->count() !== $orderIds->count()) {
+                return;
+            }
+
+            $sellerOrderIds = $memberStubs->pluck('id')->unique()->sort()->values();
+            $sellerOrders = SellerOrder::query()
+                ->whereIn('id', $sellerOrderIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+            if ($sellerOrders->count() !== $sellerOrderIds->count()) {
+                return;
+            }
+
             $shipment = Shipment::query()->whereKey($shipmentId)->lockForUpdate()->first();
-            if (! $sellerOrder || ! $shipment
-                || (int) $shipment->seller_order_id !== (int) $sellerOrder->id
+            if (! $shipment
                 || $shipment->purpose !== 'outbound'
-                || $shipment->status !== ShipmentStatus::Delivered->value
-                || $sellerOrder->status !== SellerOrderStatus::Completed->value) {
+                || $shipment->status !== ShipmentStatus::Delivered->value) {
                 return;
             }
 
-            $quote = (array) $sellerOrder->shipping_quote;
-            $zoneLevel = $quote['zone_level'] ?? null;
-            if (($quote['pricing_rule'] ?? null) !== 'zone_based_v1'
-                || ! is_int($zoneLevel)
-                || $zoneLevel < 0
-                || $zoneLevel > 4) {
+            $primarySellerOrder = $sellerOrders->get((int) $shipment->seller_order_id);
+            if (! $primarySellerOrder || $sellerOrders->contains(fn (SellerOrder $member): bool => $member->status !== SellerOrderStatus::Completed->value
+                || ! $this->wallets->isSellerOrderSettlementEligible($member))) {
                 return;
             }
 
-            $feeMinor = (int) $sellerOrder->shipping_fee_minor;
-            $subsidyMinor = (int) $sellerOrder->platform_shipping_discount_minor;
-            $buyerPaidMinor = $sellerOrder->buyer_paid_shipping_fee_minor === null
-                ? $feeMinor - $subsidyMinor
-                : (int) $sellerOrder->buyer_paid_shipping_fee_minor;
-            $baseFeeMinor = (int) ($quote['base_fee_minor'] ?? -1);
-            $zoneSurchargeMinor = (int) ($quote['zone_surcharge_minor'] ?? -1);
-            $surchargePerLevelMinor = (int) ($quote['zone_surcharge_per_level_minor'] ?? -1);
-            $feeBreakdown = (array) ($quote['shipping_fee_breakdown'] ?? []);
-            $quoteFundingSource = (string) data_get($quote, 'shipping_fee_breakdown.funding_source', '');
+            $allocationSnapshots = collect();
+            foreach ($sellerOrders as $includedOrder) {
+                $snapshot = $this->outboundShippingSnapshot($includedOrder);
+                if ($snapshot === null) {
+                    return;
+                }
+                $allocationSnapshots->push(['seller_order' => $includedOrder] + $snapshot);
+            }
+
+            $feeMinor = (int) $allocationSnapshots->sum('original_shipping_fee_minor');
+            $buyerPaidMinor = (int) $allocationSnapshots->sum('buyer_paid_shipping_fee_minor');
+            $subsidyMinor = (int) $allocationSnapshots->sum('platform_shipping_subsidy_minor');
+            $zoneLevel = (int) $allocationSnapshots->first()['zone_level'];
+            $fundingSources = $allocationSnapshots->pluck('shipping_funding_source')->unique()->values();
+            $fundingSource = $fundingSources->count() === 1 ? (string) $fundingSources->first() : 'mixed';
             if ($feeMinor < 1
-                || $subsidyMinor < 0
-                || $subsidyMinor > $feeMinor
-                || $buyerPaidMinor < 0
                 || $buyerPaidMinor + $subsidyMinor !== $feeMinor
-                || (int) ($quote['original_shipping_fee_minor'] ?? -1) !== $feeMinor
-                || (int) ($quote['shipping_fee_minor'] ?? -1) !== $feeMinor
-                || $baseFeeMinor < 1
-                || $zoneSurchargeMinor < 0
-                || $surchargePerLevelMinor < 0
-                || $baseFeeMinor + $zoneSurchargeMinor !== $feeMinor
-                || $zoneSurchargeMinor !== $surchargePerLevelMinor * $zoneLevel
-                || (int) ($feeBreakdown['original_fee_minor'] ?? -1) !== $feeMinor
-                || (int) ($feeBreakdown['buyer_paid_minor'] ?? -1) !== $buyerPaidMinor
-                || (int) ($feeBreakdown['platform_subsidy_minor'] ?? -1) !== $subsidyMinor
-                || $quoteFundingSource === ''
-                || ($sellerOrder->shipping_funding_source !== null && $sellerOrder->shipping_funding_source !== $quoteFundingSource)) {
-                throw new ConflictHttpException('The saved shipping fee and funding snapshots do not reconcile.');
+                || $feeMinor !== (int) $shipment->shipping_fee_minor) {
+                throw new ConflictHttpException('The combined shipping fee and per-Seller-Order allocation snapshots do not reconcile.');
             }
 
             $deliveryEvent = ShipmentEvent::query()
@@ -1104,24 +1119,39 @@ class ShippingSettlementService
                 throw new ConflictHttpException('The shipment origin and final Logistics providers differ, but no accepted transfer is recorded.');
             }
 
-            if ($settlementMode === 'inter_hub') {
-                $originLogisticsShareMinor = intdiv($feeMinor * 10, 100);
-                $logisticsShareMinor = intdiv($feeMinor * 30, 100);
-                $riderShareMinor = $feeMinor - $originLogisticsShareMinor - $logisticsShareMinor;
-            } else {
-                $originLogisticsShareMinor = 0;
-                $logisticsShareMinor = intdiv($feeMinor * 40, 100);
-                $riderShareMinor = $feeMinor - $logisticsShareMinor;
+            $allocationSnapshots = $allocationSnapshots->map(function (array $snapshot) use ($settlementMode): array {
+                $fee = (int) $snapshot['original_shipping_fee_minor'];
+                if ($settlementMode === 'inter_hub') {
+                    $originShare = intdiv($fee * 10, 100);
+                    $logisticsShare = intdiv($fee * 30, 100);
+                    $riderShare = $fee - $originShare - $logisticsShare;
+                } else {
+                    $originShare = 0;
+                    $logisticsShare = intdiv($fee * 40, 100);
+                    $riderShare = $fee - $logisticsShare;
+                }
+
+                return $snapshot + [
+                    'origin_logistics_share_minor' => $originShare,
+                    'logistics_share_minor' => $logisticsShare,
+                    'rider_share_minor' => $riderShare,
+                ];
+            });
+            $originLogisticsShareMinor = (int) $allocationSnapshots->sum('origin_logistics_share_minor');
+            $logisticsShareMinor = (int) $allocationSnapshots->sum('logistics_share_minor');
+            $riderShareMinor = (int) $allocationSnapshots->sum('rider_share_minor');
+            $fundingSources = $allocationSnapshots->pluck('shipping_funding_source')->unique()->values();
+            $fundingSource = $fundingSources->count() === 1 ? (string) $fundingSources->first() : 'mixed';
+            if ($originLogisticsShareMinor + $logisticsShareMinor + $riderShareMinor !== $feeMinor) {
+                throw new ConflictHttpException('The combined shipping-share allocation does not equal the original shipping fees.');
             }
-            $fundingSource = (string) ($sellerOrder->shipping_funding_source
-                ?: data_get($quote, 'shipping_fee_breakdown.funding_source', $subsidyMinor > 0 ? 'buyer_and_platform' : 'buyer'));
             $settlement = ShippingSettlement::query()->firstOrCreate(
                 ['shipment_id' => $shipment->id],
                 [
                     'settlement_no' => 'SPS-'.Str::upper((string) Str::ulid()),
                     'settlement_type' => 'outbound',
                     'settlement_mode' => $settlementMode,
-                    'seller_order_id' => $sellerOrder->id,
+                    'seller_order_id' => $primarySellerOrder->id,
                     'logistics_profile_id' => $shipment->logistics_profile_id,
                     'origin_logistics_profile_id' => $originProviderId,
                     'origin_logistics_share_minor' => $originLogisticsShareMinor,
@@ -1139,18 +1169,41 @@ class ShippingSettlementService
                 ],
             );
 
-            if ((int) $settlement->seller_order_id !== (int) $sellerOrder->id
+            if ((int) $settlement->seller_order_id !== (int) $primarySellerOrder->id
                 || (int) $settlement->logistics_profile_id !== (int) $shipment->logistics_profile_id
                 || (int) $settlement->rider_profile_id !== (int) $rider->id
-                || (int) $settlement->original_shipping_fee_minor !== $feeMinor) {
-                throw new ConflictHttpException('An existing shipping settlement does not match the immutable order snapshot.');
+                || (int) $settlement->original_shipping_fee_minor !== $feeMinor
+                || (int) $settlement->buyer_paid_shipping_fee_minor !== $buyerPaidMinor
+                || (int) $settlement->platform_shipping_subsidy_minor !== $subsidyMinor
+                || (int) $settlement->origin_logistics_share_minor !== $originLogisticsShareMinor
+                || (int) $settlement->logistics_share_minor !== $logisticsShareMinor
+                || (int) $settlement->rider_share_minor !== $riderShareMinor
+                || $settlement->shipping_funding_source !== $fundingSource) {
+                throw new ConflictHttpException('An existing shipping settlement does not match the immutable Seller Order allocation snapshots.');
+            }
+
+            foreach ($allocationSnapshots as $snapshot) {
+                $includedOrder = $snapshot['seller_order'];
+                unset($snapshot['seller_order']);
+                $snapshot['shipping_settlement_id'] = $settlement->id;
+                $snapshot['seller_order_id'] = $includedOrder->id;
+                $saved = ShippingSettlementAllocation::query()->firstOrCreate(
+                    [
+                        'shipping_settlement_id' => $settlement->id,
+                        'seller_order_id' => $includedOrder->id,
+                    ],
+                    $snapshot,
+                );
+                foreach ($snapshot as $field => $value) {
+                    if ((string) $saved->{$field} !== (string) $value) {
+                        throw new ConflictHttpException('An existing shipping settlement allocation does not match its immutable Seller Order snapshot.');
+                    }
+                }
             }
 
             if ($settlement->isInterHub()) {
                 if ((int) $settlement->origin_logistics_profile_id !== (int) $originProviderId
-                    || (int) $settlement->origin_logistics_share_minor !== $originLogisticsShareMinor
-                    || (int) $settlement->logistics_share_minor !== $logisticsShareMinor
-                    || (int) $settlement->rider_share_minor !== $riderShareMinor) {
+                    || (int) $settlement->origin_logistics_share_minor !== $originLogisticsShareMinor) {
                     throw new ConflictHttpException('An existing inter-hub settlement does not match its immutable provider allocation.');
                 }
 
@@ -1191,6 +1244,90 @@ class ShippingSettlementService
                 $this->broadcastRiderEarningUpdated($earning);
             }
         }, attempts: 3);
+    }
+
+    private function settlementEligibleForSellerWallet(ShippingSettlement $settlement, SellerOrder $primarySellerOrder): bool
+    {
+        if ($settlement->settlement_type !== 'outbound') {
+            return $this->wallets->isSellerOrderSettlementEligible($primarySellerOrder);
+        }
+
+        $members = $settlement->shipment?->sellerOrders()->orderBy('seller_orders.id')->get();
+        if (! $members || $members->isEmpty()
+            || ! $members->contains(fn (SellerOrder $member): bool => (int) $member->id === (int) $primarySellerOrder->id)) {
+            return false;
+        }
+
+        foreach ($members as $member) {
+            if ($member->status !== SellerOrderStatus::Completed->value
+                || ! $this->wallets->isSellerOrderSettlementEligible($member)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Validate and expose one Seller Order's immutable shipping-fee snapshot.
+     * Physical consolidation changes neither this fee nor its funding split.
+     *
+     * @return array{
+     *     original_shipping_fee_minor:int,
+     *     buyer_paid_shipping_fee_minor:int,
+     *     platform_shipping_subsidy_minor:int,
+     *     shipping_funding_source:string,
+     *     zone_level:int
+     * }|null
+     */
+    private function outboundShippingSnapshot(SellerOrder $sellerOrder): ?array
+    {
+        $quote = (array) $sellerOrder->shipping_quote;
+        $zoneLevel = $quote['zone_level'] ?? null;
+        if (($quote['pricing_rule'] ?? null) !== 'zone_based_v1'
+            || ! is_int($zoneLevel)
+            || $zoneLevel < 0
+            || $zoneLevel > 4) {
+            return null;
+        }
+
+        $feeMinor = (int) $sellerOrder->shipping_fee_minor;
+        $subsidyMinor = (int) $sellerOrder->platform_shipping_discount_minor;
+        $buyerPaidMinor = $sellerOrder->buyer_paid_shipping_fee_minor === null
+            ? $feeMinor - $subsidyMinor
+            : (int) $sellerOrder->buyer_paid_shipping_fee_minor;
+        $baseFeeMinor = (int) ($quote['base_fee_minor'] ?? -1);
+        $zoneSurchargeMinor = (int) ($quote['zone_surcharge_minor'] ?? -1);
+        $surchargePerLevelMinor = (int) ($quote['zone_surcharge_per_level_minor'] ?? -1);
+        $feeBreakdown = (array) ($quote['shipping_fee_breakdown'] ?? []);
+        $quoteFundingSource = trim((string) data_get($quote, 'shipping_fee_breakdown.funding_source', ''));
+        if ($feeMinor < 1
+            || $subsidyMinor < 0
+            || $subsidyMinor > $feeMinor
+            || $buyerPaidMinor < 0
+            || $buyerPaidMinor + $subsidyMinor !== $feeMinor
+            || (int) ($quote['original_shipping_fee_minor'] ?? -1) !== $feeMinor
+            || (int) ($quote['shipping_fee_minor'] ?? -1) !== $feeMinor
+            || $baseFeeMinor < 1
+            || $zoneSurchargeMinor < 0
+            || $surchargePerLevelMinor < 0
+            || $baseFeeMinor + $zoneSurchargeMinor !== $feeMinor
+            || $zoneSurchargeMinor !== $surchargePerLevelMinor * $zoneLevel
+            || (int) ($feeBreakdown['original_fee_minor'] ?? -1) !== $feeMinor
+            || (int) ($feeBreakdown['buyer_paid_minor'] ?? -1) !== $buyerPaidMinor
+            || (int) ($feeBreakdown['platform_subsidy_minor'] ?? -1) !== $subsidyMinor
+            || $quoteFundingSource === ''
+            || ($sellerOrder->shipping_funding_source !== null && $sellerOrder->shipping_funding_source !== $quoteFundingSource)) {
+            throw new ConflictHttpException('The saved shipping fee and funding snapshots do not reconcile.');
+        }
+
+        return [
+            'original_shipping_fee_minor' => $feeMinor,
+            'buyer_paid_shipping_fee_minor' => $buyerPaidMinor,
+            'platform_shipping_subsidy_minor' => $subsidyMinor,
+            'shipping_funding_source' => (string) ($sellerOrder->shipping_funding_source ?: $quoteFundingSource),
+            'zone_level' => $zoneLevel,
+        ];
     }
 
     private function materializeForReturnShipment(int $shipmentId): void

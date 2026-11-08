@@ -9,6 +9,7 @@ use App\Models\Category;
 use App\Models\InventoryMovement;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
+use App\Models\Policy;
 use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\ProductVariant;
@@ -18,13 +19,15 @@ use App\Models\Store;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Notifications\WorkflowNotification;
-use App\Services\PostalCodeLookup;
 use App\Services\CheckoutService;
+use App\Services\PostalCodeLookup;
+use App\Services\ShippingZoneClassifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class OrdersCheckoutIntegrationTest extends TestCase
@@ -465,27 +468,134 @@ class OrdersCheckoutIntegrationTest extends TestCase
             ->assertJsonPath('message', 'Order confirmed. You can now prepare it.');
         $this->assertNotNull($sellerOrder->fresh()->confirmed_at);
 
-        $this->actingAs($seller)->patchJson($endpoint, ['action' => 'start_preparing'])
+        $item = $sellerOrder->items()->sole();
+        $originalQuote = $sellerOrder->shipping_quote;
+        $oversizedQuote = $originalQuote;
+        $oversizedQuote['package_items'][0]['quantity'] = 65_536;
+        $item->update(['quantity' => 65_536]);
+        $sellerOrder->update(['shipping_quote' => $oversizedQuote]);
+        $this->actingAs($seller)
+            ->get(route('seller.orders.packing', $sellerOrder->id))
+            ->assertConflict();
+        $item->update(['quantity' => 5]);
+        $sellerOrder->update(['shipping_quote' => $originalQuote]);
+
+        $this->actingAs($seller)
+            ->get(route('seller.orders.packing', $sellerOrder->id))
             ->assertOk()
-            ->assertJsonPath('data.status', 'packing')
-            ->assertJsonPath('data.redirect_to', route('seller.fulfillment.waybills', ['status' => 'ready']));
+            ->assertSee('Plan the physical packages')
+            ->assertSee('5 parcels in this plan')
+            ->assertSee('Combine all into one')
+            ->assertSee('No Bearly Logistics handling policies are published yet.')
+            ->assertSee('Save plan and create Waybill');
+
+        $handlingPolicy = Policy::query()->create([
+            'code' => 'SHP-TEST-PACKING-1',
+            'title' => 'Test package handling note',
+            'category' => 'Packaging and combinations',
+            'scope' => 'shipping_provider',
+            'scope_key' => config('shipping.provider_key'),
+            'status' => 'active',
+        ]);
+        $handlingPolicy->versions()->create([
+            'version' => 'v1.0',
+            'summary' => 'Test reference only.',
+            'body' => 'Keep the sample package upright.',
+            'source_reference' => 'Automated test fixture',
+            'status' => 'published',
+            'created_by' => $seller->id,
+            'published_at' => now(),
+            'effective_at' => now(),
+        ]);
+
+        $this->actingAs($seller)
+            ->get(route('seller.orders.packing', $sellerOrder->id))
+            ->assertOk()
+            ->assertSee('Test package handling note')
+            ->assertSee('Keep the sample package upright.')
+            ->assertSee('This packing plan records item quantities and package measurements. It does not automatically classify restricted goods or check product compatibility.');
+
+        $this->actingAs($seller)->patchJson($endpoint, ['action' => 'start_preparing'])
+            ->assertUnprocessable();
+        $this->assertDatabaseCount('shipments', 0);
+
+        $incompletePlan = [[
+            'items' => [$item->id => 2],
+            'weight_kg' => '0.500',
+            'length_cm' => '20.00',
+            'width_cm' => '15.00',
+            'height_cm' => '10.00',
+        ]];
+        $this->actingAs($seller)
+            ->from(route('seller.orders.packing', $sellerOrder->id))
+            ->post(route('seller.orders.packing.store', $sellerOrder->id), ['parcels' => $incompletePlan])
+            ->assertRedirect()
+            ->assertSessionHasErrors('parcels');
+        $this->assertDatabaseCount('shipments', 0);
+
+        $foreignItemPlan = [[
+            'items' => [PHP_INT_MAX => 5],
+            'weight_kg' => '1.250',
+            'length_cm' => '25.00',
+            'width_cm' => '20.00',
+            'height_cm' => '12.00',
+        ]];
+        $this->actingAs($seller)
+            ->from(route('seller.orders.packing', $sellerOrder->id))
+            ->post(route('seller.orders.packing.store', $sellerOrder->id), ['parcels' => $foreignItemPlan])
+            ->assertRedirect()
+            ->assertSessionHasErrors();
+        $this->assertDatabaseCount('shipments', 0);
+
+        $packingPlan = [
+            [
+                'items' => [$item->id => 2],
+                'weight_kg' => '0.500',
+                'length_cm' => '20.00',
+                'width_cm' => '15.00',
+                'height_cm' => '10.00',
+            ],
+            [
+                'items' => [$item->id => 2],
+                'weight_kg' => '0.500',
+                'length_cm' => '20.00',
+                'width_cm' => '15.00',
+                'height_cm' => '10.00',
+            ],
+            [
+                'items' => [$item->id => 1],
+                'weight_kg' => '0.250',
+                'length_cm' => '10.00',
+                'width_cm' => '8.00',
+                'height_cm' => '5.00',
+            ],
+        ];
+
+        $this->actingAs($seller)
+            ->post(route('seller.orders.packing.store', $sellerOrder->id), ['parcels' => $packingPlan])
+            ->assertRedirect(route('seller.fulfillment.waybills', ['status' => 'ready']))
+            ->assertSessionHas('success');
         $this->assertNotNull($sellerOrder->fresh()->preparing_at);
         $this->assertDatabaseCount('shipments', 1);
         $this->assertDatabaseCount('waybills', 1);
-        $this->assertDatabaseCount('parcels', 5);
+        $this->assertDatabaseCount('parcels', 3);
+        $this->assertDatabaseCount('parcel_items', 3);
 
         $shipment = $sellerOrder->fresh()->shipments()->sole();
-        $this->assertSame(5, (int) $shipment->waybill->piece_count);
+        $this->assertSame(3, (int) $shipment->waybill->piece_count);
         $parcels = $shipment->parcels()->orderBy('piece_sequence')->get();
-        $this->assertSame([1, 2, 3, 4, 5], $parcels->pluck('piece_sequence')->map(fn ($sequence): int => (int) $sequence)->all());
-        $this->assertSame([0.25, 0.25, 0.25, 0.25, 0.25], $parcels->pluck('weight_kg')->map(fn ($weight): float => (float) $weight)->all());
+        $this->assertSame([1, 2, 3], $parcels->pluck('piece_sequence')->map(fn ($sequence): int => (int) $sequence)->all());
+        $this->assertSame([0.5, 0.5, 0.25], $parcels->pluck('weight_kg')->map(fn ($weight): float => (float) $weight)->all());
+        $this->assertSame([2, 2, 1], $parcels->map(fn ($parcel): int => (int) $parcel->contents()->sum('quantity'))->all());
+        $this->assertSame(3, $parcels->pluck('parcel_no')->unique()->count());
 
-        $this->actingAs($seller)->patchJson($endpoint, ['action' => 'start_preparing'])
+        $this->actingAs($seller)
+            ->post(route('seller.orders.packing.store', $sellerOrder->id), ['parcels' => $packingPlan])
             ->assertConflict();
 
         $this->assertDatabaseCount('shipments', 1);
         $this->assertDatabaseCount('waybills', 1);
-        $this->assertDatabaseCount('parcels', 5);
+        $this->assertDatabaseCount('parcels', 3);
 
         $this->assertSame($provider->id, $shipment->logistics_profile_id);
         $this->assertSame($provider->id, $shipment->origin_logistics_profile_id);
@@ -503,14 +613,14 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $this->actingAs($seller)->patchJson($endpoint, ['action' => 'mark_ready'])
             ->assertConflict();
 
-        $shipment->waybill->update(['printed_at' => now(), 'piece_count' => 4]);
+        $shipment->waybill->update(['printed_at' => now(), 'piece_count' => 2]);
 
         $this->actingAs($seller)->patchJson($endpoint, ['action' => 'mark_ready'])
             ->assertConflict();
         $this->assertSame('packing', $sellerOrder->fresh()->status);
         $this->assertSame('pending', $shipment->fresh()->status);
 
-        $shipment->waybill->update(['piece_count' => 5]);
+        $shipment->waybill->update(['piece_count' => 3]);
 
         $this->actingAs($seller)->patchJson($endpoint, ['action' => 'mark_ready'])
             ->assertOk()
@@ -539,6 +649,218 @@ class OrdersCheckoutIntegrationTest extends TestCase
             'actor_user_id' => $seller->id,
             'reason' => 'Seller completed the packing checklist and marked the order ready for pickup.',
         ]);
+    }
+
+    public function test_seller_consolidates_same_product_orders_into_one_shipment_and_pickup(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'consolidated-orders');
+        $this->logisticsProviderFor((string) $seller->sellerProfile->pickupAddress->psgc_city_code);
+        $product = $this->product($store, $category, 'Consolidated Product');
+        $firstVariant = $this->variant($product, 'CONSOLIDATE-001', 2500, 8);
+        $secondVariant = $this->variant($product, 'CONSOLIDATE-002', 3000, 8);
+
+        $createSellerOrder = function (ProductVariant $variant) use ($buyer, $destination, $store, $seller): SellerOrder {
+            $cartItem = $this->cartItem($buyer, $variant, 1);
+            $requestKey = (string) Str::uuid();
+            $quoteToken = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+
+            $this->actingAs($buyer)->post(route('checkout.place'), [
+                'checkout_request_key' => $requestKey,
+                'address_id' => $destination->id,
+                'cart_item_ids' => [$cartItem->id],
+                'quote_token' => $quoteToken,
+                'payment_method' => 'cod',
+            ])->assertRedirect();
+
+            $order = Order::query()->where('checkout_request_key', $requestKey)->firstOrFail();
+            $sellerOrder = $order->sellerOrders()->where('store_id', $store->id)->sole();
+            $this->actingAs($seller)->patchJson(route('seller.orders.status', $sellerOrder->id), [
+                'action' => 'confirm',
+            ])->assertOk();
+
+            return $sellerOrder->fresh();
+        };
+
+        $first = $createSellerOrder($firstVariant);
+        $second = $createSellerOrder($secondVariant);
+        $firstItem = $first->items()->sole();
+        $secondItem = $second->items()->sole();
+
+        $this->actingAs($seller)
+            ->get(route('seller.orders.packing', $first->id))
+            ->assertOk()
+            ->assertSee($second->seller_order_no)
+            ->assertSee('additional_seller_order_ids[]', false);
+
+        $packingPlan = [[
+            'items' => [$firstItem->id => 1, $secondItem->id => 1],
+            'weight_kg' => '0.500',
+            'length_cm' => '20.00',
+            'width_cm' => '15.00',
+            'height_cm' => '10.00',
+        ]];
+
+        $quote = (array) $second->shipping_quote;
+        $incompatibleQuote = $quote;
+        $incompatibleQuote['origin']['city_municipality'] = 'Different origin';
+        $second->update(['shipping_quote' => $incompatibleQuote]);
+        $this->actingAs($seller)
+            ->from(route('seller.orders.packing', $first->id))
+            ->post(route('seller.orders.packing.store', $first->id), [
+                'additional_seller_order_ids' => [$second->id],
+                'parcels' => $packingPlan,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('additional_seller_order_ids');
+        $this->assertDatabaseCount('shipments', 0);
+        $second->update(['shipping_quote' => $quote]);
+
+        $this->actingAs($seller)
+            ->post(route('seller.orders.packing.store', $first->id), [
+                'additional_seller_order_ids' => [$second->id],
+                'parcels' => $packingPlan,
+            ])
+            ->assertRedirect(route('seller.fulfillment.waybills', ['status' => 'ready']));
+
+        $shipment = $first->fresh()->shipments()->sole();
+        $this->assertEqualsCanonicalizing(
+            [$first->id, $second->id],
+            $shipment->includedSellerOrders()->pluck('id')->map(fn ($id): int => (int) $id)->all(),
+        );
+        $this->assertSame('packing', $first->fresh()->status);
+        $this->assertSame('packing', $second->fresh()->status);
+        $this->assertSame(
+            (int) $first->shipping_fee_minor + (int) $second->shipping_fee_minor,
+            (int) $shipment->shipping_fee_minor,
+        );
+        $this->assertSame(
+            (int) $first->total_minor + (int) $second->total_minor,
+            (int) $shipment->cod_amount_minor,
+        );
+        $this->assertDatabaseCount('shipments', 1);
+        $this->assertDatabaseCount('waybills', 1);
+        $this->assertDatabaseCount('parcels', 1);
+        $parcel = $shipment->parcels()->sole();
+        $this->assertEqualsCanonicalizing(
+            [$firstItem->id, $secondItem->id],
+            $parcel->contents()->pluck('order_item_id')->all(),
+        );
+        $this->assertSame(2, (int) $parcel->contents()->sum('quantity'));
+
+        $uncombined = $createSellerOrder($firstVariant);
+        $this->assertCount(0, $uncombined->shipments);
+
+        $ordersPage = $this->actingAs($seller)
+            ->get(route('seller.orders'))
+            ->assertOk()
+            ->assertSee('Combined shipment', false)
+            ->assertSee('Mark all 2 Seller Orders ready for pickup')
+            ->assertSee($first->seller_order_no)
+            ->assertSee($second->seller_order_no)
+            ->assertSee($uncombined->seller_order_no);
+        $ordersHtml = $ordersPage->getContent();
+        $this->assertSame(1, substr_count($ordersHtml, 'class="shipment-group-row"'));
+        $this->assertSame(2, substr_count($ordersHtml, 'data-order-shipment-group-member='));
+        preg_match_all('/data-order-row(?=\s)/', $ordersHtml, $orderRowMatches);
+        $this->assertCount(3, $orderRowMatches[0]);
+        $this->assertStringContainsString('data-order-group-member-id="'.$first->id.'"', $ordersHtml);
+        $this->assertStringContainsString('data-order-group-member-id="'.$second->id.'"', $ordersHtml);
+        $this->assertStringNotContainsString('data-order-group-member-id="'.$uncombined->id.'"', $ordersHtml);
+        $this->assertStringContainsString('aria-expanded="false"', $ordersHtml);
+        $this->assertStringContainsString('data-order-seller-status="packing"', $ordersHtml);
+        $this->assertStringContainsString('data-order-total="₱75.00"', $ordersHtml);
+        $this->assertStringContainsString('data-order-total="₱80.00"', $ordersHtml);
+        $this->assertStringContainsString('Cash on Delivery · Unpaid', $ordersHtml);
+
+        $shipment->waybill->update(['printed_at' => now()]);
+        $this->actingAs($seller)
+            ->patchJson(route('seller.orders.status', $second->id), ['action' => 'mark_ready'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'ready_for_pickup');
+        $this->assertSame('ready_for_pickup', $first->fresh()->status);
+        $this->assertSame('ready_for_pickup', $second->fresh()->status);
+        $this->assertSame('ready_for_pickup', $shipment->fresh()->status);
+        $this->assertDatabaseCount('seller_order_status_histories', 7);
+        $this->actingAs($seller)
+            ->get(route('seller.orders'))
+            ->assertOk()
+            ->assertSee('Ready for Pickup · 2 of 2 Seller Orders', false)
+            ->assertDontSee('Ready for Pickup becomes available when every Seller Order is preparing.');
+
+        $this->actingAs($seller)
+            ->get(route('seller.fulfillment.pickups'))
+            ->assertOk()
+            ->assertSee($first->seller_order_no)
+            ->assertSee($second->seller_order_no);
+
+        $this->actingAs($seller)
+            ->post(route('seller.fulfillment.pickups.store'), [
+                'order_ids' => [$first->id],
+                'logistics_profile_id' => $shipment->logistics_profile_id,
+                'requested_date' => today()->addDay()->toDateString(),
+                'pickup_window' => '13:00-15:00',
+            ])
+            ->assertRedirect(route('seller.fulfillment.pickups'));
+        $this->assertDatabaseCount('pickup_requests', 1);
+        $this->assertDatabaseCount('pickup_request_parcels', 1);
+    }
+
+    public function test_consolidation_candidates_reject_different_products_and_payment_methods(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'incompatible-consolidation');
+        $this->logisticsProviderFor((string) $seller->sellerProfile->pickupAddress->psgc_city_code);
+        $firstProduct = $this->product($store, $category, 'First Consolidation Product');
+        $secondProduct = $this->product($store, $category, 'Second Consolidation Product');
+        $first = $this->variant($firstProduct, 'INCOMPATIBLE-001', 2000, 8);
+        $sameProduct = $this->variant($firstProduct, 'INCOMPATIBLE-002', 2500, 8);
+        $differentProduct = $this->variant($secondProduct, 'INCOMPATIBLE-003', 3000, 8);
+
+        $createSellerOrder = function (ProductVariant $variant, string $suffix) use ($buyer, $destination, $store, $seller): SellerOrder {
+            $cartItem = $this->cartItem($buyer, $variant, 1);
+            $requestKey = (string) Str::uuid();
+            $quoteToken = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+            $this->actingAs($buyer)->post(route('checkout.place'), [
+                'checkout_request_key' => $requestKey,
+                'address_id' => $destination->id,
+                'cart_item_ids' => [$cartItem->id],
+                'quote_token' => $quoteToken,
+                'payment_method' => 'cod',
+            ])->assertRedirect();
+            $sellerOrder = Order::query()->where('checkout_request_key', $requestKey)->firstOrFail()
+                ->sellerOrders()->where('store_id', $store->id)->sole();
+            $this->actingAs($seller)->patchJson(route('seller.orders.status', $sellerOrder->id), [
+                'action' => 'confirm',
+            ])->assertOk();
+
+            return $sellerOrder->fresh();
+        };
+
+        $base = $createSellerOrder($first, 'base');
+        $compatible = $createSellerOrder($sameProduct, 'same-product');
+        $wrongProduct = $createSellerOrder($differentProduct, 'different-product');
+        $consolidation = app(\App\Services\SellerOrderPackingConsolidationService::class);
+
+        $this->assertSame(
+            [$compatible->id],
+            $consolidation->candidates($seller, $base)->pluck('id')->all(),
+        );
+
+        $compatible->order->payments()->sole()->update(['method' => 'online']);
+        $this->assertCount(0, $consolidation->candidates($seller, $base));
+
+        $compatible->order->payments()->sole()->update(['method' => 'cod']);
+        $this->assertSame(
+            [$compatible->id],
+            $consolidation->candidates($seller, $base)->pluck('id')->all(),
+        );
+        $wrongProduct->refresh();
+        $this->assertNotContains($wrongProduct->id, $consolidation->candidates($seller, $base)->pluck('id')->all());
     }
 
     public function test_seller_status_actions_are_store_scoped_and_reject_invalid_or_replayed_transitions(): void
@@ -573,6 +895,9 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $this->actingAs($firstSeller)->patchJson(route('seller.orders.status', $foreignOrder->id), [
             'action' => 'confirm',
         ])->assertNotFound();
+        $this->actingAs($firstSeller)
+            ->get(route('seller.orders.packing', $foreignOrder->id))
+            ->assertNotFound();
 
         $this->actingAs($firstSeller)->patchJson(route('seller.orders.status', $ownedOrder->id), [
             'action' => 'cancel',
@@ -580,7 +905,7 @@ class OrdersCheckoutIntegrationTest extends TestCase
 
         $this->actingAs($firstSeller)->patchJson(route('seller.orders.status', $ownedOrder->id), [
             'action' => 'start_preparing',
-        ])->assertConflict();
+        ])->assertUnprocessable();
         $this->assertSame('pending', $ownedOrder->fresh()->status);
         $this->assertDatabaseCount('seller_order_status_histories', 0);
 
@@ -1047,7 +1372,7 @@ class OrdersCheckoutIntegrationTest extends TestCase
             [3, $this->address($buyer, 'Cabanatuan City', 'Nueva Ecija')],
             [4, $this->address($buyer, 'Cebu City', 'Cebu')],
         ];
-        $classifier = app(\App\Services\ShippingZoneClassifier::class);
+        $classifier = app(ShippingZoneClassifier::class);
 
         foreach ($destinations as [$expectedLevel, $destination]) {
             $this->assertSame($expectedLevel, $classifier->classify($origin, $destination)['level']);
@@ -1098,7 +1423,7 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $differentCityCode = app(PostalCodeLookup::class)->canonicalCityCode(null, 'Laguna', 'San Pablo City');
         $destination = $this->address($buyer, 'Santa Rosa', 'Laguna', $differentCityCode);
 
-        $classification = app(\App\Services\ShippingZoneClassifier::class)->classify($origin, $destination);
+        $classification = app(ShippingZoneClassifier::class)->classify($origin, $destination);
 
         $this->assertNotSame((string) $origin->psgc_city_code, (string) $destination->psgc_city_code);
         $this->assertSame(1, $classification['level']);
@@ -1159,9 +1484,9 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $destination = $this->address($buyer, $secondPlace['city'], $secondPlace['province'], $secondCode);
 
         try {
-            app(\App\Services\ShippingZoneClassifier::class)->classify($origin, $destination);
+            app(ShippingZoneClassifier::class)->classify($origin, $destination);
             $this->fail('A same-region route without a verified province parent must not be priced by guesswork.');
-        } catch (\Illuminate\Validation\ValidationException $exception) {
+        } catch (ValidationException $exception) {
             $this->assertArrayHasKey('shipping', $exception->errors());
         }
     }

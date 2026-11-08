@@ -1,3 +1,5 @@
+import { startBuyerShipmentTracking, stopBuyerShipmentTracking } from './buyer-live-tracking.js';
+
 let purchaseFilter='all';
 let purchaseSort='recent';
 const peso=n=>'₱'+Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -46,10 +48,10 @@ export function actionButtons(order){
     const track=`<button class="order-btn order-track" type="button" data-order="${id}">Track Order</button>`;
     const details=order.details_url?`<a class="order-btn" href="${purchaseEsc(order.details_url)}">View Details</a>`:'<button class="order-btn" type="button">View Details</button>';
     if(order.status==='to-pay')return details;
-    if(order.status==='to-ship'&&order.cancel_url)return `${details}${serverActionForm(order.cancel_url,'Buyer requested cancellation','Cancel Order','order-btn order-cancel')}`;
+    if(order.status==='to-ship'&&order.cancel_url)return `${details}${track}${serverActionForm(order.cancel_url,'Buyer requested cancellation','Cancel Order','order-btn order-cancel')}`;
     if(order.status==='to-ship'){
       const cancellationNote=order.cancel_unavailable_message?`<p class="order-cancel-note" role="status">${purchaseEsc(order.cancel_unavailable_message)}</p>`:'';
-      return `${details}${cancellationNote}`;
+      return `${details}${track}${cancellationNote}`;
     }
     if(order.status==='to-receive'&&order.can_confirm&&order.confirm_url)return `${serverActionForm(order.confirm_url,'Buyer confirmed receipt','Order Received','order-btn primary')}${track}${details}`;
     if(order.status==='to-receive')return `${track}${details}`;
@@ -102,24 +104,55 @@ function trackingDate(date){
   return date.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' · '+date.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
 }
 function trackingStatusLabel(order){return order?.trackingStatus||({'to-pay':'Order Placed','to-ship':'Preparing to Ship','to-receive':'Out for Delivery',completed:'Delivered',cancelled:'Cancelled'}[order?.status]||order?.statusLabel||'Order update')}
-function trackingEstimate(order){
-  if(order?.estimatedDelivery)return {range:order.estimatedDelivery,note:order.estimatedDeliveryNote||'Your order is on the way to your address.'};
-  const delivered=order&&order.server&&order.delivery_status==='delivered';
-  if(delivered)return {range:order.delivered_at_display||'Delivered',note:order.status==='completed'?'Order delivered and receipt confirmed.':'Delivered. Please confirm receipt in My Purchases.'};
-  return {range:'Not available',note:'Bearly Logistics has not provided an estimated delivery date.'};
-}
 function trackingSteps(order){
- const events=Array.isArray(order?.trackingEvents)?order.trackingEvents:[];
+ return trackingEventList(Array.isArray(order?.trackingEvents)?order.trackingEvents:[]);
+}
+function trackingEventList(events){
  if(!events.length)return '<p class="tracking-empty">No shipment events have been recorded yet.</p>';
  return events.map((event,index)=>{const last=index===events.length-1,date=event.date?new Date(event.date):null,when=date&&!Number.isNaN(date.valueOf())?trackingDate(date):'';return `<div class="tracking-step done ${last?'current':''}"><div class="tracking-dot"><span class="material-symbols-outlined">${last?'local_shipping':'check'}</span></div><div><strong>${purchaseEsc(event.label||'Shipment update')}</strong>${event.note?`<p>${purchaseEsc(event.note)}</p>`:''}${when?`<small>${purchaseEsc(when)}</small>`:''}</div></div>`}).join('');
 }
+function trackingShipmentHTML(shipment){
+  const status=String(shipment?.status||'');
+  const terminal=['delivered','cancelled','return_to_sender'].includes(status);
+  return `<section class="tracking-shipment" data-live-tracking-shipment data-shipment-status="${purchaseEsc(status)}" data-live-location-url="${purchaseEsc(shipment?.live_location_url||'')}" ${terminal?'data-live-tracking-terminal="true"':''}><div class="tracking-shipment-heading"><div><h4>${purchaseEsc(shipment?.store||'Seller')}</h4><span>Shipment #${purchaseEsc(shipment?.number||'')}</span></div><strong data-shipment-status-label>${purchaseEsc(shipment?.statusLabel||'Shipment update')}</strong></div><div class="tracking-shipment-events">${trackingEventList(Array.isArray(shipment?.events)?shipment.events:[])}</div></section>`;
+}
+async function refreshServerOrders(){
+  try{
+    const response=await fetch('/profile/purchases/data',{headers:{'Accept':'application/json'},cache:'no-store'});
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok||!Array.isArray(result.data))return;
+    serverOrders=result.data.filter(order=>order&&typeof order==='object');
+    renderedOrders=serverOrders;
+    serverLoaded=true;
+    try{window.bearlyPurchasesServer='live'}catch{}
+  }catch{}
+}
+function trackingRouteSectionHTML(order){
+  if(order?.status==='cancelled')return '';
+  const delivery=String(order?.delivery_status||'');
+  const initialMessage=delivery==='out_for_delivery'
+    ?'Checking for a fresh, accurate Rider location…'
+    :delivery==='delivered'
+      ?'Delivery is complete. The live Rider location is no longer shown.'
+      :'Approximate Rider location appears only while this shipment is out for delivery.';
+  return `<section class="tracking-route" data-route-map-section><div class="tracking-route-head"><h3 class="tracking-section-title"><span class="material-symbols-outlined" aria-hidden="true">route</span><span>Follow your delivery</span></h3><ul class="tracking-route-legend" aria-hidden="true"><li class="is-traveled"><i></i><span>Confirmed / traveled</span></li><li class="is-active"><i></i><span>Hub transfer active</span></li><li class="is-remaining"><i></i><span>Remaining road</span></li></ul></div><div class="tracking-route-map" data-route-map data-map-tile-url="${purchaseEsc(document.querySelector('#tracking-content')?.dataset.liveMapTileUrl||'')}" data-map-attribution="${purchaseEsc(document.querySelector('#tracking-content')?.dataset.liveMapAttribution||'')}" aria-label="Delivery route map" hidden></div><p class="tracking-route-status" data-route-map-status role="status" aria-live="polite">${purchaseEsc(initialMessage)}</p></section>`;
+}
 async function renderOrderTracking(){
   const root=document.querySelector('#tracking-content'), label=document.querySelector('#tracking-order-id'); if(!root)return;
+  stopBuyerShipmentTracking();
+  root.innerHTML='<p class="tracking-empty" role="status">Loading shipment tracking…</p>';
+  await ensureServerOrders();
+  await refreshServerOrders();
   const order=getTrackingOrder(); if(!order){root.innerHTML='<div class="tracking-empty">No order selected for tracking.</div>';if(label)label.textContent='';return}
   if(label)label.textContent='#'+order.id;
-   const item=(order.items||[])[0]||{}, destination=order.delivery_address||{}, estimate=trackingEstimate(order),status=trackingStatusLabel(order);
-   const address=[destination.street,destination.barangay,destination.city,destination.province,destination.postal].filter(Boolean).join(', ')||'Address unavailable';
-    root.innerHTML=`<div class="tracking-summary"><img src="${purchaseEsc(safeImage(item.image))}" alt="${purchaseEsc(item.name||'Product')}" onerror="this.onerror=null;this.src='/images/bearly-logo.png'"><div><span>${purchaseEsc(order.shop||'Seller')}</span><h2>${purchaseEsc(item.name||'Purchased items')}</h2><p>${purchaseEsc(item.variation||'')} ${item.qty?`· x${purchaseEsc(item.qty)}`:''}</p></div><strong>${peso(order.total)}</strong></div><div class="tracking-grid"><div class="tracking-timeline"><h3>Shipment Event History</h3>${trackingSteps(order)}</div><aside class="tracking-address"><h3 class="tracking-section-title"><span class="material-symbols-outlined" aria-hidden="true">location_on</span><span>Delivery Address</span></h3><strong>${purchaseEsc(destination.name||'Buyer')}</strong>${destination.phone?`<p>${purchaseEsc(destination.phone)}</p>`:''}<p>${purchaseEsc(address)}</p><div class="tracking-status-box"><span>Current Status</span><strong>${purchaseEsc(status)}</strong></div><div class="tracking-estimate"><span class="tracking-estimate-icon material-symbols-outlined" aria-hidden="true">local_shipping</span><div><span>Estimated Delivery</span><strong>${purchaseEsc(estimate.range)}</strong><p>${purchaseEsc(estimate.note)}</p></div></div></aside></div>`;
+    const item=(order.items||[])[0]||{}, destination=order.delivery_address||{}, status=trackingStatusLabel(order);
+    const address=[destination.street,destination.barangay,destination.city,destination.province,destination.postal].filter(Boolean).join(', ')||'Address unavailable';
+     const shipments=Array.isArray(order.trackingShipments)?order.trackingShipments:[];
+     const shipmentContent=shipments.length
+       ?shipments.map(trackingShipmentHTML).join('')
+       :trackingSteps(order);
+     root.innerHTML=`<div class="tracking-summary"><img src="${purchaseEsc(safeImage(item.image))}" alt="${purchaseEsc(item.name||'Product')}" onerror="this.onerror=null;this.src='/images/bearly-logo.png'"><div><span>${purchaseEsc(order.shop||'Seller')}</span><h2>${purchaseEsc(item.name||'Purchased items')}</h2><p>${purchaseEsc(item.variation||'')} ${item.qty?`· x${purchaseEsc(item.qty)}`:''}</p></div><strong>${peso(order.total)}</strong></div>${trackingRouteSectionHTML(order)}<div class="tracking-grid"><div class="tracking-timeline"><h3>${shipments.length?'Shipment Progress':'Shipment Event History'}</h3>${shipmentContent}</div><aside class="tracking-address"><h3 class="tracking-section-title"><span class="material-symbols-outlined" aria-hidden="true">location_on</span><span>Delivery Address</span></h3><strong>${purchaseEsc(destination.name||'Buyer')}</strong>${destination.phone?`<p>${purchaseEsc(destination.phone)}</p>`:''}<p>${purchaseEsc(address)}</p><div class="tracking-status-box"><span>Current Status</span><strong>${purchaseEsc(status)}</strong></div></aside></div>`;
+     startBuyerShipmentTracking(order);
 }
 function initMyPurchases(){
   if (window.bearlyMyPurchasesInitialized) return;
@@ -134,8 +167,10 @@ function initMyPurchases(){
   const syncSortLabel=()=>{if(sort&&sortLabel)sortLabel.textContent=sort.selectedOptions[0]?.textContent?.trim()||'Most Recent'};
   if(sort){syncSortLabel();sort.addEventListener('change',()=>{purchaseSort=sort.value||'recent';syncSortLabel();renderMyPurchases()})}
   const list=document.querySelector('#purchase-list');
-   if(list) list.addEventListener('click',e=>{const btn=e.target.closest('.order-track');if(!btn)return;sessionStorage.setItem(window.bearlyStorageKey?.('tracking-order-id')||'bearly-tracking-order-id',btn.dataset.order||'');if(typeof window.bearlyShowAccountPanel==='function')window.bearlyShowAccountPanel('tracking');else location.hash='tracking';renderOrderTracking();});
-  const back=document.querySelector('#tracking-back'); if(back) back.addEventListener('click',()=>{if(typeof window.bearlyShowAccountPanel==='function')window.bearlyShowAccountPanel('purchases');else location.hash='purchases'});
+   if(list) list.addEventListener('click',e=>{const btn=e.target.closest('.order-track');if(!btn)return;sessionStorage.setItem(window.bearlyStorageKey?.('tracking-order-id')||'bearly-tracking-order-id',btn.dataset.order||'');if(typeof window.bearlyShowAccountPanel==='function')window.bearlyShowAccountPanel('tracking');else{location.hash='tracking';renderOrderTracking();}});
+  const back=document.querySelector('#tracking-back'); if(back) back.addEventListener('click',()=>{stopBuyerShipmentTracking();if(typeof window.bearlyShowAccountPanel==='function')window.bearlyShowAccountPanel('purchases');else location.hash='purchases'});
+  document.addEventListener('click',event=>{const tab=event.target.closest('[data-account-tab]');if(tab&&tab.dataset.accountTab!=='tracking')stopBuyerShipmentTracking()});
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')stopBuyerShipmentTracking();else if(!document.querySelector('#tracking-panel')?.hidden)renderOrderTracking()});
   renderMyPurchases();
 }
 if(typeof document!=='undefined'){

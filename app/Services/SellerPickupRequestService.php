@@ -66,23 +66,90 @@ class SellerPickupRequestService
 
             abort_unless($targets->count() === count($sellerOrderIds), 404);
 
+            $selectedMemberships = DB::table('shipment_seller_orders')
+                ->join('shipments', 'shipments.id', '=', 'shipment_seller_orders.shipment_id')
+                ->join('seller_orders', 'seller_orders.id', '=', 'shipment_seller_orders.seller_order_id')
+                ->whereIn('shipment_seller_orders.seller_order_id', $sellerOrderIds)
+                ->where('shipments.purpose', 'outbound')
+                ->orderBy('shipment_seller_orders.seller_order_id')
+                ->orderBy('shipments.id')
+                ->get([
+                    'shipment_seller_orders.shipment_id',
+                    'seller_orders.id as seller_order_id',
+                    'seller_orders.order_id',
+                    'seller_orders.store_id',
+                ]);
+            $selectedMembershipsByOrder = $selectedMemberships->groupBy('seller_order_id');
+            foreach ($sellerOrderIds as $sellerOrderId) {
+                if ($selectedMembershipsByOrder->get($sellerOrderId, collect())->count() !== 1) {
+                    throw ValidationException::withMessages([
+                        'order_ids' => 'Each selected Seller Order must belong to exactly one outbound Shipment.',
+                    ]);
+                }
+            }
+
+            $shipmentIds = $selectedMemberships->pluck('shipment_id')->unique()->sort()->values();
+            $membershipStubs = DB::table('shipment_seller_orders')
+                ->join('seller_orders', 'seller_orders.id', '=', 'shipment_seller_orders.seller_order_id')
+                ->whereIn('shipment_seller_orders.shipment_id', $shipmentIds)
+                ->orderBy('shipment_seller_orders.shipment_id')
+                ->orderBy('seller_orders.id')
+                ->get([
+                    'shipment_seller_orders.shipment_id',
+                    'seller_orders.id as seller_order_id',
+                    'seller_orders.order_id',
+                    'seller_orders.store_id',
+                ]);
+            abort_unless($membershipStubs->isNotEmpty()
+                && $membershipStubs->every(fn ($member): bool => (int) $member->store_id === $storeId),
+                409,
+                'A selected Shipment includes Seller Orders outside this Store.');
+
             // Match the Seller Order workflow's lock order: marketplace Orders,
-            // then Seller Orders, before resolving the city-based provider.
+            // then every Seller Order in the selected Shipments, then Shipment.
             $orders = Order::query()
-                ->whereIn('id', $targets->pluck('order_id')->unique())
+                ->whereIn('id', $membershipStubs->pluck('order_id')->unique())
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+            abort_unless($orders->count() === $membershipStubs->pluck('order_id')->unique()->count(), 409);
+
+            $sellerOrders = SellerOrder::query()
+                ->where('store_id', $storeId)
+                ->whereIn('id', $membershipStubs->pluck('seller_order_id')->unique())
                 ->orderBy('id')
                 ->lockForUpdate()
                 ->get()
                 ->keyBy('id');
 
-            $sellerOrders = SellerOrder::query()
-                ->where('store_id', $storeId)
-                ->whereIn('id', $sellerOrderIds)
+            abort_unless($sellerOrders->count() === $membershipStubs->pluck('seller_order_id')->unique()->count(), 409);
+
+            $shipments = Shipment::query()
+                ->whereIn('id', $shipmentIds)
+                ->where('purpose', 'outbound')
                 ->orderBy('id')
                 ->lockForUpdate()
-                ->get();
+                ->get()
+                ->keyBy('id');
+            abort_unless($shipments->count() === $shipmentIds->count(), 409);
 
-            abort_unless($sellerOrders->count() === count($sellerOrderIds), 404);
+            $currentMembershipIds = DB::table('shipment_seller_orders')
+                ->whereIn('shipment_id', $shipmentIds)
+                ->orderBy('shipment_id')
+                ->orderBy('seller_order_id')
+                ->get(['shipment_id', 'seller_order_id'])
+                ->groupBy('shipment_id');
+
+            foreach ($membershipStubs->groupBy('shipment_id') as $shipmentId => $members) {
+                $expectedIds = $members->pluck('seller_order_id')->map(fn ($id): int => (int) $id)->values()->all();
+                $currentIds = $currentMembershipIds->get($shipmentId, collect())
+                    ->pluck('seller_order_id')
+                    ->map(fn ($id): int => (int) $id)
+                    ->values()
+                    ->all();
+                abort_unless($currentIds === $expectedIds, 409, 'The Shipment membership changed while pickup was being requested.');
+            }
 
             $pickupAddress = $this->fulfillment->pickupAddressFor($actor, lock: true);
 
@@ -92,53 +159,43 @@ class SellerPickupRequestService
                 'Set a valid Seller pickup address before requesting collection.',
             );
 
-            $provider = $this->fulfillment->providerForPickupAddress($pickupAddress, lock: true);
+            $cityProvider = $this->fulfillment->activeProviderForPickupAddress($pickupAddress, lock: true);
+            $provider = $logisticsProfileId !== null
+                ? $this->fulfillment->activeProviderById($logisticsProfileId, lock: true)
+                : $cityProvider;
 
-            if (
-                $logisticsProfileId !== null
-                && (int) $logisticsProfileId !== (int) $provider->id
-            ) {
+            if (! $provider) {
                 throw ValidationException::withMessages([
-                    'logistics_profile_id' => 'The submitted Logistics provider does not serve the Seller pickup city. Refresh the page and try again.',
+                    'logistics_profile_id' => 'Choose an active Logistics provider before requesting collection.',
                 ]);
             }
 
-            /** @var Collection<int, Shipment> $shipments */
-            $shipments = collect();
+            foreach ($shipments as $shipment) {
+                $memberStubs = $membershipStubs->where('shipment_id', $shipment->id)->values();
+                $shipmentSellerOrders = $memberStubs
+                    ->map(fn ($member) => $sellerOrders->get($member->seller_order_id))
+                    ->filter()
+                    ->values();
 
-            foreach ($sellerOrders as $sellerOrder) {
-                $order = $orders->get($sellerOrder->order_id);
-                abort_unless($order, 404);
-                $sellerOrder->setRelation('order', $order);
+                abort_unless($shipmentSellerOrders->count() === $memberStubs->count(), 409);
 
-                abort_unless(
-                    $sellerOrder->status === 'ready_for_pickup'
-                        && $order->status !== 'cancelled',
-                    409,
-                    "Seller Order {$sellerOrder->seller_order_no} is not ready for pickup.",
-                );
+                foreach ($shipmentSellerOrders as $sellerOrder) {
+                    $order = $orders->get($sellerOrder->order_id);
+                    abort_unless($order, 404);
+                    $sellerOrder->setRelation('order', $order);
 
-                $orderShipments = Shipment::query()
-                    ->where('seller_order_id', $sellerOrder->id)
-                    ->where('purpose', 'outbound')
-                    ->orderBy('id')
-                    ->lockForUpdate()
-                    ->get();
-
-                abort_unless(
-                    $orderShipments->count() === 1,
-                    409,
-                    "Seller Order {$sellerOrder->seller_order_no} does not have one authoritative shipment. Start preparation again or contact support.",
-                );
-
-                $shipment = $orderShipments->first();
+                    abort_unless(
+                        $sellerOrder->status === 'ready_for_pickup'
+                            && $order->status !== 'cancelled',
+                        409,
+                        "Seller Order {$sellerOrder->seller_order_no} is not ready for pickup.",
+                    );
+                }
 
                 abort_unless(
-                    $shipment->status === ShipmentStatus::ReadyForPickup->value
-                        && (int) $shipment->logistics_profile_id === (int) $provider->id
-                        && (int) $shipment->origin_logistics_profile_id === (int) $provider->id,
+                    $shipment->status === ShipmentStatus::ReadyForPickup->value,
                     409,
-                    "The shipment for {$sellerOrder->seller_order_no} is not ready with the Logistics provider serving your pickup city.",
+                    'A selected Shipment is not ready for pickup.',
                 );
 
                 $waybill = Waybill::query()
@@ -149,17 +206,17 @@ class SellerPickupRequestService
                 abort_unless(
                     $waybill,
                     409,
-                    "The waybill for {$sellerOrder->seller_order_no} is missing. Contact support.",
+                    'A selected Shipment is missing its Waybill. Contact support.',
                 );
                 abort_if(
                     $waybill->voided_at || $waybill->status === 'voided',
                     409,
-                    "The waybill for {$sellerOrder->seller_order_no} is voided. Contact support.",
+                    'A selected Shipment has a voided Waybill. Contact support.',
                 );
                 abort_unless(
                     $waybill->printed_at,
                     409,
-                    "Print and confirm the waybill for {$sellerOrder->seller_order_no} in Fulfillment → Waybills before requesting pickup.",
+                    'Print and confirm every selected Waybill in Fulfillment → Waybills before requesting pickup.',
                 );
 
                 $parcels = $shipment->parcels()
@@ -173,8 +230,73 @@ class SellerPickupRequestService
                         && $parcels->every(fn ($parcel): bool => (int) $parcel->waybill_id === (int) $waybill->id)
                         && $parcels->pluck('piece_sequence')->map(fn ($sequence): int => (int) $sequence)->all() === range(1, (int) $waybill->piece_count),
                     409,
-                    "The waybill piece count or parcel records for {$sellerOrder->seller_order_no} do not match. Contact support.",
+                    'A selected Waybill piece count or parcel record does not match. Contact support.',
                 );
+
+                $rejectedRequests = PickupRequest::query()
+                    ->where('store_id', $storeId)
+                    ->where('status', 'cancelled')
+                    ->whereNotNull('cancellation_reason')
+                    ->whereHas('parcels', fn ($query) => $query
+                        ->whereIn('parcels.id', $parcels->pluck('id')))
+                    ->with(['parcels' => fn ($query) => $query
+                        ->whereIn('parcels.id', $parcels->pluck('id'))])
+                    ->lockForUpdate()
+                    ->get();
+                $shipmentParcelIds = $parcels->pluck('id')->map(fn ($id): int => (int) $id)->sort()->values();
+                $rejectedProviderIds = $rejectedRequests
+                    ->pluck('logistics_profile_id')
+                    ->map(fn ($id): int => (int) $id)
+                    ->unique()
+                    ->values();
+                $rejectedCurrentProviderRequest = $rejectedRequests->first(
+                    fn (PickupRequest $rejectedRequest): bool => (int) $rejectedRequest->logistics_profile_id === (int) $shipment->logistics_profile_id
+                        && $rejectedRequest->parcels->pluck('id')->map(fn ($id): int => (int) $id)->sort()->values()->all() === $shipmentParcelIds->all(),
+                );
+
+                if ((int) $provider->id !== (int) $shipment->logistics_profile_id) {
+                    if (! $rejectedCurrentProviderRequest) {
+                        throw ValidationException::withMessages([
+                            'logistics_profile_id' => 'A Shipment can be reassigned only after its current Logistics provider rejects the pickup request.',
+                        ]);
+                    }
+                    abort_if(
+                        $rejectedProviderIds->contains((int) $provider->id),
+                        409,
+                        'Choose a different active provider; this provider has already rejected this Shipment.',
+                    );
+                    abort_unless(
+                        ($cityProvider && (int) $cityProvider->id === (int) $provider->id)
+                            || $this->fulfillment->isNearbyProviderForPickupAddress($pickupAddress, $provider),
+                        422,
+                        'Choose an active nearby Logistics provider from the current recommendations.',
+                    );
+
+                    $previousProviderId = (int) $shipment->logistics_profile_id;
+                    $shipment->update(['logistics_profile_id' => $provider->id]);
+                    $shipment->events()->create([
+                        'parcel_id' => $parcels->first()?->id,
+                        'event_type' => 'shipment_logistics_provider_reassigned',
+                        'from_status' => $shipment->status,
+                        'to_status' => $shipment->status,
+                        'actor_user_id' => $actor->id,
+                        'source' => 'seller',
+                        'notes' => 'Seller selected a new Logistics provider after the previous provider rejected pickup.',
+                        'metadata' => [
+                            'from_logistics_profile_id' => $previousProviderId,
+                            'to_logistics_profile_id' => (int) $provider->id,
+                            'rejected_pickup_request_id' => (int) $rejectedCurrentProviderRequest->id,
+                            'waybill_no' => (string) $waybill->waybill_no,
+                        ],
+                        'occurred_at' => now(),
+                    ]);
+                } else {
+                    abort_if(
+                        $rejectedProviderIds->contains((int) $provider->id),
+                        409,
+                        'Choose another active Logistics provider after a rejection.',
+                    );
+                }
 
                 $hasActivePickup = PickupRequest::query()
                     ->whereIn('status', ['requested', 'verified', 'scheduled'])
@@ -186,10 +308,9 @@ class SellerPickupRequestService
                 abort_if(
                     $hasActivePickup,
                     409,
-                    "Seller Order {$sellerOrder->seller_order_no} is already included in an active pickup request.",
+                    'A selected Shipment is already included in an active pickup request.',
                 );
 
-                $shipments->put($shipment->id, $shipment);
             }
 
             $window = self::PICKUP_WINDOWS[$pickupWindow] ?? null;
@@ -247,6 +368,7 @@ class SellerPickupRequestService
                 'logisticsProfile',
                 'pickupAddress',
                 'parcels.shipment.sellerOrder',
+                'parcels.shipment.sellerOrders',
                 'parcels.waybill',
             ]);
         }, attempts: 3);

@@ -1,6 +1,8 @@
 import { isValidPhilippineMobile } from './registration-phone.js';
 import { restoreRegistrationDraft, setupRegistrationDraft } from './registration-draft.js';
 import './notification-center.js';
+import './rider-attendance-qr.js';
+import './rider-delivery-map.js';
 import {
     acknowledgeConversation,
     acknowledgeIncoming,

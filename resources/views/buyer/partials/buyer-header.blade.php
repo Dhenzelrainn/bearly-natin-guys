@@ -62,9 +62,13 @@
     <nav class="header-actions" aria-label="Account">
         @include('partials.theme-toggle')
         @include('buyer.partials.buyer-notification-popover')
-        <a href="{{ url('/profile#purchases') }}" class="{{ $headerActive === 'orders' ? 'active' : '' }}">
+        @php($buyerActiveOrderCount = max(0, (int) ($buyerActiveOrderCount ?? 0)))
+        <a href="{{ url('/profile#purchases') }}" class="{{ $headerActive === 'orders' ? 'active' : '' }}" aria-label="Orders{{ $buyerActiveOrderCount > 0 ? ', '.$buyerActiveOrderCount.' active '.($buyerActiveOrderCount === 1 ? 'order' : 'orders') : '' }}">
             <span class="material-symbols-outlined" aria-hidden="true">receipt_long</span>
             <span>Orders</span>
+            @if ($buyerActiveOrderCount > 0)
+                <span class="notification-badge orders-count-badge" data-active-orders-count aria-hidden="true">{{ $buyerActiveOrderCount > 99 ? '99+' : $buyerActiveOrderCount }}</span>
+            @endif
         </a>
         <a href="{{ url('/chat') }}" class="{{ $headerActive === 'chat' ? 'active' : '' }}">
             <span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span>

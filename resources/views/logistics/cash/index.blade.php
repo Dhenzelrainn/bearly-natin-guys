@@ -49,8 +49,17 @@
                             <dd><code>{{ $collection->collection_no }}</code><button class="cash-custody-copy" type="button" data-copy-cash-reference data-copy-value="{{ $collection->collection_no }}" aria-label="Copy COD collection ID"><i data-lucide="copy" aria-hidden="true"></i></button></dd>
                         </div>
                         <div class="cash-custody-reference-item">
-                            <dt>Order / Seller</dt>
-                            <dd><span>{{ $collection->order?->order_no ?? 'Order' }} · {{ $collection->sellerOrder?->store?->name ?? 'Seller' }}</span>@if($collection->order?->order_no)<button class="cash-custody-copy" type="button" data-copy-cash-reference data-copy-value="{{ $collection->order->order_no }}" aria-label="Copy order ID"><i data-lucide="copy" aria-hidden="true"></i></button>@endif</dd>
+                            <dt>Orders / Seller Orders</dt>
+                            <dd>
+                                @forelse($collection->allocations as $allocation)
+                                    <span>{{ $allocation->order?->order_no ?? 'Order' }} · {{ $allocation->sellerOrder?->seller_order_no ?? 'Seller Order' }} · Due ₱{{ number_format((int) $allocation->amount_due_minor / 100, 2) }}@if($allocation->payment?->payment_no) · {{ $allocation->payment->payment_no }}@endif</span>
+                                    @if($allocation->order?->order_no)
+                                        <button class="cash-custody-copy" type="button" data-copy-cash-reference data-copy-value="{{ $allocation->order->order_no }}" aria-label="Copy order ID"><i data-lucide="copy" aria-hidden="true"></i></button>
+                                    @endif
+                                @empty
+                                    <span>{{ $collection->order?->order_no ?? 'Order' }} · {{ $collection->sellerOrder?->store?->name ?? 'Seller' }}</span>
+                                @endforelse
+                            </dd>
                         </div>
                         <div class="cash-custody-reference-item">
                             <dt>Rider</dt>

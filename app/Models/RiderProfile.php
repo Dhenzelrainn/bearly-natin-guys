@@ -32,6 +32,11 @@ class RiderProfile extends Model
         return $this->hasMany(RiderShift::class);
     }
 
+    public function attendanceAbsences()
+    {
+        return $this->hasMany(RiderAttendanceAbsence::class);
+    }
+
     public function payoutBatches()
     {
         return $this->hasMany(RiderPayoutBatch::class);

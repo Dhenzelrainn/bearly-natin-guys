@@ -5,6 +5,7 @@ namespace Tests\Feature\Logistics;
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Models\Address;
+use App\Models\LogisticsLocation;
 use App\Models\LogisticsPayoutAccount;
 use App\Models\LogisticsProfile;
 use App\Models\SortingCenter;
@@ -17,6 +18,99 @@ use Tests\TestCase;
 class LogisticsAccountSettingsTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_logistics_can_share_a_latest_provider_scoped_live_location_and_stop_sharing(): void
+    {
+        ['user' => $user, 'profile' => $profile] = $this->makeLogisticsFacility('A', 'live-a@example.test');
+        ['user' => $otherUser, 'profile' => $otherProfile] = $this->makeLogisticsFacility('B', 'live-b@example.test');
+
+        $this->actingAs($user)
+            ->postJson(route('logistics.location.update'), [
+                'logistics_profile_id' => $otherProfile->id,
+                'latitude' => 14.5995,
+                'longitude' => 120.9842,
+                'accuracy_meters' => 10000,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.shared', true)
+            ->assertJsonPath('data.location.latitude', 14.5995)
+            ->assertJsonPath('data.location.accuracy_meters', 10000)
+            ->assertJsonPath('data.stale_after_seconds', 180);
+
+        $this->actingAs($user)
+            ->postJson(route('logistics.location.update'), [
+                'latitude' => 14.6100,
+                'longitude' => 120.9900,
+                'accuracy_meters' => null,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.location.latitude', 14.61)
+            ->assertJsonPath('data.location.accuracy_meters', null);
+
+        $this->assertDatabaseCount('logistics_locations', 1);
+        $this->assertDatabaseHas('logistics_locations', [
+            'logistics_profile_id' => $profile->id,
+            'latitude' => 14.61,
+            'longitude' => 120.99,
+            'accuracy_meters' => null,
+        ]);
+        $this->assertDatabaseMissing('logistics_locations', [
+            'logistics_profile_id' => $otherProfile->id,
+        ]);
+        $this->assertDatabaseHas('addresses', [
+            'id' => $profile->sortingCenters()->value('address_id'),
+            'latitude' => null,
+            'longitude' => null,
+        ]);
+
+        $this->actingAs($otherUser)
+            ->getJson(route('logistics.location.show'))
+            ->assertOk()
+            ->assertJsonPath('data.shared', false)
+            ->assertJsonPath('data.location', null);
+
+        $response = $this->actingAs($user)
+            ->getJson(route('logistics.location.show'))
+            ->assertOk()
+            ->assertJsonPath('data.shared', true)
+            ->assertJsonPath('data.location.longitude', 120.99);
+        $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+
+        $this->actingAs($user)
+            ->deleteJson(route('logistics.location.destroy'))
+            ->assertOk()
+            ->assertJsonPath('data.shared', false)
+            ->assertJsonPath('data.location', null);
+
+        $this->assertDatabaseMissing('logistics_locations', [
+            'logistics_profile_id' => $profile->id,
+        ]);
+    }
+
+    public function test_logistics_live_location_rejects_invalid_coordinates_and_accuracy(): void
+    {
+        ['user' => $user] = $this->makeLogisticsFacility('LIVE-VALIDATION', 'live-validation@example.test');
+
+        $this->actingAs($user)
+            ->postJson(route('logistics.location.update'), [
+                'latitude' => 91,
+                'longitude' => 120,
+                'accuracy_meters' => 10,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('latitude');
+
+        $this->actingAs($user)
+            ->postJson(route('logistics.location.update'), [
+                'latitude' => 14,
+                'longitude' => 120,
+                'accuracy_meters' => 100001,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('accuracy_meters');
+
+        $this->assertDatabaseCount('logistics_locations', 0);
+    }
 
     public function test_logistics_can_register_encrypted_bank_and_gcash_destinations_for_finance_review(): void
     {
@@ -338,6 +432,7 @@ class LogisticsAccountSettingsTest extends TestCase
         [
             'user' => $user,
             'center' => $center,
+            'address' => $address,
         ] = $this->makeLogisticsFacility();
 
         $this
@@ -349,6 +444,8 @@ class LogisticsAccountSettingsTest extends TestCase
                     'contact' => '09175551234',
                     'operating_hours' => '07:00-19:00',
                     'daily_capacity' => 750,
+                    'latitude' => '14.5995',
+                    'longitude' => '120.9842',
                 ]
             )
             ->assertRedirect(
@@ -356,7 +453,7 @@ class LogisticsAccountSettingsTest extends TestCase
             )
             ->assertSessionHas(
                 'success',
-                'Facility settings updated successfully.'
+                'Facility settings and map pin updated successfully.'
             );
 
         $this->assertDatabaseHas(
@@ -369,6 +466,105 @@ class LogisticsAccountSettingsTest extends TestCase
                 'daily_capacity' => 750,
             ]
         );
+        $this->assertDatabaseHas('addresses', [
+            'id' => $address->id,
+            'latitude' => 14.5995,
+            'longitude' => 120.9842,
+        ]);
+    }
+
+    public function test_facility_account_shows_the_saved_pin_for_its_active_sorting_center(): void
+    {
+        [
+            'user' => $user,
+            'address' => $address,
+        ] = $this->makeLogisticsFacility();
+        $address->update([
+            'latitude' => 14.61,
+            'longitude' => 120.99,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('logistics.profile.index') . '#facility')
+            ->assertOk()
+            ->assertSee('data-logistics-facility-map', false)
+            ->assertSee('data-latitude="14.61"', false)
+            ->assertSee('data-longitude="120.99"', false)
+            ->assertSee('data-facility-location-status', false)
+            ->assertSee('data-stop-facility-location', false)
+            ->assertSee('Find facility location');
+    }
+
+    public function test_facility_map_pin_can_be_cleared_without_changing_the_registered_address(): void
+    {
+        [
+            'user' => $user,
+            'address' => $address,
+        ] = $this->makeLogisticsFacility();
+        $address->update([
+            'latitude' => 14.61,
+            'longitude' => 120.99,
+        ]);
+
+        $this->actingAs($user)
+            ->patch(route('logistics.profile.facility.update'), [
+                'business_name' => 'Updated Hub',
+                'contact' => '09176661234',
+                'operating_hours' => '08:00-20:00',
+                'daily_capacity' => 600,
+                'latitude' => '',
+                'longitude' => '',
+            ])
+            ->assertRedirect(route('logistics.profile.index') . '#facility')
+            ->assertSessionHas('success', 'Facility settings and map pin updated successfully.');
+
+        $this->assertDatabaseHas('addresses', [
+            'id' => $address->id,
+            'street' => 'Hub Street A',
+            'latitude' => null,
+            'longitude' => null,
+        ]);
+    }
+
+    public function test_facility_map_pin_coordinates_must_be_a_valid_pair(): void
+    {
+        [
+            'user' => $user,
+            'address' => $address,
+        ] = $this->makeLogisticsFacility();
+        $address->update([
+            'latitude' => 14.61,
+            'longitude' => 120.99,
+        ]);
+        $validFacilityFields = [
+            'business_name' => 'Updated Hub',
+            'contact' => '09176661234',
+            'operating_hours' => '08:00-20:00',
+            'daily_capacity' => 600,
+        ];
+
+        $this->actingAs($user)
+            ->from(route('logistics.profile.index') . '#facility')
+            ->patch(route('logistics.profile.facility.update'), $validFacilityFields + [
+                'latitude' => '90.0001',
+                'longitude' => '120.99',
+            ])
+            ->assertRedirect(route('logistics.profile.index') . '#facility')
+            ->assertSessionHasErrors('latitude');
+
+        $this->actingAs($user)
+            ->from(route('logistics.profile.index') . '#facility')
+            ->patch(route('logistics.profile.facility.update'), $validFacilityFields + [
+                'latitude' => '14.61',
+            ])
+            ->assertRedirect(route('logistics.profile.index') . '#facility')
+            ->assertSessionHasErrors('longitude');
+
+        $this->assertDatabaseHas('addresses', [
+            'id' => $address->id,
+            'latitude' => 14.61,
+            'longitude' => 120.99,
+        ]);
     }
 
     public function test_facility_update_does_not_modify_normalized_address(): void
@@ -530,6 +726,14 @@ class LogisticsAccountSettingsTest extends TestCase
 
         $originalForeignName = $centerB->name;
         $originalForeignContact = $centerB->contact_phone;
+        $centerA->address()->update([
+            'latitude' => 14.0,
+            'longitude' => 120.0,
+        ]);
+        $centerB->address()->update([
+            'latitude' => 15.0,
+            'longitude' => 121.0,
+        ]);
 
         $this
             ->actingAs($userA)
@@ -540,6 +744,8 @@ class LogisticsAccountSettingsTest extends TestCase
                     'contact' => '09170000099',
                     'operating_hours' => '06:00-18:00',
                     'daily_capacity' => 900,
+                    'latitude' => '16.0',
+                    'longitude' => '122.0',
 
                     // Even if submitted manually, this is ignored.
                     'sorting_center_id' => $centerB->id,
@@ -566,6 +772,16 @@ class LogisticsAccountSettingsTest extends TestCase
             $originalForeignContact,
             $centerB->contact_phone
         );
+        $this->assertDatabaseHas('addresses', [
+            'id' => $centerA->address_id,
+            'latitude' => 16.0,
+            'longitude' => 122.0,
+        ]);
+        $this->assertDatabaseHas('addresses', [
+            'id' => $centerB->address_id,
+            'latitude' => 15.0,
+            'longitude' => 121.0,
+        ]);
     }
 
     /**

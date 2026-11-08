@@ -515,6 +515,11 @@ $adminNavGroups = [
                 'icon' => 'file-text',
             ],
             [
+                'label' => 'Logistics Policy Approvals',
+                'route' => 'admin.shipping-policy-approvals.index',
+                'icon' => 'clipboard-check',
+            ],
+            [
                 'label' => 'Audit Logs',
                 'route' => 'admin.audit-logs',
                 'icon' => 'scroll-text',
@@ -713,7 +718,7 @@ $adminNavGroups = [
             request()->routeIs('admin.compliance*') => 'Product Compliance',
             request()->routeIs('admin.commissions', 'admin.transactions', 'admin.payments', 'admin.shipping-settlements.*', 'admin.seller-payouts.*', 'admin.reports', 'admin.orders', 'admin.fulfillment') => 'Finance & Reports',
             request()->routeIs('admin.messages', 'admin.announcements', 'admin.support-tickets') => 'Communication',
-            request()->routeIs('admin.settings', 'admin.account', 'admin.policies', 'admin.audit-logs') => 'System Management',
+            request()->routeIs('admin.settings', 'admin.account', 'admin.policies', 'admin.shipping-policy-approvals.*', 'admin.audit-logs') => 'System Management',
             default => trim(View::yieldContent('page-title', 'Admin Center')) ?: 'Admin Center',
         };
     @endphp

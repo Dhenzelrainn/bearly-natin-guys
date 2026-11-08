@@ -76,7 +76,13 @@
                 $isOldReconcile = (int) old('collection_id', 0) === (int) $collection->id;
             @endphp
             <tr>
-                <td><strong>{{ $collection->collection_no }}</strong><small class="table-subline">{{ $collection->order?->order_no ?? 'Order' }} · {{ $collection->sellerOrder?->store?->name ?? 'Seller' }}</small></td>
+                <td>
+                    <strong>{{ $collection->collection_no }}</strong>
+                    <small class="table-subline">Orders: {{ $collection->order_references }}</small>
+                    @foreach($collection->allocation_summaries as $allocation)
+                        <small class="table-subline">{{ $allocation['seller_order_no'] }} · {{ $allocation['order_no'] }} · {{ $allocation['payment_no'] }} · Due ₱{{ number_format($allocation['amount_due_minor'] / 100, 2) }} · @if($allocation['amount_reconciled_minor'] > 0) Finance counted ₱{{ number_format($allocation['amount_reconciled_minor'] / 100, 2) }} @else awaiting Finance reconciliation @endif</small>
+                    @endforeach
+                </td>
                 <td class="finance-cod-products-cell">@include('partials.order-item-preview-list', ['items' => $collection->order_item_previews])</td>
                 <td>{{ $collection->logisticsProfile?->display_name ?? 'Provider' }}<small class="table-subline">{{ $collection->riderProfile?->user?->name ?? 'Rider' }}</small></td>
                 <td>₱{{ number_format((int) $collection->amount_due_minor / 100, 2) }}</td>

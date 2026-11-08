@@ -5,8 +5,247 @@ import {
     receiptMarkup,
     updateReceiptElements,
 } from './chat-receipts.js';
+import { setupWaybillProductToggles } from './seller-waybill-products.js';
+
+const setupPackingPlanEditor = () => {
+    const form = document.querySelector('[data-packing-plan-form]');
+    if (!form || form.dataset.initialized === 'true') return;
+    form.dataset.initialized = 'true';
+
+    const readJson = (selector, fallback) => {
+        try {
+            return JSON.parse(form.querySelector(selector)?.textContent || '');
+        } catch {
+            return fallback;
+        }
+    };
+
+    const items = readJson('[data-packing-items]', []);
+    const defaultParcels = readJson('[data-packing-default]', []);
+    const container = form.querySelector('[data-packing-parcels]');
+    const status = form.querySelector('[data-packing-allocation-status]');
+    const providerSelect = form.querySelector('[data-packing-provider-select]');
+    const providerStatus = form.querySelector('[data-packing-provider-status]');
+    const title = form.querySelector('[data-packing-editor-title]');
+    const submit = form.querySelector('[type="submit"]');
+    if (!Array.isArray(items) || items.length === 0 || !Array.isArray(defaultParcels) || !container || !status) return;
+
+    const emptyAllocations = () => Object.fromEntries(items.map((item) => [String(item.id), 0]));
+    const normalizePackage = (parcel) => ({
+        items: Object.fromEntries(items.map((item) => [
+            String(item.id),
+            Math.max(0, Number.parseInt(parcel?.items?.[String(item.id)] ?? parcel?.items?.[item.id] ?? 0, 10) || 0),
+        ])),
+        weight_kg: parcel?.weight_kg ?? '',
+        length_cm: parcel?.length_cm ?? '',
+        width_cm: parcel?.width_cm ?? '',
+        height_cm: parcel?.height_cm ?? '',
+    });
+
+    const initialPlan = defaultParcels.map(normalizePackage);
+    let parcels = initialPlan.map(normalizePackage);
+    const totalUnits = items.reduce((total, item) => total + Number(item.quantity || 0), 0);
+
+    const updateAllocationStatus = () => {
+        const allocated = Object.fromEntries(items.map((item) => [String(item.id), 0]));
+        let nonEmptyPackages = 0;
+
+        parcels.forEach((parcel) => {
+            let parcelUnits = 0;
+            items.forEach((item) => {
+                const quantity = Number.parseInt(parcel.items[String(item.id)] ?? 0, 10) || 0;
+                allocated[String(item.id)] += quantity;
+                parcelUnits += quantity;
+            });
+            if (parcelUnits > 0) nonEmptyPackages += 1;
+        });
+
+        const exact = items.every((item) => allocated[String(item.id)] === Number(item.quantity));
+        const allPackagesUsed = nonEmptyPackages === parcels.length;
+        const complete = exact && allPackagesUsed && parcels.length > 0;
+        const allocatedUnits = Object.values(allocated).reduce((sum, quantity) => sum + quantity, 0);
+
+        status.textContent = complete
+            ? `${allocatedUnits} of ${totalUnits} units allocated across ${parcels.length} ${parcels.length === 1 ? 'parcel' : 'parcels'}.`
+            : `${allocatedUnits} of ${totalUnits} units allocated. Every ordered unit must appear exactly once, and every parcel must contain an item.`;
+        status.dataset.state = complete ? 'complete' : 'error';
+        if (submit) submit.disabled = !complete || (providerSelect !== null && !providerSelect.value);
+        return complete;
+    };
+
+    const updateProviderStatus = () => {
+        if (!providerSelect || !providerStatus) return;
+
+        const option = providerSelect.selectedOptions[0];
+        if (!option || !option.value) {
+            providerStatus.textContent = 'Choose a provider to see its current pickup Rider availability. No-Rider warnings do not block your choice.';
+            providerStatus.classList.remove('is-warning');
+            updateAllocationStatus();
+            return;
+        }
+
+        const riderCount = Number.parseInt(option.dataset.riderCount || '0', 10) || 0;
+        providerStatus.textContent = riderCount === 0
+            ? 'No Riders are currently marked available. You can still create the Waybill and submit a pickup request; Logistics will review it.'
+            : `${riderCount} pickup-capable Rider${riderCount === 1 ? '' : 's'} currently marked available. Availability can change before assignment.`;
+        providerStatus.classList.toggle('is-warning', riderCount === 0);
+        updateAllocationStatus();
+    };
+
+    providerSelect?.addEventListener('change', updateProviderStatus);
+
+    const render = () => {
+        const fragment = document.createDocumentFragment();
+
+        parcels.forEach((parcel, parcelIndex) => {
+            const fieldset = document.createElement('fieldset');
+            fieldset.className = 'packing-parcel-card';
+
+            const legend = document.createElement('legend');
+            legend.textContent = `Parcel ${parcelIndex + 1}`;
+            fieldset.append(legend);
+
+            const heading = document.createElement('div');
+            heading.className = 'packing-parcel-heading';
+            const titleWrap = document.createElement('span');
+            const icon = document.createElement('i');
+            icon.dataset.lucide = 'package';
+            icon.setAttribute('aria-hidden', 'true');
+            const titleText = document.createElement('strong');
+            titleText.textContent = `Parcel ${parcelIndex + 1}`;
+            titleWrap.append(icon, titleText);
+
+            const remove = document.createElement('button');
+            remove.className = 'packing-parcel-remove';
+            remove.type = 'button';
+            remove.textContent = 'Remove';
+            remove.disabled = parcels.length === 1;
+            remove.setAttribute('aria-label', `Remove parcel ${parcelIndex + 1}`);
+            remove.addEventListener('click', () => {
+                if (parcels.length <= 1) return;
+                const removed = parcels.splice(parcelIndex, 1)[0];
+                const target = parcels[0];
+                items.forEach((item) => {
+                    const key = String(item.id);
+                    target.items[key] = (Number(target.items[key]) || 0) + (Number(removed.items[key]) || 0);
+                });
+                render();
+            });
+            heading.append(titleWrap, remove);
+            fieldset.append(heading);
+
+            const itemList = document.createElement('div');
+            itemList.className = 'packing-parcel-items';
+            items.forEach((item) => {
+                const row = document.createElement('label');
+                row.className = 'packing-parcel-item';
+
+                const itemCopy = document.createElement('span');
+                const itemName = document.createElement('strong');
+                itemName.textContent = item.name || 'Order item';
+                const itemMeta = document.createElement('small');
+                itemMeta.textContent = `SKU ${item.sku || '—'} · ${item.quantity} ordered`;
+                itemCopy.append(itemName, itemMeta);
+
+                const quantityField = document.createElement('span');
+                quantityField.className = 'packing-parcel-quantity-field';
+                quantityField.append(document.createTextNode('Units in this parcel'));
+                const quantityInput = document.createElement('input');
+                quantityInput.type = 'number';
+                quantityInput.name = `parcels[${parcelIndex}][items][${item.id}]`;
+                quantityInput.min = '0';
+                quantityInput.max = String(item.quantity);
+                quantityInput.step = '1';
+                quantityInput.inputMode = 'numeric';
+                quantityInput.value = String(parcel.items[String(item.id)] || 0);
+                quantityInput.dataset.packingQuantity = '';
+                quantityInput.dataset.itemId = String(item.id);
+                quantityInput.setAttribute('aria-label', `${item.name || 'Order item'} units in parcel ${parcelIndex + 1}`);
+                quantityInput.addEventListener('input', () => {
+                    parcel.items[String(item.id)] = quantityInput.value === ''
+                        ? 0
+                        : (Number.parseInt(quantityInput.value, 10) || 0);
+                    updateAllocationStatus();
+                });
+                quantityField.append(quantityInput);
+                row.append(itemCopy, quantityField);
+                itemList.append(row);
+            });
+            fieldset.append(itemList);
+
+            const measurements = document.createElement('div');
+            measurements.className = 'packing-parcel-measurements';
+            [
+                ['weight_kg', 'Weight (kg)', '0.001', '9999999.999', '0.001'],
+                ['length_cm', 'Length (cm)', '0.01', '99999999.99', '0.01'],
+                ['width_cm', 'Width (cm)', '0.01', '99999999.99', '0.01'],
+                ['height_cm', 'Height (cm)', '0.01', '99999999.99', '0.01'],
+            ].forEach(([key, labelText, minimum, maximum, step]) => {
+                const label = document.createElement('label');
+                label.append(document.createTextNode(labelText));
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.name = `parcels[${parcelIndex}][${key}]`;
+                input.min = minimum;
+                input.max = maximum;
+                input.step = step;
+                input.inputMode = 'decimal';
+                input.required = true;
+                input.value = parcel[key] ?? '';
+                input.dataset.parcelMeasurement = key;
+                input.addEventListener('input', () => {
+                    parcel[key] = input.value;
+                });
+                label.append(input);
+                measurements.append(label);
+            });
+            fieldset.append(measurements);
+            fragment.append(fieldset);
+        });
+
+        container.replaceChildren(fragment);
+        const editorTitle = form.querySelector('#packing-editor-title');
+        if (editorTitle) editorTitle.textContent = `${parcels.length} ${parcels.length === 1 ? 'parcel' : 'parcels'} in this plan`;
+        window.lucide?.createIcons();
+        updateAllocationStatus();
+    };
+
+    form.querySelector('[data-packing-reset]')?.addEventListener('click', () => {
+        parcels = initialPlan.map(normalizePackage);
+        render();
+    });
+
+    form.querySelector('[data-packing-combine]')?.addEventListener('click', () => {
+        const combined = normalizePackage({ items: emptyAllocations() });
+        items.forEach((item) => {
+            combined.items[String(item.id)] = Number(item.quantity);
+        });
+        const estimatedWeight = initialPlan.reduce((total, parcel) => total + (Number(parcel.weight_kg) || 0), 0);
+        combined.weight_kg = estimatedWeight > 0 ? estimatedWeight.toFixed(3) : '';
+        parcels = [combined];
+        render();
+    });
+
+    form.querySelector('[data-packing-add]')?.addEventListener('click', () => {
+        parcels.push(normalizePackage({ items: emptyAllocations() }));
+        render();
+        container.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        container.lastElementChild?.querySelector('[data-packing-quantity]')?.focus({ preventScroll: true });
+    });
+
+    form.addEventListener('submit', (event) => {
+        if (!updateAllocationStatus() || (providerSelect !== null && !providerSelect.value)) {
+            event.preventDefault();
+            (providerSelect && !providerSelect.value ? providerSelect : status).focus?.();
+        }
+    });
+
+    updateProviderStatus();
+    render();
+};
 
 const bootSeller = () => {
+    setupPackingPlanEditor();
     window.lucide?.createIcons();
 
     const productFilterForm = document.querySelector('[data-product-filter-form]');
@@ -275,11 +514,36 @@ const bootSeller = () => {
             ? JSON.parse(defaultStatusNode.textContent)
             : 'all';
         const orderRows = [...orderWorkspace.querySelectorAll('[data-order-row]')];
+        const shipmentGroupRows = [...orderWorkspace.querySelectorAll('[data-order-shipment-group]')];
         const orderSearch = orderWorkspace.querySelector('[data-order-search]');
         const orderDate = orderWorkspace.querySelector('[data-order-date]');
         const orderPayment = orderWorkspace.querySelector('[data-order-payment]');
         const visibleCount = orderWorkspace.querySelector('[data-order-visible-count]');
         const noResults = orderWorkspace.querySelector('[data-orders-no-results]');
+
+        const refreshShipmentGroupSummaries = () => {
+            shipmentGroupRows.forEach((groupRow) => {
+                const groupId = groupRow.dataset.shipmentGroupId;
+                const members = orderRows.filter((row) => row.dataset.orderShipmentGroupMember === groupId);
+                const statusCounts = new Map();
+                members.forEach((row) => {
+                    const label = row.dataset.orderStatusCopy || 'Status unavailable';
+                    statusCounts.set(label, (statusCounts.get(label) || 0) + 1);
+                });
+
+                const statusNode = groupRow.querySelector('[data-shipment-group-status]');
+                if (statusNode && members.length) {
+                    statusNode.textContent = statusCounts.size === 1
+                        ? `${statusCounts.keys().next().value} · ${members.length} of ${members.length} Seller Orders`
+                        : [...statusCounts].map(([label, count]) => `${label} · ${count}`).join(' / ');
+                }
+
+                const canMarkReady = members.length > 1
+                    && members.every((row) => row.dataset.orderSellerStatus === 'packing');
+                const readyAction = groupRow.querySelector('[data-shipment-group-ready]');
+                if (readyAction) readyAction.hidden = !canMarkReady;
+            });
+        };
 
         const refreshOrderStatusCounts = () => {
             orderWorkspace.querySelectorAll('[data-order-tab]').forEach((tab) => {
@@ -313,16 +577,56 @@ const bootSeller = () => {
                     && (!date || row.dataset.date === date)
                     && (!payment || row.dataset.payment === payment);
 
-                row.hidden = !matches;
+                row.dataset.orderFilterMatches = String(matches);
+                if (!row.dataset.orderShipmentGroupMember) row.hidden = !matches;
                 if (matches) visible += 1;
+            });
+
+            shipmentGroupRows.forEach((groupRow) => {
+                const groupId = groupRow.dataset.shipmentGroupId;
+                const members = orderRows.filter((row) => row.dataset.orderShipmentGroupMember === groupId);
+                const matchingMembers = members.filter((row) => row.dataset.orderFilterMatches === 'true');
+                const expanded = groupRow.dataset.expanded === 'true';
+
+                groupRow.hidden = matchingMembers.length === 0;
+                members.forEach((row) => {
+                    row.hidden = row.dataset.orderFilterMatches !== 'true' || !expanded;
+                });
             });
 
             if (visibleCount) visibleCount.textContent = visible;
             if (noResults) noResults.hidden = visible > 0;
         };
 
+        orderWorkspace.addEventListener('click', (event) => {
+            const toggle = event.target.closest('[data-shipment-group-toggle]');
+            if (!toggle) return;
+
+            const groupRow = toggle.closest('[data-order-shipment-group]');
+            if (!groupRow) return;
+
+            const expanded = groupRow.dataset.expanded !== 'true';
+            groupRow.dataset.expanded = String(expanded);
+            groupRow.closest('.orders-table-group')?.classList.toggle('is-expanded', expanded);
+            toggle.setAttribute('aria-expanded', String(expanded));
+            toggle.setAttribute(
+                'aria-label',
+                `${expanded ? 'Hide' : 'Show'} ${groupRow.dataset.shipmentGroupCount} Seller Orders in this combined shipment`,
+            );
+            const toggleLabel = toggle.querySelector('[data-shipment-group-toggle-label]');
+            if (toggleLabel) {
+                toggleLabel.textContent = expanded
+                    ? `Showing ${groupRow.dataset.shipmentGroupCount} Seller Orders below`
+                    : `View ${groupRow.dataset.shipmentGroupCount} Seller Orders`;
+            }
+            toggle.querySelector('svg, [data-lucide="chevron-right"]')?.classList.toggle('is-expanded', expanded);
+
+            applyOrderFilters();
+        });
+
         orderWorkspace.addEventListener('seller:order-tracking-updated', () => {
             refreshOrderStatusCounts();
+            refreshShipmentGroupSummaries();
             applyOrderFilters();
         });
 
@@ -370,6 +674,7 @@ const bootSeller = () => {
             applyOrderFilters();
         });
 
+        refreshShipmentGroupSummaries();
         applyOrderFilters();
     }
 
@@ -1415,6 +1720,8 @@ const bootSeller = () => {
     setupFulfillmentFilter('[data-pickup-workspace]', '[data-pickup-row]', '[data-pickup-tab]', '[data-pickup-search]', '[data-pickup-count]', '[data-pickup-empty]');
     setupFulfillmentFilter('[data-tracking-workspace]', '[data-tracking-row]', '[data-tracking-tab]', '[data-tracking-search]', '[data-tracking-count]', '[data-tracking-empty]', '[data-tracking-reset]', '[data-tracking-status]');
 
+    setupWaybillProductToggles(document);
+
     const waybillChecks = [...document.querySelectorAll('[data-waybill-check]:not(:disabled)')];
     const waybillBulk = document.querySelector('[data-waybill-bulk]');
     const waybillPdfForm = document.querySelector('#waybill-pdf-form');
@@ -1499,27 +1806,88 @@ const bootSeller = () => {
     document.querySelectorAll('[data-waybill-download]').forEach((button) => button.addEventListener('click', () => downloadWaybillPdfs([button.dataset.waybillDownload])));
     document.querySelector('[data-waybill-history]')?.addEventListener('click', () => { const modal = document.querySelector('[data-modal="waybill-history"]'); if (modal) { modal.hidden = false; document.body.style.overflow = 'hidden'; } });
 
-    document.querySelector('[data-pickup-form]')?.addEventListener('submit', (event) => {
+    const pickupForm = document.querySelector('[data-pickup-form]');
+    const pickupProviderSelect = pickupForm?.querySelector('[data-pickup-provider-select]');
+    const pickupProviderStatus = pickupForm?.querySelector('[data-pickup-provider-status]');
+    const pickupOrderChecks = [...(pickupForm?.querySelectorAll('[data-pickup-order]') || [])];
+    const pickupSubmit = pickupForm?.querySelector('[type="submit"]');
+    const pickupProviderOptions = [...(pickupProviderSelect?.options || [])]
+        .filter((option) => option.value !== '');
+
+    const updatePickupProviderAvailability = () => {
+        if (!pickupForm || !pickupProviderSelect) return;
+
+        const selectedOrders = pickupOrderChecks.filter((checkbox) => checkbox.checked);
+        const allowedForSelection = selectedOrders.length === 0
+            ? pickupProviderOptions.map((option) => option.value)
+            : pickupProviderOptions
+                .filter((option) => selectedOrders.every((checkbox) =>
+                    (checkbox.dataset.allowedProviderIds || '').split(',').includes(option.value)))
+                .map((option) => option.value);
+
+        pickupProviderOptions.forEach((option) => {
+            option.disabled = !allowedForSelection.includes(option.value);
+        });
+
+        if (!allowedForSelection.includes(pickupProviderSelect.value)) {
+            pickupProviderSelect.value = allowedForSelection.length === 1 ? allowedForSelection[0] : '';
+        }
+
+        const selectedProvider = pickupProviderSelect.selectedOptions[0];
+        const riderCount = Number.parseInt(selectedProvider?.dataset.riderCount || '0', 10) || 0;
+        if (pickupProviderStatus) {
+            if (allowedForSelection.length === 0) {
+                pickupProviderStatus.textContent = 'The selected orders do not share an eligible provider. Submit one provider group at a time.';
+                pickupProviderStatus.classList.add('is-warning');
+            } else if (!pickupProviderSelect.value) {
+                pickupProviderStatus.textContent = 'Choose an eligible provider for the selected orders. After a rejection, choose a provider that has not already rejected this Shipment.';
+                pickupProviderStatus.classList.remove('is-warning');
+            } else if (riderCount === 0) {
+                pickupProviderStatus.textContent = 'No Riders are currently marked available. You can still submit this pickup request; Logistics will review it.';
+                pickupProviderStatus.classList.add('is-warning');
+            } else {
+                pickupProviderStatus.textContent = `${riderCount} pickup-capable Rider${riderCount === 1 ? '' : 's'} currently marked available. Availability may change before assignment.`;
+                pickupProviderStatus.classList.remove('is-warning');
+            }
+        }
+
+        if (pickupSubmit) {
+            pickupSubmit.disabled = selectedOrders.length === 0 || allowedForSelection.length === 0 || !pickupProviderSelect.value;
+        }
+    };
+
+    pickupOrderChecks.forEach((checkbox) => checkbox.addEventListener('change', updatePickupProviderAvailability));
+    pickupProviderSelect?.addEventListener('change', updatePickupProviderAvailability);
+    updatePickupProviderAvailability();
+
+    pickupForm?.addEventListener('submit', (event) => {
         const selectedOrders = event.currentTarget.querySelectorAll('[data-pickup-order]:checked');
-        if (selectedOrders.length === 0) {
+        if (selectedOrders.length === 0 || !pickupProviderSelect?.value || pickupProviderSelect.selectedOptions[0]?.disabled) {
             event.preventDefault();
             if (toast) {
-                toast.textContent = 'Select at least one ready order.';
+                toast.textContent = selectedOrders.length === 0
+                    ? 'Select at least one ready order.'
+                    : 'Choose an eligible Logistics provider for the selected orders.';
                 toast.classList.add('is-visible');
             }
             return;
         }
 
-        const submit = event.currentTarget.querySelector('[type="submit"]');
-        if (submit) {
-            submit.disabled = true;
-            submit.textContent = 'Submitting…';
+        if (pickupSubmit) {
+            pickupSubmit.disabled = true;
+            pickupSubmit.textContent = 'Submitting…';
         }
     });
     document.querySelectorAll('[data-pickup-view]').forEach((button) => button.addEventListener('click', () => {
         const item = JSON.parse(button.dataset.pickup); const modal = document.querySelector('[data-modal="pickup-details"]'); if (!modal) return;
         const set = (selector, value) => { const node = modal.querySelector(selector); if (node) node.textContent = value; };
         set('[data-pickup-id]', item.id); set('[data-pickup-status]', item.status); set('[data-pickup-orders]', `${item.orders} (${item.order_numbers || 'Order details unavailable'}) · ${item.packages} ${item.packages === 1 ? 'parcel' : 'parcels'}`); set('[data-pickup-provider]', item.provider); set('[data-pickup-schedule]', item.schedule); set('[data-pickup-rider]', item.rider); set('[data-pickup-rider-location]', item.rider_location || 'Awaiting assignment'); set('[data-pickup-address]', item.address); set('[data-pickup-instructions]', item.instructions);
+        const rejectionNote = modal.querySelector('[data-pickup-rejection-note]');
+        const rejectionReason = modal.querySelector('[data-pickup-rejection-reason]');
+        if (rejectionNote && rejectionReason) {
+            rejectionReason.textContent = item.cancellation_reason || '';
+            rejectionNote.hidden = !item.cancellation_reason;
+        }
         modal.hidden = false; document.body.style.overflow = 'hidden';
     }));
 
@@ -3858,12 +4226,14 @@ const setupBearlyOrderActionModal = () => {
     const orderId = q('[data-bearly-order-id]');
     const customer = q('[data-bearly-order-customer]');
     const orderDate = q('[data-bearly-order-date]');
+    const orderDateLabel = q('[data-bearly-date-label]');
     const payment = q('[data-bearly-order-payment]');
     const total = q('[data-bearly-order-total]');
     const address = q('[data-bearly-order-address]');
     const addressCell = q('[data-bearly-address-cell]');
     const addressLabel = q('[data-bearly-address-label]');
     const itemCount = q('[data-bearly-item-count]');
+    const itemTitle = q('[data-bearly-items-title]');
     const items = q('[data-bearly-items]');
     const context = q('[data-bearly-action-context]');
     const transitionForm = q('[data-bearly-transition-form]');
@@ -3915,8 +4285,19 @@ const setupBearlyOrderActionModal = () => {
         ['COMPLETED', 'Completed'],
     ];
 
-    const configFor = (row, mode) => {
+    const configFor = (row, mode, shipmentOrderCount = 0) => {
         const transition = row.dataset.orderTransitionAction || '';
+
+        if (mode === 'shipment-ready') {
+            return {
+                type: 'shipment-ready',
+                title: 'Mark shared shipment ready for pickup?',
+                subtitle: `This action will mark all ${shipmentOrderCount} Seller Orders in this shipment ready for pickup.`,
+                icon: 'package-check',
+                button: `Mark all ${shipmentOrderCount} Seller Orders ready`,
+                action: 'mark_ready',
+            };
+        }
 
         if (mode === 'details' || !transition) {
             return {
@@ -4117,6 +4498,8 @@ const setupBearlyOrderActionModal = () => {
     }).format(minor / 100);
 
     const renderItems = (row) => {
+        itemTitle.textContent = 'Items';
+        items.classList.remove('is-shipment-order-list');
         items.replaceChildren();
 
         const databaseItems = parseItemsJson(row);
@@ -4257,6 +4640,87 @@ const setupBearlyOrderActionModal = () => {
         });
 
         itemCount.textContent = `(${row.dataset.orderItemCount || parts.length})`;
+    };
+
+    const renderShipmentOrders = (shipmentRows) => {
+        itemTitle.textContent = 'Included Seller Orders';
+        itemCount.textContent = `(${shipmentRows.length})`;
+        items.replaceChildren();
+        items.classList.add('is-shipment-order-list');
+
+        shipmentRows.forEach((row) => {
+            const article = document.createElement('article');
+            article.className = 'bearly-action-shipment-order';
+
+            const copy = document.createElement('span');
+            copy.className = 'bearly-action-shipment-order-copy';
+            const orderNumber = document.createElement('strong');
+            orderNumber.textContent = row.dataset.orderId || 'Seller Order';
+            const itemsText = document.createElement('small');
+            itemsText.textContent = row.dataset.orderItems || 'Order items unavailable';
+            const statusText = document.createElement('small');
+            statusText.textContent = `Current status: ${row.dataset.orderStatusCopy || 'Preparing'}`;
+            copy.append(orderNumber, itemsText, statusText);
+
+            const financials = document.createElement('span');
+            financials.className = 'bearly-action-shipment-order-financials';
+            const orderTotal = document.createElement('strong');
+            orderTotal.textContent = row.dataset.orderTotal || 'Total unavailable';
+            const paymentMethod = document.createElement('small');
+            paymentMethod.textContent = row.dataset.orderPaymentCopy || 'Payment details unavailable';
+            financials.append(orderTotal, paymentMethod);
+
+            article.append(copy, financials);
+            items.append(article);
+        });
+    };
+
+    const renderShipmentReadyContext = (shipmentRows) => {
+        context.replaceChildren();
+
+        const notice = document.createElement('section');
+        notice.className = 'bearly-action-shipment-notice';
+        notice.textContent = `This shipment-wide action affects ${shipmentRows.length} Seller Orders. Each order total and payment above remains separate.`;
+
+        const checklist = document.createElement('section');
+        checklist.className = 'bearly-action-check-card';
+        const heading = document.createElement('div');
+        heading.className = 'bearly-action-check-head';
+        const title = document.createElement('strong');
+        title.textContent = 'Before marking the shipment ready';
+        const count = document.createElement('span');
+        count.textContent = '0/3 Completed';
+        heading.append(title, count);
+        checklist.append(heading);
+
+        const checklistLabels = [
+            'I verified every Seller Order’s items, variants, and quantities.',
+            'All included orders are packed in this shared shipment.',
+            'The shared Waybill is printed and attached to the shipment.',
+        ];
+        const checks = checklistLabels.map((labelText) => {
+            const label = document.createElement('label');
+            label.className = 'bearly-action-check';
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.dataset.bearlyPackCheck = '';
+            const text = document.createElement('span');
+            text.textContent = labelText;
+            label.append(input, text);
+            checklist.append(label);
+            return input;
+        });
+
+        checks.forEach((check) => {
+            check.addEventListener('change', () => {
+                const completed = checks.filter((item) => item.checked).length;
+                count.textContent = `${completed}/3 Completed`;
+                primary.disabled = completed !== checks.length;
+            });
+        });
+
+        context.append(notice, checklist);
+        primary.disabled = true;
     };
 
     const notice = (iconName, text) =>
@@ -4663,11 +5127,11 @@ const setupBearlyOrderActionModal = () => {
         lastTrackingSignature = '';
     };
 
-    const open = (row, mode, trigger) => {
-        active = { row, mode, trigger };
+    const open = (row, mode, trigger, shipmentRows = null) => {
+        active = { row, mode, trigger, shipmentRows };
         lastFocus = trigger;
 
-        const config = configFor(row, mode);
+        const config = configFor(row, mode, shipmentRows?.length || 0);
 
         transitionForm.setAttribute('action', row.dataset.orderTransitionUrl || '');
         actionField.value = config.action || '';
@@ -4686,24 +5150,28 @@ const setupBearlyOrderActionModal = () => {
 
         const canonical = (row.dataset.orderCanonical || '').toUpperCase();
 
-        badge.textContent =
-            row.dataset.orderStatusCopy ||
-            statusLabels[canonical] ||
-            'Order';
+        badge.textContent = shipmentRows?.length
+            ? 'Shared shipment'
+            : row.dataset.orderStatusCopy || statusLabels[canonical] || 'Order';
 
-        orderId.textContent =
-            row.dataset.orderId ||
-            trigger.dataset.orderDetails ||
-            '—';
+        orderId.textContent = shipmentRows?.length
+            ? `${shipmentRows.length} Seller Orders · one shipment`
+            : row.dataset.orderId || trigger.dataset.orderDetails || '—';
 
         customer.textContent =
             row.dataset.orderCustomer || '—';
 
-        orderDate.textContent =
-            formatOrderDate(row.dataset.orderDateCopy || row.dataset.date);
+        orderDate.textContent = shipmentRows?.length
+            ? 'One shipment-wide action'
+            : formatOrderDate(row.dataset.orderDateCopy || row.dataset.date);
+        orderDateLabel.textContent = shipmentRows?.length ? 'Action scope' : 'Order Date';
 
-        payment.textContent = paymentText(row);
-        total.textContent = row.dataset.orderTotal || '—';
+        payment.textContent = shipmentRows?.length
+            ? 'Shown separately for each Seller Order below'
+            : paymentText(row);
+        total.textContent = shipmentRows?.length
+            ? 'Individual totals shown below'
+            : row.dataset.orderTotal || '—';
 
         const shippingAddress = (row.dataset.orderAddress || '').trim();
 
@@ -4721,7 +5189,11 @@ const setupBearlyOrderActionModal = () => {
 
         addressCell.hidden = false;
 
-        renderItems(row);
+        if (shipmentRows?.length) {
+            renderShipmentOrders(shipmentRows);
+        } else {
+            renderItems(row);
+        }
 
         primary.disabled = false;
         primary.hidden = !config.button;
@@ -4729,7 +5201,11 @@ const setupBearlyOrderActionModal = () => {
 
         footer.classList.toggle('is-read-only', !config.button);
 
-        renderContext(row, config);
+        if (shipmentRows?.length) {
+            renderShipmentReadyContext(shipmentRows);
+        } else {
+            renderContext(row, config);
+        }
 
         modal.hidden = false;
         document.body.classList.add('modal-open');
@@ -4751,6 +5227,26 @@ const setupBearlyOrderActionModal = () => {
     document.addEventListener(
         'click',
         (event) => {
+            const shipmentTrigger = event.target.closest('[data-shipment-group-ready]');
+            if (shipmentTrigger) {
+                event.preventDefault();
+                event.stopPropagation();
+                event.stopImmediatePropagation();
+
+                const groupId = shipmentTrigger.dataset.shipmentGroupId;
+                const expectedCount = Number(shipmentTrigger.closest('[data-order-shipment-group]')?.dataset.shipmentGroupCount || 0);
+                const shipmentRows = [...document.querySelectorAll('[data-order-row][data-order-shipment-group-member]')]
+                    .filter((row) => row.dataset.orderShipmentGroupMember === groupId);
+                if (shipmentRows.length !== expectedCount
+                    || shipmentRows.length < 2
+                    || !shipmentRows.every((row) => row.dataset.orderSellerStatus === 'packing')) {
+                    return;
+                }
+
+                open(shipmentRows[0], 'shipment-ready', shipmentTrigger, shipmentRows);
+                return;
+            }
+
             const trigger = event.target.closest('[data-bearly-action-open]');
             if (!trigger) return;
 

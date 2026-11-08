@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\SellerWalletTransactionType;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Models\CodCashCollectionAllocation;
 use App\Models\Refund;
 use App\Models\ReturnRequest;
 use App\Models\SellerOrder;
@@ -878,10 +879,21 @@ class SellerWalletService
 
         foreach ($codShipments as $shipment) {
             $collection = $shipment->codCashCollection;
+            $amountDueMinor = max(0, (int) $sellerOrder->total_minor
+                - (int) ($sellerOrder->platform_discount_minor ?? 0)
+                - (int) ($sellerOrder->campaign_platform_discount_minor ?? 0)
+                - (int) ($sellerOrder->platform_shipping_discount_minor ?? 0));
+            $allocation = CodCashCollectionAllocation::query()
+                ->where('cod_cash_collection_id', $collection?->id ?? 0)
+                ->where('payment_id', $payment->id)
+                ->where('seller_order_id', $sellerOrder->id)
+                ->first();
             if (! $collection
                 || $collection->status !== 'reconciled'
-                || (int) $collection->payment_id !== (int) $payment->id
-                || (int) $collection->amount_reconciled_minor !== (int) $shipment->cod_amount_minor) {
+                || (int) $collection->amount_reconciled_minor !== (int) $collection->amount_due_minor
+                || ! $allocation
+                || (int) $allocation->amount_due_minor !== $amountDueMinor
+                || (int) $allocation->amount_reconciled_minor !== $amountDueMinor) {
                 return false;
             }
         }

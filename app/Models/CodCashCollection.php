@@ -53,6 +53,12 @@ class CodCashCollection extends Model
         return $this->hasMany(CodCashCollectionEvent::class)->orderBy('occurred_at')->orderBy('id');
     }
 
+    public function allocations()
+    {
+        return $this->hasMany(CodCashCollectionAllocation::class, 'cod_cash_collection_id')
+            ->orderBy('seller_order_id');
+    }
+
     public function collector()
     {
         return $this->belongsTo(User::class, 'collected_by');

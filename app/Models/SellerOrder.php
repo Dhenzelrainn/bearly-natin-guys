@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class SellerOrder extends Model
 {
@@ -35,9 +36,11 @@ class SellerOrder extends Model
             ->orderBy('id');
     }
 
-    public function shipments()
+    public function shipments(): BelongsToMany
     {
-        return $this->hasMany(Shipment::class);
+        return $this->belongsToMany(Shipment::class, 'shipment_seller_orders')
+            ->withTimestamps()
+            ->orderBy('shipments.id');
     }
 
     public function shippingSettlements()

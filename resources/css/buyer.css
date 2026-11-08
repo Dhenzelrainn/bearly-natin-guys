@@ -7589,6 +7589,26 @@ body.bc .buyer-global-header.bc-header .notification-badge{
     font-size:0;
 }
 
+.buyer-global-header .orders-count-badge{
+    display:grid;
+    place-items:center;
+}
+body:not(.bc).bh .buyer-global-header .orders-count-badge,
+body.bc .buyer-global-header.bc-header .orders-count-badge{
+    top:-7px;
+    right:-8px;
+    min-width:18px;
+    height:18px;
+    padding:0 5px;
+    border:0;
+    border-radius:10px;
+    background:#e9a321;
+    color:#432718!important;
+    font-size:10px;
+    line-height:18px;
+    box-shadow:0 0 0 2px #432718;
+}
+
 /* The category pages use the same full-colour Bearly logo as Home. */
 body.bc .buyer-global-header.bc-header .brand img,
 body.bc footer img{filter:none}
@@ -7793,6 +7813,7 @@ body.bc .buyer-global-header.bc-header .buyer-notification-menu .notification-he
     color:#38271f;
     font:inherit;
     text-align:left;
+    text-decoration:none;
     cursor:pointer;
 }
 .buyer-notification-item:hover,

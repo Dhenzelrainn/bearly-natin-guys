@@ -89,7 +89,7 @@
         <div>
             <p class="page-kicker">Shift records</p>
             <h3 id="local-rider-attendance-heading">Attendance record</h3>
-            <p>Check-in/out records your shift only. It does not change assignment availability or Local Rider per-job earnings. Times are shown in PHT (UTC+8).</p>
+            <p>Scan your owning Logistics provider's QR for both shift transitions. Attendance does not change assignment availability or Local Rider per-job earnings. Times are shown in PHT (UTC+8).</p>
         </div>
         <a class="button button-small" href="{{ route('rider.attendance.history') }}">
             <i data-lucide="clock-4" aria-hidden="true"></i>
@@ -109,17 +109,7 @@
                     @endif
                 </small>
             </span>
-            @if($currentShift)
-                <form method="POST" action="{{ route('rider.attendance.check-out') }}">
-                    @csrf
-                    <button class="button button-secondary button-small" type="submit">Check out</button>
-                </form>
-            @else
-                <form method="POST" action="{{ route('rider.attendance.check-in') }}">
-                    @csrf
-                    <button class="button button-small" type="submit">Check in</button>
-                </form>
-            @endif
+            @include('rider.partials.attendance-qr-scanner')
         </div>
     </div>
 </section>

@@ -128,7 +128,10 @@ class RiderPickupRouteService
             throw new ConflictHttpException('The pickup assignment changed while calculating the road route.');
         }
 
-        if (! $this->locations->isUsableForProximity($currentRider->liveLocation, now())) {
+        $generatedAt = now();
+
+        if (! $this->locations->isUsableForProximity($currentRider->liveLocation, $generatedAt)
+            || ! $this->locations->isUsableForProximity($location, $generatedAt)) {
             throw new ConflictHttpException('Rider sharing stopped or the live GPS fix became stale while calculating the route.');
         }
 
@@ -140,7 +143,10 @@ class RiderPickupRouteService
             throw new ConflictHttpException('The saved pickup pin changed while calculating the road route.');
         }
 
-        $generatedAt = now();
+        $locationAgeSeconds = max(
+            0,
+            $generatedAt->getTimestamp() - $location->last_seen_at->getTimestamp(),
+        );
 
         return [
             'route' => [
@@ -153,6 +159,7 @@ class RiderPickupRouteService
                 'longitude' => (float) $location->longitude,
                 'accuracy_meters' => (float) $location->accuracy_meters,
                 'last_seen_at' => $location->last_seen_at?->toIso8601String(),
+                'location_age_seconds' => $locationAgeSeconds,
             ],
             'pickup' => [
                 'latitude' => (float) $destination['latitude'],

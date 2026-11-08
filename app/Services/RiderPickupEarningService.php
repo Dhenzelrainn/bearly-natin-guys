@@ -56,6 +56,22 @@ class RiderPickupEarningService
         ];
     }
 
+    /** @return list<string> */
+    public function sizeClasses(): array
+    {
+        $rates = $this->rates();
+
+        return collect([
+            ...$rates['regular_classes'],
+            $rates['bulky_class'],
+        ])
+            ->map(fn ($value): string => trim((string) $value))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
     /**
      * @return array{classification: string, rate_minor: int|null}
      */

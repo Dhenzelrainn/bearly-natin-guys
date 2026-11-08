@@ -372,6 +372,8 @@ class RiderEarningsService
                 'earnings.paid_at',
                 'earnings.size_class_snapshot',
                 'earnings.rate_minor',
+                'earnings.worked_seconds_snapshot',
+                'earnings.daily_cap_minor_snapshot',
                 'earnings.rider_shift_id',
                 'earning_shifts.checked_in_at as shift_checked_in_at',
                 'earning_shifts.checked_out_at as shift_checked_out_at',
@@ -465,6 +467,8 @@ class RiderEarningsService
                 ->with([
                     'sellerOrder.items.product.images.variant',
                     'sellerOrder.items.variant',
+                    'sellerOrders.items.product.images.variant',
+                    'sellerOrders.items.variant',
                     'returnRequest.items.orderItem.product.images.variant',
                     'returnRequest.items.orderItem.variant',
                 ])
@@ -478,7 +482,7 @@ class RiderEarningsService
                             ->filter()
                             ->values()
                             ->all()
-                        : ($shipment->sellerOrder?->items ?? collect())
+                        : $shipment->includedOrderItems()
                             ->map(fn (OrderItem $item): array => $this->productPreview($item, (int) $item->quantity, $catalog))
                             ->values()
                             ->all();
@@ -589,6 +593,12 @@ class RiderEarningsService
             'description' => (string) ($record->description ?? ''),
             'size_class' => (string) ($record->size_class_snapshot ?? ''),
             'rate_minor' => $record->rate_minor === null ? null : (int) $record->rate_minor,
+            'worked_seconds' => $record->worked_seconds_snapshot === null
+                ? null
+                : (int) $record->worked_seconds_snapshot,
+            'daily_cap_minor' => $record->daily_cap_minor_snapshot === null
+                ? null
+                : (int) $record->daily_cap_minor_snapshot,
             'shift_label' => $record->shift_checked_in_at
                 ? 'Shift '.Carbon::parse($record->shift_checked_in_at)->timezone(RiderShift::TIMEZONE)->format('M j, Y · g:i A').' '.RiderShift::TIMEZONE_LABEL
                     .($record->shift_checked_out_at

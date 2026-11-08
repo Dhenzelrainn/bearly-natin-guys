@@ -313,6 +313,21 @@ Table logistics_profiles {
   deleted_at timestamp
 }
 
+Table logistics_locations {
+  id bigint [pk, increment, not null]
+  logistics_profile_id bigint [not null, unique]
+  latitude decimal(10,7) [not null]
+  longitude decimal(10,7) [not null]
+  accuracy_meters decimal(9,2)
+  last_seen_at timestamp [not null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    last_seen_at [name: 'logistics_locations_last_seen_at_index']
+  }
+}
+
 Table logistics_payout_accounts {
   id bigint [pk, increment, not null]
   logistics_profile_id bigint [not null]
@@ -521,6 +536,62 @@ Table payments {
   updated_at timestamp
 }
 
+Table cod_cash_collections {
+  id bigint [pk, increment, not null]
+  collection_no varchar(40) [not null, unique]
+  shipment_id bigint [not null, unique]
+  payment_id bigint [not null]
+  order_id bigint [not null]
+  seller_order_id bigint [not null]
+  logistics_profile_id bigint [not null]
+  rider_profile_id bigint [not null]
+  amount_due_minor bigint [not null]
+  amount_collected_minor bigint [not null]
+  discrepancy_minor bigint [not null, default: 0]
+  amount_received_by_logistics_minor bigint
+  amount_remitted_to_finance_minor bigint
+  amount_reconciled_minor bigint
+  status varchar(32) [not null]
+  collected_at timestamp [not null]
+  collected_by bigint [not null]
+  logistics_reference varchar(150)
+  logistics_received_at timestamp
+  logistics_received_by bigint
+  finance_remittance_reference varchar(150)
+  remitted_to_finance_at timestamp
+  remitted_to_finance_by bigint
+  finance_reference varchar(150)
+  reconciled_at timestamp
+  reconciled_by bigint
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (logistics_profile_id, status, collected_at)
+    (payment_id, status)
+    (seller_order_id, status)
+  }
+}
+
+Table cod_cash_collection_allocations {
+  id bigint [pk, increment, not null]
+  cod_cash_collection_id bigint [not null]
+  payment_id bigint [not null]
+  order_id bigint [not null]
+  seller_order_id bigint [not null]
+  amount_due_minor bigint [not null]
+  amount_collected_minor bigint
+  amount_reconciled_minor bigint
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (cod_cash_collection_id, seller_order_id) [unique]
+    (payment_id, seller_order_id)
+    (order_id, payment_id)
+  }
+}
+
 Table pickup_assignments {
   id bigint [pk, increment, not null]
   pickup_request_id bigint [not null]
@@ -585,6 +656,8 @@ Table policies {
   code varchar(50) [not null, unique]
   title varchar(180) [not null]
   category varchar(80) [not null]
+  scope varchar(40) [not null, default: 'platform']
+  scope_key varchar(100)
   status varchar(20) [not null]
   created_at timestamp
   updated_at timestamp
@@ -596,10 +669,22 @@ Table policy_versions {
   version varchar(20) [not null]
   body longtext [not null]
   summary text
+  title varchar(180)
+  category varchar(80)
+  source_reference text
   status varchar(20) [not null]
   created_by bigint
   effective_at timestamp
   published_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table shipping_policy_settings {
+  id bigint [pk, increment, not null]
+  provider_key varchar(100) [not null, unique]
+  manager_logistics_profile_id bigint
+  updated_by bigint
   created_at timestamp
   updated_at timestamp
 }
@@ -869,6 +954,27 @@ Table shipping_settlements {
   remitted_to_last4 char(4)
 }
 
+Table shipping_settlement_allocations {
+  id bigint [pk, increment, not null]
+  shipping_settlement_id bigint [not null]
+  seller_order_id bigint [not null]
+  original_shipping_fee_minor bigint [not null]
+  buyer_paid_shipping_fee_minor bigint [not null]
+  platform_shipping_subsidy_minor bigint [not null]
+  shipping_funding_source varchar(40) [not null]
+  zone_level tinyint [not null]
+  origin_logistics_share_minor bigint [not null, default: 0]
+  logistics_share_minor bigint [not null]
+  rider_share_minor bigint [not null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (shipping_settlement_id, seller_order_id) [unique]
+    (seller_order_id, shipping_settlement_id)
+  }
+}
+
 Table shipping_settlement_origin_remittances {
   id bigint [pk, increment, not null]
   shipping_settlement_id bigint [not null, unique]
@@ -940,6 +1046,22 @@ Table rider_profiles {
   created_at timestamp
   updated_at timestamp
   deleted_at timestamp
+}
+
+Table rider_attendance_absences {
+  id bigint [pk, increment, not null]
+  logistics_profile_id bigint [not null]
+  rider_profile_id bigint [not null]
+  work_date date [not null]
+  marked_by_user_id bigint [not null]
+  marked_at timestamp [not null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (rider_profile_id, work_date) [unique, name: 'rider_attendance_absences_rider_date_unique']
+    (logistics_profile_id, work_date) [name: 'rider_attendance_absences_provider_date_idx']
+  }
 }
 
 Table rider_vehicle_change_requests {
@@ -1266,6 +1388,19 @@ Table shipment_events {
   created_at timestamp [not null]
 }
 
+Table shipment_seller_orders {
+  id bigint [pk, increment, not null]
+  shipment_id bigint [not null]
+  seller_order_id bigint [not null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (shipment_id, seller_order_id) [unique]
+    (seller_order_id, shipment_id)
+  }
+}
+
 Table shipments {
   id bigint [pk, increment, not null]
   shipment_no varchar(32) [not null, unique]
@@ -1533,6 +1668,20 @@ Ref: audit_logs.actor_user_id > users.id
 Ref: cart_items.cart_id > carts.id
 Ref: cart_items.product_variant_id > product_variants.id
 Ref: carts.user_id > users.id
+Ref: cod_cash_collections.collected_by > users.id
+Ref: cod_cash_collections.logistics_profile_id > logistics_profiles.id
+Ref: cod_cash_collections.logistics_received_by > users.id
+Ref: cod_cash_collections.order_id > orders.id
+Ref: cod_cash_collections.payment_id > payments.id
+Ref: cod_cash_collections.reconciled_by > users.id
+Ref: cod_cash_collections.remitted_to_finance_by > users.id
+Ref: cod_cash_collections.rider_profile_id > rider_profiles.id
+Ref: cod_cash_collections.seller_order_id > seller_orders.id
+Ref: cod_cash_collections.shipment_id > shipments.id
+Ref: cod_cash_collection_allocations.cod_cash_collection_id > cod_cash_collections.id
+Ref: cod_cash_collection_allocations.order_id > orders.id
+Ref: cod_cash_collection_allocations.payment_id > payments.id
+Ref: cod_cash_collection_allocations.seller_order_id > seller_orders.id
 Ref: categories.parent_id > categories.id
 Ref: compliance_rules.category_id > categories.id
 Ref: compliance_rules.created_by > users.id
@@ -1570,6 +1719,7 @@ Ref: inventory_movements.created_by > users.id
 Ref: inventory_movements.variant_id > product_variants.id
 Ref: logistics_profiles.application_id > account_applications.id
 Ref: logistics_profiles.user_id > users.id
+Ref: logistics_locations.logistics_profile_id > logistics_profiles.id
 Ref: logistics_payout_accounts.created_by > users.id
 Ref: logistics_payout_accounts.logistics_profile_id > logistics_profiles.id
 Ref: logistics_payout_accounts.reviewed_by > users.id
@@ -1600,6 +1750,8 @@ Ref: platform_commissions.refund_id > refunds.id
 Ref: platform_commissions.seller_order_id > seller_orders.id
 Ref: policy_versions.created_by > users.id
 Ref: policy_versions.policy_id > policies.id
+Ref: shipping_policy_settings.manager_logistics_profile_id > logistics_profiles.id
+Ref: shipping_policy_settings.updated_by > users.id
 Ref: product_compliance_check_matches.check_id > product_compliance_checks.id
 Ref: product_compliance_check_matches.rule_id > compliance_rules.id
 Ref: product_compliance_checks.category_id_snapshot > categories.id
@@ -1643,6 +1795,9 @@ Ref: rider_earnings.shipment_id > shipments.id
 Ref: rider_earning_payouts.logistics_profile_id > logistics_profiles.id
 Ref: rider_earning_payouts.recorded_by > users.id
 Ref: rider_earning_payouts.rider_earning_id > rider_earnings.id
+Ref: rider_attendance_absences.logistics_profile_id > logistics_profiles.id
+Ref: rider_attendance_absences.marked_by_user_id > users.id
+Ref: rider_attendance_absences.rider_profile_id > rider_profiles.id
 Ref: rider_profiles.current_zone_id > sorting_zones.id
 Ref: rider_profiles.courier_vehicle_verified_by > users.id
 Ref: rider_profiles.home_sorting_center_id > sorting_centers.id
@@ -1657,6 +1812,8 @@ Ref: seller_order_status_histories.actor_user_id > users.id
 Ref: seller_order_status_histories.seller_order_id > seller_orders.id
 Ref: seller_orders.order_id > orders.id
 Ref: seller_orders.store_id > stores.id
+Ref: shipping_settlement_allocations.seller_order_id > seller_orders.id
+Ref: shipping_settlement_allocations.shipping_settlement_id > shipping_settlements.id
 Ref: seller_payouts.seller_profile_id > seller_profiles.id
 Ref: seller_refund_recoveries.refund_id > refunds.id
 Ref: seller_refund_recoveries.seller_profile_id > seller_profiles.id
@@ -1699,6 +1856,8 @@ Ref: shipment_events.parcel_id > parcels.id
 Ref: shipment_events.shipment_id > shipments.id
 Ref: shipment_events.sorting_center_id > sorting_centers.id
 Ref: shipment_events.sorting_zone_id > sorting_zones.id
+Ref: shipment_seller_orders.seller_order_id > seller_orders.id
+Ref: shipment_seller_orders.shipment_id > shipments.id
 Ref: shipments.destination_address_id > addresses.id
 Ref: shipments.origin_logistics_profile_id > logistics_profiles.id
 Ref: shipments.logistics_profile_id > logistics_profiles.id

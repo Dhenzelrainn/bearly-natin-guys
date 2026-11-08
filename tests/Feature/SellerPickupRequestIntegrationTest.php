@@ -240,7 +240,8 @@ class SellerPickupRequestIntegrationTest extends TestCase
             ->get(route('seller.fulfillment.pickups'))
             ->assertOk()
             ->assertSee($primary['profile']->display_name)
-            ->assertDontSee('name="logistics_profile_id"', false);
+            ->assertSee('name="logistics_profile_id"', false)
+            ->assertSee('No Riders are currently marked available');
 
         $payload = [
             'order_ids' => [$sellerOrder->id],
@@ -266,6 +267,134 @@ class SellerPickupRequestIntegrationTest extends TestCase
             $primary['profile']->id,
             (int) PickupRequest::query()->sole()->logistics_profile_id,
         );
+    }
+
+    public function test_seller_can_choose_a_nearby_active_provider_when_no_provider_serves_the_pickup_city(): void
+    {
+        [$seller, $store] = $this->seller();
+        $nearby = $this->provider('nearby-only', '0403422000');
+        $sellerOrder = $this->readySellerOrder($store, 'nearby-packing');
+        $sellerOrder->update(['status' => 'accepted']);
+        $fulfillment = app(SellerFulfillmentService::class);
+        $packingPlan = $fulfillment->defaultPackingPlan($sellerOrder)['parcels'];
+
+        $this->actingAs($seller)
+            ->get(route('seller.orders.packing', $sellerOrder))
+            ->assertOk()
+            ->assertSee('Choose a nearby Logistics provider')
+            ->assertSee($nearby['profile']->display_name)
+            ->assertSee('No Riders are currently marked available')
+            ->assertSee('name="logistics_profile_id"', false);
+
+        $this->actingAs($seller)
+            ->post(route('seller.orders.packing.store', $sellerOrder), [
+                'logistics_profile_id' => $nearby['profile']->id,
+                'parcels' => $packingPlan,
+            ])
+            ->assertRedirect(route('seller.fulfillment.waybills', ['status' => 'ready']))
+            ->assertSessionHas('success');
+
+        $shipment = Shipment::query()->sole();
+        $this->assertSame($nearby['profile']->id, (int) $shipment->logistics_profile_id);
+        $this->assertDatabaseCount('waybills', 1);
+    }
+
+    public function test_seller_can_resubmit_a_rejected_pickup_to_another_nearby_provider_without_recreating_waybill_or_parcel(): void
+    {
+        [$seller, $store] = $this->seller();
+        $originalProvider = $this->provider('rejected-provider');
+        $alternateProvider = $this->provider('alternate-provider', '0403422000');
+        $sellerOrder = $this->readySellerOrder($store, 'alternate-pickup');
+        $this->fulfillSellerOrder($sellerOrder, $seller, $originalProvider['profile']);
+        Notification::fake();
+
+        $this->actingAs($seller)
+            ->post(route('seller.fulfillment.pickups.store'), [
+                'order_ids' => [$sellerOrder->id],
+                'logistics_profile_id' => $originalProvider['profile']->id,
+                'requested_date' => today()->addDay()->toDateString(),
+                'pickup_window' => '10:00-12:00',
+            ])
+            ->assertRedirect(route('seller.fulfillment.pickups'));
+
+        $rejectedPickup = PickupRequest::query()->sole();
+        $shipment = Shipment::query()->sole();
+        $waybill = Waybill::query()->sole();
+        $parcel = Parcel::query()->sole();
+        $waybillIdentity = [$waybill->id, $waybill->waybill_no, $waybill->scan_token, $waybill->barcode_value];
+        $parcelIdentity = [$parcel->id, $parcel->parcel_no, $parcel->waybill_id, $parcel->piece_sequence];
+
+        $this->actingAs($originalProvider['user'])
+            ->patch(route('logistics.pickups.cancel', $rejectedPickup), [
+                'cancellation_reason' => 'Our pickup Rider is unavailable for this date.',
+            ])
+            ->assertRedirect();
+
+        $this->actingAs($seller)
+            ->get(route('seller.fulfillment.pickups'))
+            ->assertOk()
+            ->assertSee('Our pickup Rider is unavailable for this date.')
+            ->assertSee('Choose another nearby active provider in Create Pickup Request')
+            ->assertSee($alternateProvider['profile']->display_name);
+
+        $this->actingAs($seller)
+            ->post(route('seller.fulfillment.pickups.store'), [
+                'order_ids' => [$sellerOrder->id],
+                'logistics_profile_id' => $originalProvider['profile']->id,
+                'requested_date' => today()->addDay()->toDateString(),
+                'pickup_window' => '13:00-15:00',
+            ])
+            ->assertConflict();
+
+        $this->actingAs($seller)
+            ->post(route('seller.fulfillment.pickups.store'), [
+                'order_ids' => [$sellerOrder->id],
+                'logistics_profile_id' => $alternateProvider['profile']->id,
+                'requested_date' => today()->addDay()->toDateString(),
+                'pickup_window' => '13:00-15:00',
+            ])
+            ->assertRedirect(route('seller.fulfillment.pickups'))
+            ->assertSessionHas('success');
+
+        $replacementPickup = PickupRequest::query()->where('id', '!=', $rejectedPickup->id)->sole();
+        $this->assertSame('cancelled', $rejectedPickup->fresh()->status);
+        $this->assertSame($alternateProvider['profile']->id, (int) $replacementPickup->logistics_profile_id);
+        $this->assertSame($alternateProvider['profile']->id, (int) $shipment->fresh()->logistics_profile_id);
+        $this->assertSame($originalProvider['profile']->id, (int) $shipment->fresh()->origin_logistics_profile_id);
+        $this->assertSame($waybillIdentity, [
+            $waybill->fresh()->id,
+            $waybill->fresh()->waybill_no,
+            $waybill->fresh()->scan_token,
+            $waybill->fresh()->barcode_value,
+        ]);
+        $this->assertSame($parcelIdentity, [
+            $parcel->fresh()->id,
+            $parcel->fresh()->parcel_no,
+            $parcel->fresh()->waybill_id,
+            $parcel->fresh()->piece_sequence,
+        ]);
+        $this->assertDatabaseCount('pickup_requests', 2);
+        $this->assertDatabaseCount('shipments', 1);
+        $this->assertDatabaseCount('waybills', 1);
+        $this->assertDatabaseCount('parcels', 1);
+
+        $reassignmentEvent = ShipmentEvent::query()
+            ->where('shipment_id', $shipment->id)
+            ->where('event_type', 'shipment_logistics_provider_reassigned')
+            ->sole();
+        $this->assertSame($seller->id, (int) $reassignmentEvent->actor_user_id);
+        $this->assertSame($originalProvider['profile']->id, $reassignmentEvent->metadata['from_logistics_profile_id']);
+        $this->assertSame($alternateProvider['profile']->id, $reassignmentEvent->metadata['to_logistics_profile_id']);
+        $this->assertSame($rejectedPickup->id, $reassignmentEvent->metadata['rejected_pickup_request_id']);
+
+        Notification::assertSentTo($alternateProvider['user'], WorkflowNotification::class);
+
+        $this->actingAs($originalProvider['user'])
+            ->get(route('logistics.pickups.index'))
+            ->assertOk()
+            ->assertSee($rejectedPickup->pickup_no)
+            ->assertSee($parcel->parcel_no)
+            ->assertSee('Our pickup Rider is unavailable for this date.');
     }
 
     public function test_provider_resolution_fails_safely_when_the_city_has_no_active_provider(): void
@@ -495,6 +624,17 @@ class SellerPickupRequestIntegrationTest extends TestCase
             ->sole();
 
         $firstParcel = $ownedWaybill->parcels()->sole();
+        $ownedShipment = Shipment::query()->findOrFail($firstParcel->shipment_id);
+        $additionalOrderReferences = [];
+        foreach (range(2, 6) as $referenceNumber) {
+            $linkedOrder = $this->readySellerOrder($store, "waybill-linked-{$referenceNumber}");
+            $ownedShipment->sellerOrders()->attach($linkedOrder->id);
+            $additionalOrderReferences[] = [
+                $linkedOrder->seller_order_no,
+                $linkedOrder->order->order_no,
+            ];
+        }
+
         $ownedWaybill->update(['piece_count' => 2]);
 
         $this->actingAs($seller)
@@ -503,7 +643,7 @@ class SellerPickupRequestIntegrationTest extends TestCase
             ])
             ->assertConflict();
 
-        Parcel::query()->create([
+        $secondParcel = Parcel::query()->create([
             'shipment_id' => $firstParcel->shipment_id,
             'waybill_id' => $ownedWaybill->id,
             'parcel_no' => 'PCL-'.Str::upper(Str::random(16)),
@@ -515,7 +655,6 @@ class SellerPickupRequestIntegrationTest extends TestCase
             'status' => 'created',
             'last_event_at' => now(),
         ]);
-
         $this->actingAs($seller)
             ->get(route('seller.fulfillment.waybills'))
             ->assertOk()
@@ -549,8 +688,18 @@ class SellerPickupRequestIntegrationTest extends TestCase
         $this->assertStringContainsString('/DCTDecode', $pdf, 'The official Bearly logo should be embedded as a JPEG without requiring GD.');
         $pdfContent = $this->decodedPdfStreams($pdf);
         preg_match_all('/0\.000 0\.000 0\.000 rg\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+re f/', $pdfContent, $barcodeBars);
-        $this->assertGreaterThan(80, count($barcodeBars[0]), 'Each physical piece label must draw the shared Code 128 barcode.');
-        $this->assertSame(2, substr_count($pdfContent, "C\0O\0D"), 'The waybill COD total should appear on both physical piece labels.');
+        $this->assertGreaterThan(80, count($barcodeBars[0]), 'Each physical piece label must draw its Code 128 Parcel barcode.');
+        $this->assertSame(2, substr_count($pdfContent, implode("\0", str_split('COD TOTAL FOR THIS WAYBILL'))), 'The waybill COD total should appear on both physical piece labels.');
+        $this->assertTrue(str_contains($pdfContent, implode("\0", str_split($firstParcel->parcel_no))));
+        $this->assertTrue(str_contains($pdfContent, implode("\0", str_split($secondParcel->parcel_no))));
+        $this->assertSame(2, substr_count($pdfContent, implode("\0", str_split($ownedWaybill->waybill_no))));
+        $this->assertStringContainsString(implode("\0", str_split('PARCEL BARCODE')), $pdfContent);
+        $this->assertStringContainsString(implode("\0", str_split('Snapshot Product')), $pdfContent, 'Recorded Parcel contents should appear on its label.');
+        $this->assertStringContainsString(implode("\0", str_split('Not recorded for this parcel.')), $pdfContent, 'Legacy/manual Parcels must not claim unrecorded contents.');
+        foreach ($additionalOrderReferences as [$sellerOrderNo, $orderNo]) {
+            $this->assertStringContainsString(implode("\0", str_split($sellerOrderNo)), $pdfContent);
+            $this->assertStringContainsString(implode("\0", str_split($orderNo)), $pdfContent);
+        }
         $this->assertStringNotContainsString($ownedWaybill->scan_token, $pdf);
         $this->assertDatabaseHas('audit_logs', [
             'actor_user_id' => $seller->id,
@@ -711,6 +860,7 @@ class SellerPickupRequestIntegrationTest extends TestCase
             $seller,
             $provider,
             $seller->sellerProfile->pickupAddress,
+            $fulfillment->defaultPackingPlan($sellerOrder)['parcels'],
         );
 
         if ($printed) {

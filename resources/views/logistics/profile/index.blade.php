@@ -313,6 +313,7 @@
                 class="panel-body"
                 method="POST"
                 action="{{ route('logistics.profile.facility.update') }}"
+                data-logistics-facility-form
             >
                 @csrf
                 @method('PATCH')
@@ -326,6 +327,9 @@
                             value="{{ old('business_name', $facility['business_name']) }}"
                             required
                         >
+                        @error('business_name')
+                            <small class="facility-form-error" role="alert">{{ $message }}</small>
+                        @enderror
                     </div>
 
                     <div class="field">
@@ -336,6 +340,9 @@
                             value="{{ old('contact', $facility['contact']) }}"
                             required
                         >
+                        @error('contact')
+                            <small class="facility-form-error" role="alert">{{ $message }}</small>
+                        @enderror
                     </div>
 
                     <div class="field span-2">
@@ -348,6 +355,114 @@
                         >
                     </div>
 
+                    <div class="field span-2">
+                        @if ($facility['has_map_pin_controls'])
+                            <div class="address-map-picker-section">
+                                <div class="address-map-picker-heading">
+                                    <div>
+                                        <strong>Facility map pin</strong>
+                                        <small>Use “Find facility location” to draft a facility pin; only a fix at reported accuracy of ±100 m or better can set it. Coarser fixes show an approximate area and never change a saved pin. This one-time pin check stays on this page. The saved facility pin supplements the registered address and stays fixed. The top-bar “Share location” control is separate: it shares an approximate live device marker with your own Logistics maps for up to 3 minutes after the last update, and never moves the saved facility pin. Clear the facility pin and save facility settings to remove it. Pickup-map guide lines are approximate straight-line guides, not road routes.</small>
+                                    </div>
+                                </div>
+
+                                <div
+                                    id="logistics-facility-map"
+                                    class="address-map"
+                                    data-logistics-facility-map
+                                    data-latitude="{{ $facility['latitude'] ?? '' }}"
+                                    data-longitude="{{ $facility['longitude'] ?? '' }}"
+                                    data-map-tile-url="{{ config('maps.tile_url') }}"
+                                    data-map-attribution="{{ config('maps.tile_attribution') }}"
+                                    data-reverse-geocode-url="{{ route('maps.reverse-geocode') }}"
+                                    aria-label="Saved facility pin and provider-only live device location map"
+                                ></div>
+
+                                <div
+                                    class="facility-location-control"
+                                    data-facility-location-status
+                                    role="status"
+                                    aria-live="polite"
+                                    hidden
+                                >
+                                    <span class="facility-location-dot" data-facility-location-dot aria-hidden="true"></span>
+                                    <span class="facility-location-copy">
+                                        <strong data-facility-location-label>Location check is off</strong>
+                                        <small data-facility-location-help>Device location is checked only while this page is open.</small>
+                                    </span>
+                                    <button
+                                        class="button button-small"
+                                        type="button"
+                                        data-stop-facility-location
+                                        hidden
+                                    >
+                                        Stop location check
+                                    </button>
+                                </div>
+
+                                <input type="hidden" name="latitude" value="{{ $facility['latitude'] ?? '' }}">
+                                <input type="hidden" name="longitude" value="{{ $facility['longitude'] ?? '' }}">
+
+                                <p
+                                    id="logistics-facility-map-status"
+                                    class="address-map-status"
+                                    data-logistics-facility-map-status
+                                    role="status"
+                                    aria-live="polite"
+                                >
+                                    @if ($facility['latitude'] !== null && $facility['longitude'] !== null)
+                                        Saved facility pin loaded. The blue live-device marker, when shared, is separate; adjust the facility pin and save facility settings.
+                                    @else
+                                        No facility pin saved. Tap the map to place one, or find a sufficiently accurate device fix, then save facility settings.
+                                    @endif
+                                </p>
+
+                                @error('latitude')
+                                    <small class="facility-form-error" role="alert">{{ $message }}</small>
+                                @enderror
+                                @error('longitude')
+                                    <small class="facility-form-error" role="alert">{{ $message }}</small>
+                                @enderror
+
+                                <div class="address-map-picker-actions">
+                                    <button
+                                        class="address-map-location"
+                                        type="button"
+                                        data-detect-facility-location
+                                        aria-controls="logistics-facility-map"
+                                        aria-describedby="logistics-facility-map-status"
+                                    >
+                                        <i data-lucide="locate-fixed" aria-hidden="true"></i>
+                                        Find facility location
+                                    </button>
+                                    <button
+                                        class="address-map-location"
+                                        type="button"
+                                        data-place-facility-pin-manually
+                                        aria-controls="logistics-facility-map"
+                                        aria-describedby="logistics-facility-map-status"
+                                        aria-pressed="false"
+                                    >
+                                        <i data-lucide="map-pin" aria-hidden="true"></i>
+                                        Place pin manually
+                                    </button>
+                                    <button
+                                        class="address-map-clear"
+                                        type="button"
+                                        data-clear-facility-pin
+                                        aria-describedby="logistics-facility-map-status"
+                                        @if ($facility['latitude'] === null || $facility['longitude'] === null) hidden @endif
+                                    >
+                                        Clear saved pin
+                                    </button>
+                                </div>
+                            </div>
+                        @else
+                            <p class="address-map-status" role="status">
+                                A facility pin can be saved when this account has an active Sorting Center with a registered address.
+                            </p>
+                        @endif
+                    </div>
+
                     <div class="field">
                         <label>Operating hours</label>
 
@@ -356,6 +471,9 @@
                             value="{{ old('operating_hours', $facility['operating_hours']) }}"
                             required
                         >
+                        @error('operating_hours')
+                            <small class="facility-form-error" role="alert">{{ $message }}</small>
+                        @enderror
                     </div>
 
                     <div class="field">
@@ -368,6 +486,9 @@
                             value="{{ old('daily_capacity', $facility['daily_capacity']) }}"
                             required
                         >
+                        @error('daily_capacity')
+                            <small class="facility-form-error" role="alert">{{ $message }}</small>
+                        @enderror
                     </div>
                 </div>
 

@@ -13,18 +13,18 @@
 <section class="panel">
     <div class="panel-header">
         <div>
-            <h3>Accept an incoming handoff</h3>
-            <p>Scan or enter the waybill. Incoming parcels are assigned automatically to your account’s single active Sorting Center.</p>
+            <h3>Accept an incoming Waybill</h3>
+            <p>Scan a Waybill from the queue below—not the Courier Run ID. Accept one Waybill per shipment; all parcels in that shipment move to your active Sorting Center.</p>
         </div>
     </div>
-    <form class="panel-body" method="POST" action="{{ route('logistics.transfers.accept') }}" data-waybill-scan-form>
+    <form class="panel-body" method="POST" action="{{ route('logistics.transfers.accept') }}" data-waybill-scan-form data-handoff-accept-form>
         @csrf
         <input type="hidden" name="scan_method" value="manual" data-waybill-scan-method>
         <div class="field-grid">
             <div class="field span-2">
-                <label for="transfer-identifier">Waybill or barcode</label>
-                    <input id="transfer-identifier" name="identifier" value="{{ old('identifier') }}" maxlength="120" required autocomplete="off" placeholder="Scan or enter the waybill number" data-waybill-identifier>
-                    <div class="waybill-scan-tools"><button type="button" class="waybill-camera-button" data-waybill-camera-open><i data-lucide="camera"></i>Use camera</button><small>Manual entry and USB/Bluetooth barcode scanners are also supported.</small></div>
+                <label for="transfer-identifier">Waybill number / barcode</label>
+                    <input id="transfer-identifier" name="identifier" value="{{ old('identifier') }}" maxlength="120" required autocomplete="off" placeholder="Scan or enter a Waybill from the queue below" data-waybill-identifier>
+                    <div class="waybill-scan-tools"><button type="button" class="waybill-camera-button" data-waybill-camera-open><i data-lucide="camera"></i>Use camera</button><small>Manual entry and USB/Bluetooth scanners also work. Do not scan the Courier Run ID.</small></div>
                 @error('identifier')<small class="form-error">{{ $message }}</small>@enderror
             </div>
             <div class="field span-2">
@@ -34,7 +34,7 @@
         </div>
         <div class="waybill-camera-panel" data-waybill-camera-panel hidden><video data-waybill-camera-video playsinline muted></video><p class="waybill-camera-status" data-waybill-camera-status>Point the camera at the Code 128 waybill barcode.</p><button type="button" class="button button-small" data-waybill-camera-close>Cancel camera</button></div>
         <div class="form-actions">
-            <button class="button button-primary" type="submit" @disabled(! $sortingCenter)><i data-lucide="scan-line"></i> Scan and accept</button>
+            <button class="button button-primary" type="submit" @disabled(! $sortingCenter)><i data-lucide="scan-line"></i> Accept scanned Waybill</button>
         </div>
     </form>
 </section>
@@ -63,12 +63,13 @@
                 </div>
                 <div class="table-wrap">
                     <table class="data-table">
-                        <thead><tr><th>Select</th><th>Waybill / Seller Order</th><th>Seller</th><th>Destination</th><th>Parcels</th></tr></thead>
+                        <thead><tr><th>Select</th><th>Waybill / Seller Order</th><th>Products in shipment</th><th>Seller</th><th>Destination</th><th>Parcels</th></tr></thead>
                         <tbody>
                             @foreach($destinationShipments as $shipment)
                                 <tr>
                                     <td><input type="checkbox" name="shipment_ids[]" value="{{ $shipment['id'] }}" aria-label="Add {{ $shipment['waybill'] }} to manifest"></td>
                                     <td><span class="cell-title"><strong>{{ $shipment['waybill'] }}</strong><small>{{ $shipment['seller_order'] }} · {{ $shipment['purpose'] }}</small></span></td>
+                                    <td class="handoff-products-cell">@include('partials.order-item-preview-list', ['items' => $shipment['products']])</td>
                                     <td>{{ $shipment['seller'] }}</td>
                                     <td>{{ $shipment['destination'] }}{{ $shipment['province'] ? ', '.$shipment['province'] : '' }}</td>
                                     <td>{{ $shipment['pieces'] }}</td>
@@ -116,14 +117,14 @@
 @endif
 
 <section class="panel">
-    <div class="panel-header"><div><h3>Active line-haul manifests</h3><p>Origin and destination custody remain distinct. Arrival does not replace the destination acceptance scan.</p></div></div>
+    <div class="panel-header"><div><h3>Courier Run Status</h3><p>Track Courier progress here. To receive a shipment after arrival, accept its Waybill in the form above.</p></div></div>
     <div class="table-wrap">
         <table class="data-table">
-            <thead><tr><th>Manifest</th><th>Route / Courier</th><th>Status</th><th>Shipments</th><th>Action</th></tr></thead>
+            <thead><tr><th>Transfer ID</th><th>Route / Courier</th><th>Status</th><th>Shipments</th><th>Action</th></tr></thead>
             <tbody>
                 @forelse($activeLinehaulRuns as $run)
                     <tr>
-                        <td><strong>{{ $run->run_no }}</strong><small>Assigned {{ $run->assigned_at?->format('M j, Y · g:i A') }}</small></td>
+                        <td><strong>{{ $run->run_no }}</strong></td>
                         <td><span class="cell-title"><strong>{{ $run->originSortingCenter?->name ?? 'Origin' }} → {{ $run->destinationLogisticsProfile?->display_name ?? 'Destination' }}</strong><small>{{ $run->courierRiderProfile?->user?->name ?? 'Courier' }}</small></span></td>
                         <td><span class="status-badge" data-status="{{ $run->status }}">{{ str($run->status)->replace('_', ' ')->title() }}</span></td>
                         <td>{{ $run->shipments->count() }} shipment(s) · {{ $run->shipments->sum(fn ($shipment) => $shipment->parcels->count()) }} parcel(s)</td>
@@ -139,8 +140,11 @@
                             @endif
                         </td>
                     </tr>
+                    <tr class="linehaul-assigned-row">
+                        <td colspan="5"><small>Assigned <time datetime="{{ $run->assigned_at?->toIso8601String() }}">{{ $run->assigned_at?->format('M j, Y · g:i A') }}</time></small></td>
+                    </tr>
                 @empty
-                    <tr><td class="empty-row" colspan="5">No active manifests involve this Logistics provider.</td></tr>
+                    <tr><td class="empty-row" colspan="5">No active Courier runs involve this Logistics provider.</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -149,7 +153,7 @@
 
 <div class="section-grid">
     <section class="panel">
-        <div class="panel-header"><div><h3>Awaiting destination acceptance</h3><p>Custody stays with your account until the receiving Logistics scans the waybill.</p></div></div>
+        <div class="panel-header"><div><h3>Outgoing handoffs</h3><p>Waybills sent from your facility stay in your custody until destination Logistics accepts them.</p></div></div>
         <div class="table-wrap">
             <table class="data-table">
                 <thead><tr><th>Waybill</th><th>Seller</th><th>Sent to</th><th>Sent</th></tr></thead>
@@ -162,7 +166,7 @@
                             <td>{{ $transfer->sent_at?->format('M j, Y · g:i A') }}</td>
                         </tr>
                     @empty
-                        <tr><td class="empty-row" colspan="4">No handoffs are waiting for acceptance.</td></tr>
+                    <tr><td class="empty-row" colspan="4">No outgoing handoffs are awaiting acceptance.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -170,20 +174,38 @@
     </section>
 
     <section class="panel">
-        <div class="panel-header"><div><h3>Incoming handoffs</h3><p>Accept only parcels physically received by your Sorting Center.</p></div></div>
+        <div class="panel-header"><div><h3>Waybills Awaiting Acceptance</h3><p>Select a Waybill to load it into the form above. Accept it after the Courier run shows Arrived. One Waybill accepts the whole shipment, including all its parcels.</p></div></div>
         <div class="table-wrap">
             <table class="data-table">
-                <thead><tr><th>Waybill</th><th>Seller</th><th>Sent by</th><th>Sent</th></tr></thead>
+                <thead><tr><th>Waybill</th><th>Seller</th><th>Sent by</th><th>Sent</th><th>Action</th></tr></thead>
                 <tbody>
                     @forelse($incomingTransfers as $transfer)
+                        @php
+                            $incomingWaybill = $transfer->shipment?->waybill?->waybill_no;
+                            $incomingRun = $transfer->shipment?->linehaulRunAssignment?->run;
+                        @endphp
                         <tr>
-                            <td>{{ $transfer->shipment?->waybill?->waybill_no ?? $transfer->shipment?->shipment_no }}</td>
+                            <td>{{ $incomingWaybill ?? $transfer->shipment?->shipment_no }}</td>
                             <td>{{ $transfer->shipment?->sellerOrder?->store?->name ?? 'Unknown Seller' }}</td>
                             <td>{{ $transfer->fromLogisticsProfile?->display_name ?? 'Logistics account' }}</td>
                             <td>{{ $transfer->sent_at?->format('M j, Y · g:i A') }}</td>
+                            <td>
+                                @if($incomingWaybill && (! $incomingRun || $incomingRun->status === 'arrived'))
+                                    <button
+                                        class="button button-small button-primary"
+                                        type="button"
+                                        data-handoff-waybill-prefill="{{ $incomingWaybill }}"
+                                        aria-label="Select Waybill {{ $incomingWaybill }} for acceptance"
+                                    >Select Waybill</button>
+                                @elseif($incomingRun)
+                                    <small>Wait until Courier Run Status is Arrived</small>
+                                @else
+                                    <small>Waybill number unavailable</small>
+                                @endif
+                            </td>
                         </tr>
                     @empty
-                        <tr><td class="empty-row" colspan="4">No incoming handoffs are awaiting your scan.</td></tr>
+                        <tr><td class="empty-row" colspan="5">No Waybills are awaiting acceptance.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -195,17 +217,18 @@
     <div class="panel-header"><div><h3>Recently accepted</h3><p>Latest completed custody changes involving your account.</p></div></div>
     <div class="table-wrap">
         <table class="data-table">
-            <thead><tr><th>Waybill</th><th>From</th><th>To</th><th>Accepted</th></tr></thead>
+            <thead><tr><th>Waybill</th><th>Products in shipment</th><th>From</th><th>To</th><th>Accepted</th></tr></thead>
             <tbody>
                 @forelse($recentTransfers as $transfer)
                     <tr>
                         <td>{{ $transfer->shipment?->waybill?->waybill_no ?? $transfer->shipment?->shipment_no }}</td>
+                        <td class="handoff-products-cell">@include('partials.order-item-preview-list', ['items' => $recentTransferProductPreviews->get($transfer->id, [])])</td>
                         <td>{{ $transfer->fromLogisticsProfile?->display_name ?? 'Logistics account' }}</td>
                         <td>{{ $transfer->toLogisticsProfile?->display_name ?? 'Logistics account' }}</td>
                         <td>{{ $transfer->accepted_at?->format('M j, Y · g:i A') }}</td>
                     </tr>
                 @empty
-                    <tr><td class="empty-row" colspan="4">No accepted handoffs yet.</td></tr>
+                    <tr><td class="empty-row" colspan="5">No accepted handoffs yet.</td></tr>
                 @endforelse
             </tbody>
         </table>

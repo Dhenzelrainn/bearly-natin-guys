@@ -30,7 +30,7 @@
     </div>
     <div class="table-wrap">
         <table class="data-table">
-            <thead><tr><th data-sort>Waybill / Order</th><th>Products in shipment</th><th>Seller</th><th>Received from</th><th data-sort>Received at</th><th>Pieces</th><th>Weight</th><th>Destination</th><th>Status</th><th>Action</th></tr></thead>
+            <thead><tr><th data-sort>Waybill / Order</th><th>Products in shipment</th><th>Seller</th><th>Received from</th><th data-sort>Received at (PHT)</th><th>Pieces</th><th>Weight</th><th>Destination</th><th>Status</th><th>Action</th></tr></thead>
             <tbody data-incoming-body>
                 @foreach($incomingParcels as $parcel)
                     <tr data-row data-record-row data-record-type="incoming" data-record-id="{{ $parcel['waybill'] }}" data-status="{{ $parcel['status'] }}" data-zone="{{ $parcel['destination'] }}">
@@ -54,16 +54,26 @@
         </table>
     </div>
 </section>
-<section class="modal" data-modal="log-parcel" @if(! $errors->hasAny(['identifier', 'sorting_center_id'])) hidden @endif>
-    <div class="modal-header"><div><h3>Log incoming parcel</h3><p>Enter or scan a waybill at the intake desk.</p></div><button class="icon-button" type="button" data-modal-close><i data-lucide="x"></i></button></div>
-    <form class="modal-body" method="POST" action="{{ route('logistics.sorting.incoming.receive') }}" data-waybill-scan-form>
+<section class="modal" data-modal="log-parcel" @if(! $errors->any()) hidden @endif>
+    <div class="modal-header"><div><h3>Log incoming parcel</h3><p>Scan a Parcel barcode or load a Waybill manifest to select one piece.</p></div><button class="icon-button" type="button" data-modal-close><i data-lucide="x"></i></button></div>
+    <form class="modal-body" method="POST" action="{{ route('logistics.sorting.incoming.receive') }}" data-waybill-scan-form data-waybill-lookup-url="{{ route('logistics.waybills.lookup', ['identifier' => '__WAYBILL__']) }}">
         @csrf
+        @error('intake')<div class="flash-banner is-danger" role="alert"><i data-lucide="circle-alert"></i><span>{{ $message }}</span></div>@enderror
+        @if($errors->any() && ! $errors->has('intake'))<div class="flash-banner is-danger" role="alert"><i data-lucide="circle-alert"></i><span>{{ $errors->first() }}</span></div>@endif
         <input type="hidden" name="scan_method" value="manual" data-waybill-scan-method>
         <div class="field-grid">
-            <div class="field span-2"><label>Waybill or barcode <span>*</span></label><input name="identifier" value="{{ old('identifier') }}" required maxlength="120" placeholder="Scan or enter the waybill number" data-waybill-identifier><div class="waybill-scan-tools"><button type="button" class="waybill-camera-button" data-waybill-camera-open><i data-lucide="camera"></i>Use camera</button><small>Manual entry and USB/Bluetooth barcode scanners are also supported.</small></div>@error('identifier')<small>{{ $message }}</small>@enderror</div>
+            <div class="field span-2"><label>Parcel barcode or Waybill reference <span>*</span></label><input name="identifier" value="{{ old('identifier') }}" required maxlength="120" placeholder="Scan a Parcel barcode or look up a Waybill" data-waybill-identifier><div class="waybill-scan-tools"><button type="button" class="button button-small" data-waybill-load>Load manifest</button><button type="button" class="waybill-camera-button" data-waybill-camera-open><i data-lucide="camera"></i>Scan parcel</button><small>Scan each physical Parcel barcode. A Waybill reference only opens its manifest.</small></div>@error('identifier')<small>{{ $message }}</small>@enderror</div>
+            <div class="field span-2 waybill-parcel-size-field">
+                <label>Package size for the selected parcel <span>*</span></label>
+                <small class="field-hint" id="waybill-parcel-size-help">Inspect the selected physical parcel and choose its size. Size is not inferred from contents, product imagery, dimensions, weight, or piece count.</small>
+                <p class="waybill-parcel-size-status" data-waybill-parcel-size-status role="status" aria-live="polite">Load a Waybill manifest or scan a unique Parcel barcode.</p>
+                <div class="waybill-parcel-size-list" data-waybill-parcel-size-list aria-describedby="waybill-parcel-size-help"></div>
+                <script type="application/json" data-parcel-size-options>@json($parcelSizeClasses)</script>
+                <script type="application/json" data-old-parcel-size-classes>@json(old('parcel_size_classes', []))</script>
+            </div>
             <div class="field span-2"><label>Receiving sorting center <span>*</span></label><select name="sorting_center_id" required><option value="">Select sorting center</option>@foreach($sortingCenters as $center)<option value="{{ $center->id }}" @selected((string) old('sorting_center_id') === (string) $center->id)>{{ $center->name }} ({{ $center->code }})</option>@endforeach</select>@error('sorting_center_id')<small>{{ $message }}</small>@enderror</div>
         </div>
-        <div class="waybill-camera-panel" data-waybill-camera-panel hidden><video data-waybill-camera-video playsinline muted></video><p class="waybill-camera-status" data-waybill-camera-status>Point the camera at the Code 128 waybill barcode.</p><button type="button" class="button button-small" data-waybill-camera-close>Cancel camera</button></div>
+        <div class="waybill-camera-panel" data-waybill-camera-panel hidden><video data-waybill-camera-video playsinline muted></video><p class="waybill-camera-status" data-waybill-camera-status>Point the camera at the unique Code 128 Parcel barcode.</p><button type="button" class="button button-small" data-waybill-camera-close>Cancel camera</button></div>
         <div class="form-actions"><button class="button" type="button" data-modal-close>Cancel</button><button class="button button-primary" type="submit" @disabled($sortingCenters->isEmpty())>Log parcel</button></div>
     </form>
 </section>

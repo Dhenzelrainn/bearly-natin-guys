@@ -412,12 +412,13 @@ class AdminReturnRefundTest extends TestCase
             ->assertRedirect();
         $shipment = Shipment::query()->whereKey($this->returnRequest->fresh()->return_shipment_id)->firstOrFail();
         $waybill = $shipment->waybill()->firstOrFail();
+        $parcel = $waybill->parcels()->sole();
         $logisticsUser = User::query()->findOrFail($provider->user_id);
         $otherLogisticsUser = User::query()->findOrFail($otherProvider->user_id);
 
         $this->actingAs($otherLogisticsUser)
             ->post(route('logistics.sorting.incoming.receive'), [
-                'identifier' => $waybill->waybill_no,
+                'identifier' => $parcel->parcel_no,
                 'sorting_center_id' => $otherCenter->id,
                 'scan_method' => 'manual',
             ])
@@ -430,9 +431,10 @@ class AdminReturnRefundTest extends TestCase
         ]);
         $this->actingAs($logisticsUser)
             ->post(route('logistics.sorting.incoming.receive'), [
-                'identifier' => $waybill->waybill_no,
+                'identifier' => $parcel->parcel_no,
                 'sorting_center_id' => $center->id,
                 'scan_method' => 'manual',
+                'parcel_size_classes' => [$parcel->id => 'regular'],
             ])
             ->assertForbidden();
         $this->assertSame('awaiting_buyer_dropoff', $shipment->fresh()->status);
@@ -445,9 +447,10 @@ class AdminReturnRefundTest extends TestCase
 
         $this->actingAs($logisticsUser)
             ->post(route('logistics.sorting.incoming.receive'), [
-                'identifier' => $waybill->barcode_value,
+                'identifier' => $parcel->parcel_no,
                 'sorting_center_id' => $center->id,
                 'scan_method' => 'manual',
+                'parcel_size_classes' => [$parcel->id => 'regular'],
             ])
             ->assertRedirect();
 
@@ -463,11 +466,13 @@ class AdminReturnRefundTest extends TestCase
 
         $this->actingAs($logisticsUser)
             ->post(route('logistics.sorting.incoming.receive'), [
-                'identifier' => $waybill->waybill_no,
+                'identifier' => $parcel->parcel_no,
                 'sorting_center_id' => $center->id,
                 'scan_method' => 'manual',
+                'parcel_size_classes' => [$parcel->id => 'regular'],
             ])
-            ->assertStatus(409);
+            ->assertRedirect()
+            ->assertSessionHasErrors('intake');
     }
 
     public function test_buyer_can_switch_expired_unreceived_dropoff_to_rider_pickup(): void
@@ -484,6 +489,7 @@ class AdminReturnRefundTest extends TestCase
         $dueAt = $this->returnRequest->dropoff_due_at;
         $shipmentId = (int) $this->returnRequest->return_shipment_id;
         $shipment = Shipment::query()->whereKey($shipmentId)->with('waybill')->firstOrFail();
+        $parcel = $shipment->waybill->parcels()->sole();
 
         Carbon::setTestNow($dueAt->copy()->subMinute());
         $this->actingAs($this->buyer)
@@ -494,11 +500,13 @@ class AdminReturnRefundTest extends TestCase
         Carbon::setTestNow($dueAt->copy()->addSecond());
         $this->actingAs(User::query()->findOrFail($provider->user_id))
             ->post(route('logistics.sorting.incoming.receive'), [
-                'identifier' => $shipment->waybill->waybill_no,
+                'identifier' => $parcel->parcel_no,
                 'sorting_center_id' => $center->id,
                 'scan_method' => 'manual',
+                'parcel_size_classes' => [$parcel->id => 'regular'],
             ])
-            ->assertStatus(409);
+            ->assertRedirect()
+            ->assertSessionHasErrors('intake');
         $this->actingAs($this->buyer)
             ->post(route('buyer.returns.switch-to-pickup', $this->returnRequest->id))
             ->assertRedirect(route('buyer.returns.show', $this->returnRequest->id));

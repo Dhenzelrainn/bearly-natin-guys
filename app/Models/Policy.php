@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 class Policy extends Model
@@ -16,5 +17,12 @@ class Policy extends Model
     public function latestVersion()
     {
         return $this->hasOne(PolicyVersion::class)->latestOfMany();
+    }
+
+    public function scopeForProvider(Builder $query, string $providerKey): Builder
+    {
+        return $query
+            ->where('scope', 'shipping_provider')
+            ->where('scope_key', $providerKey);
     }
 }

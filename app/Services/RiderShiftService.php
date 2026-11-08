@@ -182,7 +182,8 @@ class RiderShiftService
 
     private function assertActorCanReport(RiderProfile $rider, User $actor, string $source): void
     {
-        if ($source === 'rider' && (int) $rider->user_id === (int) $actor->id) {
+        if (in_array($source, ['rider', 'qr'], true)
+            && (int) $rider->user_id === (int) $actor->id) {
             return;
         }
 

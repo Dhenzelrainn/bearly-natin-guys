@@ -4,9 +4,7 @@
 @section('page-title', 'Orders')
 
 @section('content')
-@php($activeOrderStatus = $defaultOrderStatus ?? 'all')
-
-<span data-default-order-status hidden>@json($activeOrderStatus)</span>
+<span data-default-order-status hidden>@json($defaultOrderStatus ?? 'all')</span>
 
 <div class="page-heading orders-page-heading">
     <div>
@@ -38,10 +36,10 @@
     <div class="order-tabs" role="tablist" aria-label="Filter orders by seller-facing status">
         @foreach ($orderTabs as $tab)
             <button
-                class="order-tab {{ $tab['key'] === $activeOrderStatus ? 'is-active' : '' }}"
+                class="order-tab {{ $tab['key'] === ($defaultOrderStatus ?? 'all') ? 'is-active' : '' }}"
                 type="button"
                 role="tab"
-                aria-selected="{{ $tab['key'] === $activeOrderStatus ? 'true' : 'false' }}"
+                aria-selected="{{ $tab['key'] === ($defaultOrderStatus ?? 'all') ? 'true' : 'false' }}"
                 data-order-tab="{{ $tab['key'] }}"
             >
                 {{ $tab['label'] }}
@@ -98,16 +96,65 @@
                     <th>Action</th>
                 </tr>
             </thead>
-            <tbody>
-                @foreach ($orders as $order)
+            @foreach ($orderDisplayGroups as $displayGroup)
+                <tbody @if ($displayGroup['is_shipment_group']) id="{{ $displayGroup['dom_id'] }}" @endif class="{{ $displayGroup['is_shipment_group'] ? 'orders-table-group' : 'orders-table-single' }}">
+                    @if ($displayGroup['is_shipment_group'])
+                        <tr class="shipment-group-row" data-order-shipment-group data-expanded="false" data-shipment-group-id="{{ $displayGroup['shipment_group_id'] }}" data-shipment-group-count="{{ $displayGroup['orders']->count() }}">
+                            <td colspan="8" class="shipment-group-cell">
+                                <div class="shipment-group-summary {{ $displayGroup['has_side_content'] ? 'has-side-content' : '' }}">
+                                    <div class="shipment-group-identity">
+                                        <button
+                                            class="shipment-group-toggle"
+                                            type="button"
+                                            data-shipment-group-toggle
+                                            aria-expanded="false"
+                                            aria-controls="{{ $displayGroup['dom_id'] }}"
+                                            aria-label="Show {{ $displayGroup['orders']->count() }} Seller Orders in this combined shipment"
+                                        >
+                                            <i data-lucide="chevron-right" aria-hidden="true"></i>
+                                            <span class="shipment-group-copy">
+                                                <span class="shipment-group-kicker">Combined shipment · {{ $displayGroup['orders']->first()['shipment_group_label'] }}</span>
+                                                <strong>{{ $displayGroup['orders']->count() }} Seller Orders</strong>
+                                                <small>One shipment action. Order details and payments remain separate.</small>
+                                                <span class="shipment-group-toggle-label" data-shipment-group-toggle-label>View {{ $displayGroup['orders']->count() }} Seller Orders</span>
+                                            </span>
+                                        </button>
+                                        <span class="shipment-group-status" data-shipment-group-status role="status">{{ $displayGroup['status_summary'] }}</span>
+                                    </div>
+                                    @if ($displayGroup['has_side_content'])
+                                        <div class="shipment-group-actions">
+                                            @if ($displayGroup['can_mark_ready'])
+                                                <button
+                                                    class="order-row-action shipment-group-ready-action"
+                                                    type="button"
+                                                    data-shipment-group-ready
+                                                    data-shipment-group-id="{{ $displayGroup['shipment_group_id'] }}"
+                                                    aria-label="Mark all {{ $displayGroup['orders']->count() }} Seller Orders in shipment {{ $displayGroup['orders']->first()['shipment_group_label'] }} ready for pickup"
+                                                >
+                                                    <i data-lucide="package-check" aria-hidden="true"></i>
+                                                    Mark all {{ $displayGroup['orders']->count() }} Seller Orders ready for pickup
+                                                </button>
+                                            @else
+                                                <small data-shipment-group-unavailable>{{ $displayGroup['action_note'] }}</small>
+                                            @endif
+                                        </div>
+                                    @endif
+                                </div>
+                            </td>
+                        </tr>
+                    @endif
+
+                    @foreach ($displayGroup['orders'] as $order)
                     <tr
                         data-order-row
                         data-order-tracking-url="{{ $order['tracking_url'] }}"
                         data-seller-order-id="{{ $order['seller_order_id'] }}"
+                        data-order-seller-status="{{ $order['seller_status'] }}"
                         data-status="{{ $order['status_key'] }}"
                         data-date="{{ $order['date_key'] }}"
                         data-payment="{{ $order['payment_key'] }}"
                         data-search="{{ strtolower($order['id'].' '.$order['customer'].' '.$order['canonical_status']) }}"
+                        @if ($displayGroup['is_shipment_group']) data-order-shipment-group-member="{{ $displayGroup['shipment_group_id'] }}" data-order-group-member-id="{{ $order['seller_order_id'] }}" hidden @endif
                         data-order-customer="{{ $order['customer'] }}"
                         data-order-items="{{ $order['item_detail'] }}"
                         data-order-payment-copy="{{ $order['payment'] }}"
@@ -184,7 +231,9 @@
                             </span>
                         </td>
                         <td>
-                            @if ($order['action_url'])
+                            @if ($displayGroup['is_shipment_group'] && ($order['transition_action'] ?? null) === 'mark_ready')
+                                <span class="shipment-member-action-note">Ready status is managed for the shared shipment above.</span>
+                            @elseif ($order['action_url'])
                                 <a class="order-row-action" href="{{ $order['action_url'] }}">
                                     {{ $order['action'] }}
                                 </a>
@@ -201,8 +250,9 @@
                             @endif
                         </td>
                     </tr>
-                @endforeach
-            </tbody>
+                    @endforeach
+                </tbody>
+            @endforeach
         </table>
 
         <div class="orders-no-results" data-orders-no-results hidden>
@@ -267,7 +317,7 @@
 
             <section class="bearly-action-items-section">
                 <div class="bearly-action-section-heading">
-                    <h4>Items <span data-bearly-item-count></span></h4>
+                    <h4><span data-bearly-items-title>Items</span> <span data-bearly-item-count></span></h4>
                 </div>
                 <div class="bearly-action-items" data-bearly-items></div>
             </section>

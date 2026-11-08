@@ -16,9 +16,19 @@ class LogisticsProfile extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function liveLocation()
+    {
+        return $this->hasOne(LogisticsLocation::class);
+    }
+
     public function riders()
     {
         return $this->hasMany(RiderProfile::class);
+    }
+
+    public function riderAttendanceAbsences()
+    {
+        return $this->hasMany(RiderAttendanceAbsence::class);
     }
 
     public function sortingCenters()

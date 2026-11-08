@@ -2282,31 +2282,6 @@ body.profile-page.bh #tracking-panel .tracking-status-box{
 }
 body.profile-page.bh #tracking-panel .tracking-status-box span{color:#635a54;font-size:13px}
 body.profile-page.bh #tracking-panel .tracking-status-box strong{color:#6f3b20;font-size:15px}
-body.profile-page.bh #tracking-panel .tracking-estimate{
-  display:flex;
-  align-items:center;
-  gap:14px;
-  margin-top:20px;
-  padding:16px;
-  border:1px solid #eee5dc;
-  border-radius:10px;
-  background:#fffdfb;
-}
-body.profile-page.bh #tracking-panel .tracking-estimate-icon{
-  display:grid;
-  width:50px;
-  height:50px;
-  flex:0 0 50px;
-  place-items:center;
-  border-radius:50%;
-  background:#fbf0e5;
-  color:#6f3b20;
-  font-size:28px;
-}
-body.profile-page.bh #tracking-panel .tracking-estimate>div{min-width:0}
-body.profile-page.bh #tracking-panel .tracking-estimate>div>span{display:block;color:#635a54;font-size:13px}
-body.profile-page.bh #tracking-panel .tracking-estimate>div>strong{display:block;margin-top:2px;color:#6f3b20;font-size:18px;line-height:1.3}
-body.profile-page.bh #tracking-panel .tracking-estimate>div>p{margin:3px 0 0;color:#746b65;font-size:12px;line-height:1.45}
 
 @media (max-width:900px){
   body.profile-page.bh #tracking-panel{padding:24px 22px 28px}
@@ -2341,11 +2316,6 @@ body.profile-page.bh #tracking-panel .tracking-estimate>div>p{margin:3px 0 0;col
   body.profile-page.bh #tracking-panel .tracking-status-box{padding:13px 14px}
   body.profile-page.bh #tracking-panel .tracking-status-box span{font-size:11px}
   body.profile-page.bh #tracking-panel .tracking-status-box strong{font-size:13px}
-  body.profile-page.bh #tracking-panel .tracking-estimate{padding:13px;gap:11px}
-  body.profile-page.bh #tracking-panel .tracking-estimate-icon{width:42px;height:42px;flex-basis:42px;font-size:23px}
-  body.profile-page.bh #tracking-panel .tracking-estimate>div>span{font-size:11px}
-  body.profile-page.bh #tracking-panel .tracking-estimate>div>strong{font-size:14px}
-  body.profile-page.bh #tracking-panel .tracking-estimate>div>p{font-size:10px}
 }
 
 /* Server-backed voucher wallet */
@@ -2380,3 +2350,262 @@ body.profile-page.bh .like-orderability{margin:0;color:#75675e;font-size:10px;li
 body.profile-page.bh .like-cart:disabled{border-color:#d8cec6;background:#f3f0ed;color:#766a62;cursor:not-allowed;opacity:1}
 body.profile-page.bh .like-remove:disabled{cursor:wait;opacity:.65}
 body.profile-page.bh .likes-status:not([hidden]){margin:14px 0 0;padding:10px 12px;border:1px solid #e7d9c9;border-radius:6px;background:#fbf7f1;color:#625044;font-size:12px;line-height:1.5}
+
+/* Per-shipment Buyer tracking and privacy-safe live Rider map. */
+body.profile-page.bh #tracking-panel .tracking-shipment{padding:0 0 20px}
+body.profile-page.bh #tracking-panel .tracking-shipment+.tracking-shipment{padding-top:20px;border-top:1px solid #e7dfd7}
+body.profile-page.bh #tracking-panel .tracking-shipment-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}
+body.profile-page.bh #tracking-panel .tracking-shipment-heading h4{margin:0;color:#2b1d16;font-size:15px;line-height:1.35}
+body.profile-page.bh #tracking-panel .tracking-shipment-heading span{display:block;margin-top:3px;color:#746b65;font-size:12px;overflow-wrap:anywhere}
+body.profile-page.bh #tracking-panel .tracking-shipment-heading>strong{flex:0 0 auto;color:#6f3b20;font-size:12px;text-align:right}
+body.profile-page.bh #tracking-panel .tracking-shipment-events .tracking-step:last-child{min-height:42px}
+
+@media(max-width:600px){
+  body.profile-page.bh #tracking-panel .tracking-shipment{padding-bottom:16px}
+  body.profile-page.bh #tracking-panel .tracking-shipment+.tracking-shipment{padding-top:16px}
+  body.profile-page.bh #tracking-panel .tracking-shipment-heading{gap:8px}
+  body.profile-page.bh #tracking-panel .tracking-shipment-heading h4{font-size:14px}
+  body.profile-page.bh #tracking-panel .tracking-shipment-heading>strong{max-width:45%;font-size:11px}
+}
+
+/* Keep the tracking surface aligned with Bearly's active dark theme. */
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel{
+  border-color:var(--theme-border);
+  background:var(--theme-surface);
+  color:var(--theme-text);
+  box-shadow:0 2px 14px rgba(0,0,0,.2);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-head{border-color:var(--theme-border)}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-back{color:var(--theme-accent)}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-head h1,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-timeline h3,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-address h3,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-summary h2,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-shipment-heading h4,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-step strong,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-address>strong,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-empty{
+  color:var(--theme-text);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-head p,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-order-id,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-summary span,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-summary p,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-step,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-step p,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-step small,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-address>p,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-status-box span,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-shipment-heading span{
+  color:var(--theme-muted);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-summary,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-timeline,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-address{
+  border-color:var(--theme-border);
+  background:var(--theme-surface-soft);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-summary img{
+  border-color:var(--theme-border);
+  background:var(--theme-surface);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-summary>strong,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-shipment-heading>strong,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-status-box strong{
+  color:var(--theme-accent);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-section-title>.material-symbols-outlined{
+  color:var(--theme-accent);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-step:not(:last-child):before{
+  background:var(--theme-border);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-step.done:not(:last-child):before{
+  background:var(--theme-accent);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-dot{
+  border-color:var(--theme-border);
+  background:var(--theme-surface);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-step.done .tracking-dot{
+  border-color:var(--theme-accent);
+  background:var(--theme-accent-soft);
+  color:var(--theme-accent);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-step.current .tracking-dot{
+  border-color:var(--theme-accent);
+  background:var(--theme-accent);
+  color:#211c18;
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-step.current strong{
+  color:var(--theme-text);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-status-box{
+  border-color:var(--theme-border);
+  background:var(--theme-surface);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-shipment+.tracking-shipment{
+  border-color:var(--theme-border);
+}
+
+/* Order-level "Follow your delivery" route map: Buyer pin, Seller pickup
+   pins, Logistics sorting-center pins, guideline segments, and the
+   approximate live Rider location (replaces the per-shipment mini map). */
+body.profile-page.bh #tracking-panel .tracking-route{
+  margin:18px 0 20px;
+  padding:16px;
+  border:1px solid #eee5dc;
+  border-radius:10px;
+  background:#fffdfb;
+}
+body.profile-page.bh #tracking-panel .tracking-route-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  flex-wrap:wrap;
+  margin-bottom:12px;
+}
+body.profile-page.bh #tracking-panel .tracking-route-head .tracking-section-title{
+  margin:0;
+}
+body.profile-page.bh #tracking-panel .tracking-route-legend{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 16px;
+  margin:2px 0 0;
+  padding:0;
+  list-style:none;
+}
+body.profile-page.bh #tracking-panel .tracking-route-legend li{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin:0;
+  color:#746b65;
+  font-size:11px;
+  line-height:1.4;
+  white-space:nowrap;
+}
+body.profile-page.bh #tracking-panel .tracking-route-legend i{
+  display:block;
+  width:18px;
+  height:0;
+  border-top:3px solid #6f3b20;
+  border-radius:2px;
+}
+body.profile-page.bh #tracking-panel .tracking-route-legend .is-active i{border-top-color:#e9a72f}
+body.profile-page.bh #tracking-panel .tracking-route-legend .is-remaining i{
+  border-top-width:2px;
+  border-top-style:dashed;
+  border-top-color:#b7a596;
+}
+body.profile-page.bh #tracking-panel .tracking-route-map{height:300px;overflow:hidden;border:1px solid #e0d7cf;border-radius:9px;background:#f4eee7}
+body.profile-page.bh #tracking-panel .tracking-route-map[hidden]{display:none}
+body.profile-page.bh #tracking-panel .tracking-route-map .leaflet-container{height:100%;width:100%;font:12px Poppins,sans-serif}
+/* Zoom controls must stay readable on both themes; global dark-theme rules
+   can recolor link text inside the map, so re-assert them at this scope. */
+body.profile-page.bh #tracking-panel .tracking-route-map .leaflet-bar a{
+  color:#2b2521;
+  border-bottom-color:#e6e1dc;
+}
+body.profile-page.bh #tracking-panel .tracking-route-map .leaflet-bar a:hover,
+body.profile-page.bh #tracking-panel .tracking-route-map .leaflet-bar a:focus{
+  color:#2b2521;
+}
+body.profile-page.bh #tracking-panel .tracking-route-status{margin:8px 0 0;color:#635a54;font-size:12px;line-height:1.5}
+body.profile-page.bh #tracking-panel .tracking-route-status:empty{display:none}
+
+.tracking-pin{
+  display:grid !important;
+  position:relative;
+  width:28px;
+  height:28px;
+  place-items:center;
+  border:2px solid #6f3b20;
+  border-radius:50%;
+  background:#fff;
+  color:#6f3b20;
+  box-shadow:0 2px 6px rgba(65,39,24,.25);
+}
+.tracking-pin .material-symbols-outlined{font-size:15px;line-height:1}
+.tracking-pin-buyer{border-color:#f6f1ea;background:#6f3b20;color:#fff}
+.tracking-pin-hub{border-color:#c2a25d;color:#8a6410}
+.tracking-pin-rider{border-color:#f6f1ea;background:#e9a72f;color:#3b2415}
+.tracking-pin-rider::before{
+  content:'';
+  position:absolute;
+  inset:-7px;
+  border:2px solid rgba(233,167,47,.6);
+  border-radius:50%;
+  animation:tracking-rider-pulse 1.6s ease-out infinite;
+}
+@keyframes tracking-rider-pulse{
+  0%{transform:scale(.7);opacity:1}
+  100%{transform:scale(1.25);opacity:0}
+}
+
+@media(max-width:600px){
+  body.profile-page.bh #tracking-panel .tracking-route{padding:13px}
+  body.profile-page.bh #tracking-panel .tracking-route-head{gap:8px}
+  body.profile-page.bh #tracking-panel .tracking-route-map{height:230px}
+  body.profile-page.bh #tracking-panel .tracking-route-legend{gap:6px 12px}
+  body.profile-page.bh #tracking-panel .tracking-route-legend li{font-size:10px}
+}
+
+/* Route map dark-theme alignment. */
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-route{
+  border-color:var(--theme-border);
+  background:var(--theme-surface-soft);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-route-legend li{
+  color:var(--theme-muted);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-route-legend i{
+  border-top-color:var(--theme-accent);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-route-legend .is-remaining i{
+  border-top-color:var(--theme-muted);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-route-map{
+  border-color:var(--theme-border);
+  background:var(--theme-surface);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-route-status{
+  color:var(--theme-muted);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-pin{
+  border-color:var(--theme-accent);
+  background:var(--theme-surface-soft);
+  color:var(--theme-accent);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-pin-buyer{
+  border-color:var(--theme-surface);
+  background:var(--theme-accent);
+  color:#211c18;
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-pin-hub{
+  border-color:var(--theme-accent);
+  color:var(--theme-accent);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-pin-rider{
+  border-color:var(--theme-surface);
+  background:var(--theme-accent);
+  color:#211c18;
+}
+/* Keep the zoom controls readable on dark surfaces. */
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-route-map .leaflet-bar a{
+  background-color:var(--theme-surface);
+  color:var(--theme-text);
+  border-bottom-color:var(--theme-border);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-route-map .leaflet-bar a:hover,
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-route-map .leaflet-bar a:focus{
+  background-color:var(--theme-surface-soft);
+  color:var(--theme-text);
+}
+:root[data-theme="dark"] body.profile-page.bh #tracking-panel .tracking-route-map .leaflet-bar a.leaflet-disabled{
+  background-color:var(--theme-surface);
+  color:var(--theme-muted);
+  border-bottom-color:var(--theme-border);
+}

@@ -16,7 +16,7 @@
         <p class="page-kicker">{{ $isCourier ? 'Courier ledger' : 'Rider ledger' }}</p>
         <h2>Recorded earnings</h2>
         @if($isCourier)
-            <p>Each qualifying work date is one ₱650 earning after check-in/out and full destination acceptance of at least one assigned run. Logistics prepares a reviewed payout and records the external payment after paying you.</p>
+            <p>Courier pay is ₱81.25 per QR-recorded hour, capped at ₱650 for a PHT work date. A closed shift must include a completed line-haul run accepted in full by destination Logistics. Logistics prepares a reviewed payout and records external payment after paying you.</p>
         @else
             <p>Outbound shipping earnings wait for Seller Order completion, the 3-calendar-day return/refund period, and payment/COD checks. A return-shipping earning becomes eligible after the approved return is delivered to the Seller. Both wait for Admin/Finance remittance; Logistics records your actual payout afterward.</p>
         @endif
@@ -91,9 +91,9 @@
         <article class="metric-item">
             <span class="metric-icon"><i data-lucide="calendar-check-2" aria-hidden="true"></i></span>
             <span class="metric-copy">
-                <small>Courier daily pay</small>
+                <small>Courier hourly pay</small>
                 <strong>{{ $courierEarnings['total'] }}</strong>
-                <span>{{ number_format($courierEarnings['qualifying_days']) }} qualifying {{ $courierEarnings['qualifying_days'] === 1 ? 'workday' : 'workdays' }} at {{ $courierEarnings['rate'] }} per day</span>
+                <span>{{ number_format($courierEarnings['qualifying_days']) }} qualifying {{ $courierEarnings['qualifying_days'] === 1 ? 'workday' : 'workdays' }} · {{ $courierEarnings['rate'] }}/hour · max {{ $courierEarnings['daily_cap'] }}/day</span>
             </span>
         </article>
     @endif
@@ -119,7 +119,7 @@
     <div class="panel-header">
         <div>
             <h3 id="attendance-earning-groups-heading">Earnings by attendance shift</h3>
-            <p>{{ $isCourier ? 'Courier daily pay requires a closed shift and a completed assigned line-haul run; acceptance may be recorded after check-out.' : 'For Local Riders, attendance is reporting only and does not gate existing per-job earnings.' }}</p>
+            <p>{{ $isCourier ? 'Courier pay requires QR-verified closed shifts and a completed assigned line-haul run; full destination acceptance may be recorded after check-out.' : 'For Local Riders, QR attendance is reporting only and does not gate existing per-job earnings.' }}</p>
         </div>
     </div>
     <div class="panel-body">
@@ -270,7 +270,11 @@
                                     @if(filled($log['order_no']))<small>Order {{ $log['order_no'] }}</small>@endif
                                     <small>{{ $log['source'] }}</small>
                                     @if($log['type'] === 'courier_daily')
-                                        <small>Work date: {{ $log['work_date'] ?: 'not recorded' }} · Daily rate ₱{{ number_format((int) $log['rate_minor'] / 100, 2) }}</small>
+                                        @if($log['worked_seconds'] !== null)
+                                            <small>Work date: {{ $log['work_date'] ?: 'not recorded' }} · ₱{{ number_format((int) $log['rate_minor'] / 100, 2) }}/hour · {{ number_format($log['worked_seconds'] / 3600, 2) }} paid hours · daily cap ₱{{ number_format((int) $log['daily_cap_minor'] / 100, 2) }}</small>
+                                        @else
+                                            <small>Work date: {{ $log['work_date'] ?: 'not recorded' }} · Legacy fixed daily rate ₱{{ number_format((int) $log['rate_minor'] / 100, 2) }}</small>
+                                        @endif
                                     @endif
                                     @if(filled($log['shift_label']))<small>Attendance: {{ $log['shift_label'] }}</small>@endif
                                     @if($log['type'] === 'pickup_parcel')

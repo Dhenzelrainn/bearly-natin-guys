@@ -75,6 +75,7 @@ export default defineConfig({
                 // Logistics
                 'resources/css/logistics.css',
                 'resources/js/logistics.js',
+                'resources/js/logistics-attendance-qr.js',
 
                 // Rider
                 'resources/css/rider.css',

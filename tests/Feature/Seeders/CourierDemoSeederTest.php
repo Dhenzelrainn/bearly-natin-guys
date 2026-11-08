@@ -10,6 +10,7 @@ use App\Models\RiderShift;
 use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\CourierDemoSeeder;
+use Database\Seeders\VictoriaCourierDemoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
@@ -99,6 +100,78 @@ class CourierDemoSeederTest extends TestCase
             ->assertSee('3:45 PM');
     }
 
+    public function test_victoria_seeder_adds_a_separate_courier_without_moving_the_existing_demo_account(): void
+    {
+        [$lagunaSponsor, $lagunaProfile] = $this->makeLogisticsSponsor(
+            'Laguna Central',
+            'demo-laguna-logistics@example.test',
+        );
+        [$victoriaSponsor, $victoriaProfile] = $this->makeLogisticsSponsor(
+            'Bearly Logistics Victoria',
+            'demo-victoria-logistics@example.test',
+            '0306917000',
+            'Victoria',
+            'Tarlac',
+            '2313',
+        );
+
+        $this->app->make(CourierDemoSeeder::class)->run();
+        $this->app->make(VictoriaCourierDemoSeeder::class)->run();
+        $this->app->make(VictoriaCourierDemoSeeder::class)->run();
+
+        $lagunaCourier = User::query()
+            ->where('email', 'courier.demo@bearly.test')
+            ->firstOrFail();
+        $lagunaRider = RiderProfile::query()
+            ->where('user_id', $lagunaCourier->id)
+            ->firstOrFail();
+        $victoriaCourier = User::query()
+            ->where('email', 'courier.victoria.demo@bearly.test')
+            ->firstOrFail();
+        $victoriaRider = RiderProfile::query()
+            ->where('user_id', $victoriaCourier->id)
+            ->firstOrFail();
+        $victoriaApplication = AccountApplication::query()
+            ->where('application_no', 'DEMO-COURIER-VICTORIA-0001')
+            ->firstOrFail();
+
+        $this->assertSame((int) $lagunaSponsor->id, (int) $lagunaCourier->logistics_id);
+        $this->assertSame((int) $lagunaProfile->id, (int) $lagunaRider->logistics_profile_id);
+        $this->assertSame((int) $victoriaSponsor->id, (int) $victoriaCourier->logistics_id);
+        $this->assertSame((int) $victoriaProfile->id, (int) $victoriaRider->logistics_profile_id);
+        $this->assertSame('Victoria Demo Courier', $victoriaCourier->name);
+        $this->assertSame('active', $victoriaCourier->status);
+        $this->assertSame('courier', $victoriaRider->work_type);
+        $this->assertSame('available', $victoriaRider->availability_status);
+        $this->assertSame('approved', $victoriaRider->verification_status);
+        $this->assertSame(10, (int) $victoriaRider->linehaul_parcel_capacity);
+        $this->assertSame((int) $victoriaSponsor->id, (int) $victoriaRider->courier_vehicle_verified_by);
+        $this->assertNotNull($victoriaRider->courier_vehicle_verified_at);
+        $this->assertSame((int) $victoriaProfile->id, (int) $victoriaApplication->sponsor_logistics_profile_id);
+        $this->assertSame(1, User::query()->where('email', 'courier.victoria.demo@bearly.test')->count());
+        $this->assertSame(1, RiderProfile::query()->where('user_id', $victoriaCourier->id)->count());
+        $this->assertSame(1, AccountApplication::query()->where('application_no', 'DEMO-COURIER-VICTORIA-0001')->count());
+    }
+
+    public function test_victoria_seeder_does_not_fall_back_to_another_logistics_provider(): void
+    {
+        $this->makeLogisticsSponsor('Laguna Central', 'demo-laguna-logistics@example.test');
+
+        try {
+            $this->app->make(VictoriaCourierDemoSeeder::class)->run();
+            $this->fail('The Victoria Courier seeder must not select a different Logistics provider.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString(
+                'VictoriaCourierDemoSeeder needs exactly one active Logistics profile named Bearly Logistics Victoria',
+                $exception->getMessage(),
+            );
+        }
+
+        $this->assertDatabaseMissing('users', [
+            'email' => 'courier.victoria.demo@bearly.test',
+        ]);
+    }
+
     public function test_it_refuses_to_seed_outside_local_or_testing(): void
     {
         $originalEnvironment = $this->app['env'];
@@ -144,18 +217,24 @@ class CourierDemoSeederTest extends TestCase
     }
 
     /** @return array{0: User, 1: LogisticsProfile} */
-    private function makeLogisticsSponsor(): array
-    {
+    private function makeLogisticsSponsor(
+        string $displayName = 'Demo Logistics Provider',
+        string $email = 'demo-logistics@example.test',
+        string $cityCode = '0403424000',
+        string $city = 'City of San Pablo',
+        string $province = 'Laguna',
+        string $postalCode = '4000',
+    ): array {
         $logisticsRole = Role::query()->firstOrCreate(
             ['name' => 'logistics'],
             ['display_name' => 'Logistics'],
         );
 
         $sponsor = User::factory()->create([
-            'name' => 'Demo Logistics Provider',
+            'name' => $displayName,
             'first_name' => 'Demo',
             'last_name' => 'Logistics',
-            'email' => 'demo-logistics@example.test',
+            'email' => $email,
             'role' => 'logistics',
             'status' => 'active',
         ]);
@@ -165,10 +244,10 @@ class CourierDemoSeederTest extends TestCase
 
         $profile = LogisticsProfile::query()->create([
             'user_id' => $sponsor->id,
-            'legal_name' => 'Demo Logistics Provider Inc.',
-            'display_name' => 'Demo Logistics Provider',
+            'legal_name' => $displayName.' Inc.',
+            'display_name' => $displayName,
             'contact_phone' => '091700000099',
-            'psgc_city_code' => '0403424000',
+            'psgc_city_code' => $cityCode,
             'status' => 'active',
         ]);
 
@@ -179,10 +258,10 @@ class CourierDemoSeederTest extends TestCase
             'phone' => $profile->contact_phone,
             'street' => 'Demo Logistics Road',
             'barangay' => 'San Rafael',
-            'city_municipality' => 'City of San Pablo',
-            'province' => 'Laguna',
-            'postal_code' => '4000',
-            'psgc_city_code' => '0403424000',
+            'city_municipality' => $city,
+            'province' => $province,
+            'postal_code' => $postalCode,
+            'psgc_city_code' => $cityCode,
         ]);
 
         return [$sponsor, $profile];

@@ -36,8 +36,8 @@
     <div class="panel-header">
         <div>
             <p class="page-kicker">Attendance and compensation</p>
-            <h3 id="courier-daily-pay-heading">₱650 per qualifying workday</h3>
-            <p>Daily pay requires check-in and check-out, plus at least one run assigned during that shift that destination Logistics has fully accepted. Several runs in one day still count once.</p>
+            <h3 id="courier-daily-pay-heading">₱{{ number_format($courierEarnings['rate_minor'] / 100, 2) }} per hour · max ₱{{ number_format($courierEarnings['daily_cap_minor'] / 100, 2) }} per workday</h3>
+            <p>Pay uses server-recorded QR check-in/out time, totals closed shifts for the PHT work date, and is capped at eight paid hours. At least one run assigned during a closed shift must be completed and fully accepted by destination Logistics.</p>
         </div>
         <a class="button button-small" href="{{ route('rider.earnings.index') }}">
             <i data-lucide="wallet" aria-hidden="true"></i>
@@ -50,27 +50,17 @@
             <span>
                 @if($currentShift)
                     <strong>Checked in {{ $currentShift->checkedInAtPht()?->format('M j, Y · g:i A') }} {{ \App\Models\RiderShift::TIMEZONE_LABEL }}</strong>
-                    <small>Check out when your shift ends. This shift is not eligible for daily pay until it is closed and a run assigned during it is accepted in full.</small>
+                    <small>Scan the Logistics QR again when your shift ends. The QR check-out closes this shift using the server time.</small>
                 @else
                     <strong>You are not checked in</strong>
-                    <small>Record both your start and end time. Attendance alone does not earn daily pay.</small>
+                    <small>Scan the QR displayed by your owning Logistics provider to start a shift. Attendance alone does not earn Courier pay.</small>
                 @endif
             </span>
-            @if($currentShift)
-                <form method="POST" action="{{ route('rider.attendance.check-out') }}">
-                    @csrf
-                    <button class="button button-primary button-small" type="submit">Check out</button>
-                </form>
-            @else
-                <form method="POST" action="{{ route('rider.attendance.check-in') }}">
-                    @csrf
-                    <button class="button button-primary button-small" type="submit">Check in</button>
-                </form>
-            @endif
+            @include('rider.partials.attendance-qr-scanner')
         </div>
 
         <div class="metric-strip" aria-label="Courier daily earnings summary" style="margin-top:18px">
-            <article class="metric-item"><span class="metric-copy"><small>Daily rate</small><strong>{{ $courierEarnings['rate'] }}</strong><span>One earning per work date</span></span></article>
+            <article class="metric-item"><span class="metric-copy"><small>Hourly rate · daily cap</small><strong>{{ $courierEarnings['rate'] }}</strong><span>{{ $courierEarnings['daily_cap'] }} maximum per PHT work date</span></span></article>
             <article class="metric-item"><span class="metric-copy"><small>Qualifying days</small><strong>{{ number_format($courierEarnings['qualifying_days']) }}</strong><span>{{ $courierEarnings['total'] }} recorded earnings</span></span></article>
             <article class="metric-item"><span class="metric-copy"><small>Ready for payout</small><strong>{{ $courierEarnings['eligible'] }}</strong><span>Awaiting Logistics' actual payout</span></span></article>
             <article class="metric-item"><span class="metric-copy"><small>Recorded as paid</small><strong>{{ $courierEarnings['paid'] }}</strong><span>External payment recorded by Logistics</span></span></article>
@@ -97,7 +87,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="4"><p class="empty-copy">No qualifying days yet. Check-in/out and wait for destination Logistics to accept every shipment on an assigned run.</p></td></tr>
+                        <tr><td colspan="4"><p class="empty-copy">No qualifying earnings yet. Scan for both shift transitions, then wait for destination Logistics to accept every shipment on an assigned run.</p></td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -107,12 +97,15 @@
 </section>
 
 @forelse($runs as $run)
-    <section class="panel" style="margin-bottom:16px">
+    <section class="panel courier-run-card" style="margin-bottom:16px">
         <div class="panel-header">
             <div>
                 <p class="page-kicker">{{ $run->run_no }}</p>
                 <h3>{{ $run->originSortingCenter?->name ?? 'Origin facility' }} → {{ $run->destinationLogisticsProfile?->display_name ?? 'Destination facility' }}</h3>
-                <p>Status: <strong>{{ str($run->status)->replace('_', ' ')->title() }}</strong> · Assigned {{ $run->assigned_at?->format('M j, Y · g:i A') }}</p>
+                <div class="courier-run-meta">
+                    <span class="status-badge" data-status="{{ $run->status }}">{{ str($run->status)->replace('_', ' ')->title() }}</span>
+                    <time datetime="{{ $run->assigned_at?->toIso8601String() }}">{{ $run->assigned_at?->format('M j, Y · g:i A') }}</time>
+                </div>
             </div>
         </div>
 
@@ -133,21 +126,23 @@
                 </table>
             </div>
 
-            <div class="form-actions">
+            <div class="form-actions courier-run-actions">
                 @if($run->status === 'assigned')
-                    <form method="POST" action="{{ route('rider.courier.runs.start-loading', $run) }}">@csrf<button class="button button-primary" type="submit">Start loading</button></form>
+                    <form class="courier-run-next-action" method="POST" action="{{ route('rider.courier.runs.start-loading', $run) }}">@csrf<button class="button button-primary" type="submit">Start loading</button></form>
                 @elseif($run->status === 'loading')
-                    <form method="POST" action="{{ route('rider.courier.runs.loaded', $run) }}">@csrf<button class="button button-primary" type="submit">Confirm all cargo loaded</button></form>
+                    <form class="courier-run-next-action" method="POST" action="{{ route('rider.courier.runs.loaded', $run) }}">@csrf<button class="button button-primary" type="submit">Confirm all cargo loaded</button></form>
                 @elseif($run->status === 'loaded')
-                    <form method="POST" action="{{ route('rider.courier.runs.depart', $run) }}">@csrf<button class="button button-primary" type="submit">Record departure</button></form>
+                    <form class="courier-run-next-action" method="POST" action="{{ route('rider.courier.runs.depart', $run) }}">@csrf<button class="button button-primary" type="submit">Record departure</button></form>
                 @elseif($run->status === 'departed')
-                    <form method="POST" action="{{ route('rider.courier.runs.arrive', $run) }}">@csrf<button class="button button-primary" type="submit">Record arrival</button></form>
+                    <form class="courier-run-next-action" method="POST" action="{{ route('rider.courier.runs.arrive', $run) }}">@csrf<button class="button button-primary" type="submit">Record arrival</button></form>
                 @elseif($run->status === 'exception')
-                    <form method="POST" action="{{ route('rider.courier.runs.exceptions.resolve', $run) }}" class="field span-2">
+                    <form method="POST" action="{{ route('rider.courier.runs.exceptions.resolve', $run) }}" class="field courier-run-resolution-form">
                         @csrf
                         <label for="resolution-{{ $run->id }}">Resolution notes</label>
-                        <input id="resolution-{{ $run->id }}" name="resolution" minlength="5" maxlength="1000" required>
-                        <button class="button button-primary" type="submit">Resolve exception</button>
+                        <div class="courier-run-resolution-controls">
+                            <input id="resolution-{{ $run->id }}" name="resolution" minlength="5" maxlength="1000" required>
+                            <button class="button button-primary" type="submit">Resolve exception</button>
+                        </div>
                     </form>
                 @elseif($run->status === 'arrived')
                     <p class="zone-routing-note">Waiting for destination Logistics to scan and accept every shipment.</p>
@@ -156,17 +151,19 @@
                 @endif
 
                 @if(! in_array($run->status, ['exception', 'completed'], true))
-                    <form method="POST" action="{{ route('rider.courier.runs.exceptions.store', $run) }}" class="field span-2">
+                    <form method="POST" action="{{ route('rider.courier.runs.exceptions.store', $run) }}" class="field courier-run-exception-form">
                         @csrf
                         <label for="exception-{{ $run->id }}">Report a run exception</label>
-                        <input id="exception-{{ $run->id }}" name="reason" minlength="5" maxlength="1000" placeholder="Describe a delay, access issue, or cargo discrepancy" required>
-                        <button class="button button-small" type="submit">Place run on exception hold</button>
+                        <div class="courier-run-exception-controls">
+                            <input id="exception-{{ $run->id }}" name="reason" minlength="5" maxlength="1000" placeholder="Describe a delay, access issue, or cargo discrepancy" required>
+                            <button class="button button-small" type="submit">Place run on exception hold</button>
+                        </div>
                     </form>
                 @endif
             </div>
 
             @if($run->events->isNotEmpty())
-                <details>
+                <details class="courier-run-history">
                     <summary>Run history ({{ $run->events->count() }} events)</summary>
                     <ol class="attention-list">
                         @foreach($run->events as $event)

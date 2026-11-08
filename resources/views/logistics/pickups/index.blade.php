@@ -45,12 +45,15 @@
                         <td><span class="status-badge" data-status-badge data-status="{{ $pickup['status'] }}">{{ $pickup['status'] }}</span></td>
                         <td>
                             <div class="row-actions">
-                                <button class="button button-small {{ $pickup['status_key'] === 'verified' ? 'button-primary' : '' }}" type="button" data-modal-open="pickup-{{ $pickup['id'] }}">{{ $pickup['status_key'] === 'verified' ? 'Assign Rider' : 'Details' }}</button>
+                                <button class="button button-small {{ in_array($pickup['status_key'], ['verified'], true) || ($pickup['can_replace_rider'] ?? false) ? 'button-primary' : '' }}" type="button" data-modal-open="pickup-{{ $pickup['id'] }}">{{ $pickup['status_key'] === 'verified' ? 'Assign Rider' : (($pickup['can_replace_rider'] ?? false) ? 'Replace Rider' : 'Details') }}</button>
                                 @if($pickup['status_key'] === 'requested')
                                     <form method="POST" action="{{ route('logistics.pickups.verify', $pickup['database_id']) }}">
                                         @csrf
                                         <button class="button button-small button-primary" type="submit">Verify</button>
                                     </form>
+                                @endif
+                                @if(in_array($pickup['status_key'], ['requested', 'verified'], true))
+                                    <button class="button button-small button-danger" type="button" data-modal-open="pickup-{{ $pickup['id'] }}" data-pickup-reject-open>Reject</button>
                                 @endif
                             </div>
                         </td>
@@ -77,6 +80,8 @@
                 </p>
                 @if($pickup['status_key'] === 'verified')
                     <p class="pickup-next-action">Verified request · assign an available Rider to schedule pickup.</p>
+                @elseif($pickup['can_replace_rider'] ?? false)
+                    <p class="pickup-next-action">Pickup is not yet collected · replace the assigned Rider if needed. Logistics must provide a reason; replacement is locked once a parcel is picked up.</p>
                 @endif
             </div>
             <button class="icon-button" type="button" data-modal-close aria-label="Close pickup request details"><i data-lucide="x" aria-hidden="true"></i></button>
@@ -158,13 +163,15 @@
                 </section>
             </div>
 
-            @if($pickup['status_key'] === 'verified')
+            @if($pickup['status_key'] === 'verified' || ($pickup['can_replace_rider'] ?? false))
                 <section
                     class="pickup-info-card pickup-live-map-card"
                     data-pickup-live-map-panel
                     data-pickup-map-endpoint="{{ route('logistics.pickups.locations', $pickup['database_id']) }}"
                     data-pickup-map-tile-url="{{ config('maps.tile_url') }}"
                     data-pickup-map-attribution="{{ config('maps.tile_attribution') }}"
+                    data-pickup-map-pickup-label="{{ $pickup['pickup_type'] === 'return' ? 'Buyer return pickup' : 'Seller pickup' }}"
+                    data-pickup-map-is-return="{{ $pickup['pickup_type'] === 'return' ? 'true' : 'false' }}"
                     data-pickup-map-select-target="#pickup-rider-{{ $pickup['database_id'] }}"
                     aria-labelledby="pickup-live-map-{{ $pickup['database_id'] }}"
                 >
@@ -172,21 +179,23 @@
                         <span class="pickup-card-icon"><i data-lucide="map-pinned" aria-hidden="true"></i></span>
                         <div class="pickup-live-map-heading-copy">
                             <h4 id="pickup-live-map-{{ $pickup['database_id'] }}">Live pickup map</h4>
-                            <p>All assignable local Riders appear in the list. Fresh, accurate GPS reports get map pins; select a marker or any listed Rider for manual assignment.</p>
+                            <p>Same-service-area Riders stay the primary recommendation. If none are available, fresh accurate GPS helps rank eligible fallback Riders; Logistics manually confirms any assignment or replacement.</p>
                         </div>
                         <span class="pickup-map-sync" data-pickup-map-sync aria-live="polite">Waiting for map</span>
                     </div>
 
                     <div class="pickup-live-map-layout">
                         <div class="pickup-live-map-wrap">
-                            <div class="pickup-live-map" data-pickup-live-map aria-label="Pickup and available Rider locations on OpenStreetMap"></div>
+                            <div class="pickup-live-map" data-pickup-live-map aria-label="{{ $pickup['pickup_type'] === 'return' ? 'Buyer return pickup' : 'Seller pickup' }}, saved Logistics facility pin, approximate live Logistics device location, and available Rider locations on OpenStreetMap"></div>
                             <p class="pickup-map-status" data-pickup-map-status role="status" aria-live="polite">Loading assignable Riders and fresh locations…</p>
                         </div>
                         <aside class="pickup-live-map-sidebar" aria-label="Live pickup map legend and Riders">
                             <div class="pickup-map-legend">
-                                <span><i class="pickup-map-legend-dot is-pickup" aria-hidden="true"></i>Pickup</span>
-                                <span><i class="pickup-map-legend-dot is-rider" aria-hidden="true"></i>Rider with accurate GPS</span>
-                                <span><i class="pickup-map-legend-line" aria-hidden="true"></i>Straight-line distance (approx.)</span>
+                                <span><span class="pickup-map-legend-pin {{ $pickup['pickup_type'] === 'return' ? 'is-buyer' : 'is-seller' }}" aria-hidden="true"><i data-lucide="{{ $pickup['pickup_type'] === 'return' ? 'package' : 'store' }}"></i></span>{{ $pickup['pickup_type'] === 'return' ? 'Buyer return pickup' : 'Seller pickup' }}</span>
+                                <span><span class="pickup-map-legend-pin is-facility" aria-hidden="true"><i data-lucide="warehouse"></i></span>Logistics facility</span>
+                                <span><span class="pickup-map-legend-pin is-logistics-live" aria-hidden="true"><i data-lucide="locate-fixed"></i></span>Live Logistics device · approximate</span>
+                                <span><span class="pickup-map-legend-pin is-rider" aria-hidden="true"><i data-lucide="bike"></i></span>Rider with accurate GPS</span>
+                                <span><i class="pickup-map-legend-line" aria-hidden="true"></i>Approx. straight-line guide; not a road route</span>
                             </div>
                             <div class="pickup-map-rider-list" data-pickup-map-riders>
                                 <p class="pickup-map-empty">Loading available Rider candidates…</p>
@@ -194,7 +203,7 @@
                         </aside>
                     </div>
 
-                    <p class="pickup-map-note">A Rider pin requires a location update within 3 minutes and reported accuracy of ±100 m or better. Other eligible Riders remain selectable in the list, but stale, imprecise, or missing GPS is not plotted or used for distance; Sorting Zone/workload fallback remains available.</p>
+                    <p class="pickup-map-note">Saved pickup and Logistics facility pins are omitted when no valid coordinates are saved. The live Logistics device marker is separate from the fixed facility pin, visible only to its own provider, and removed after 3 minutes without an update; its dashed circle shows reported uncertainty and it is not used for distance or assignment. A Rider pin requires a location update within 3 minutes and reported accuracy of ±100 m or better. Stale, imprecise, or missing Rider GPS is not plotted or used for distance. All eligible Riders remain selectable; Sorting Zone/workload fallback remains available. Dashed lines are approximate straight-line guides, not road routes.</p>
                 </section>
             @endif
 
@@ -212,34 +221,50 @@
                     </div>
                 </div>
                 @if(count($pickup['fulfillment_groups']) > 0)
-                    <p class="pickup-reference-help">Seller Order identifies the store purchase. Shipment and Parcel IDs are Logistics records. The Waybill / Tracking No. is the shipping-label number used for scanning.</p>
+                    <p class="pickup-reference-help">Seller Order identifies the store purchase. Shipment and Parcel IDs are Logistics records. The Waybill / Tracking No. is the shipping-label number used for scanning. Product previews are shipment-level; parcel contents are not separately recorded.</p>
                     <div class="pickup-manifest-wrap" tabindex="0" role="region" aria-label="Parcel manifest; scroll horizontally on smaller screens">
                         <table class="pickup-manifest-table">
                             <thead><tr><th scope="col">#</th><th scope="col">Parcel and references</th><th scope="col">Weight</th><th scope="col">Dimensions (L × W × H)</th><th scope="col">Status and COD</th></tr></thead>
                             @php($manifestRowNumber = 0)
                             @foreach($pickup['fulfillment_groups'] as $group)
                                 <tbody>
-                                    <tr class="pickup-manifest-products-row">
-                                        <td colspan="5">
-                                            <strong class="pickup-manifest-products-label">Products in this Seller Order</strong>
-                                            @include('partials.order-item-preview-list', ['items' => $group['products']])
-                                        </td>
-                                    </tr>
                                     @foreach($group['parcels'] as $parcel)
-                                        <tr>
+                                        <tr class="pickup-manifest-parcel-row">
                                             <td class="pickup-manifest-sequence">{{ ++$manifestRowNumber }}</td>
                                             <td class="pickup-manifest-reference-cell">
-                                                <div class="pickup-reference-line"><span>Seller Order No.</span><code>{{ $group['seller_order_no'] }}</code></div>
-                                                <div class="pickup-reference-line"><span>Shipment ID</span><code>{{ $group['shipment_no'] }}</code></div>
-                                                <div class="pickup-reference-line"><span>Waybill / Tracking No.</span><code>{{ $group['waybill_no'] }}</code></div>
-                                                <div class="pickup-reference-line"><span>Parcel ID</span><code>{{ $parcel['parcel_no'] }}</code></div>
-                                                <div class="pickup-reference-line"><span>Piece No.</span><strong>{{ $parcel['piece'] }}</strong></div>
+                                                <div class="pickup-manifest-detail-stack">
+                                                    @if($loop->first)
+                                                        <section class="pickup-manifest-products-panel" aria-label="Shipment products">
+                                                            <div class="pickup-manifest-detail-heading">
+                                                                <i data-lucide="package" aria-hidden="true"></i>
+                                                                <strong class="pickup-manifest-products-label">Shipment products</strong>
+                                                            </div>
+                                                            @include('partials.order-item-preview-list', ['items' => $group['products']])
+                                                        </section>
+                                                    @endif
+
+                                                    <section class="pickup-manifest-reference-panel" aria-label="Parcel references">
+                                                        <div class="pickup-manifest-detail-heading">
+                                                            <i data-lucide="file-text" aria-hidden="true"></i>
+                                                            <strong>References</strong>
+                                                        </div>
+                                                        <div class="pickup-reference-list">
+                                                            <div class="pickup-reference-line"><span>Seller Order No.</span><code>{{ $group['seller_order_no'] }}</code></div>
+                                                            <div class="pickup-reference-line"><span>Shipment ID</span><code>{{ $group['shipment_no'] }}</code></div>
+                                                            <div class="pickup-reference-line"><span>Waybill / Tracking No.</span><code>{{ $group['waybill_no'] }}</code></div>
+                                                            <div class="pickup-reference-line"><span>Parcel ID</span><code>{{ $parcel['parcel_no'] }}</code></div>
+                                                            <div class="pickup-reference-line"><span>Piece No.</span><strong>{{ $parcel['piece'] }}</strong></div>
+                                                        </div>
+                                                    </section>
+                                                </div>
                                             </td>
                                             <td>{{ $parcel['weight'] }}</td>
                                             <td>{{ $parcel['dimensions'] }}</td>
                                             <td class="pickup-manifest-status-cell">
-                                                <span class="pickup-parcel-status">{{ $parcel['status'] }}</span>
-                                                @if($loop->first)<strong class="pickup-manifest-cod">COD {{ $group['cod_amount'] }}</strong>@endif
+                                                <span @class(['pickup-parcel-status', 'is-created' => strtolower($parcel['status']) === 'created'])>{{ $parcel['status'] }}</span>
+                                                @if($loop->first)
+                                                    <strong class="pickup-manifest-cod"><i data-lucide="wallet-cards" aria-hidden="true"></i><span>COD {{ $group['cod_amount'] }}</span></strong>
+                                                @endif
                                             </td>
                                         </tr>
                                     @endforeach
@@ -294,7 +319,7 @@
         </div>
 
         <div class="modal-footer pickup-request-modal-footer">
-            <div class="pickup-modal-main-actions" data-pickup-main-actions>
+            <div class="pickup-modal-main-actions {{ ($pickup['can_replace_rider'] ?? false) ? 'has-pickup-replacement' : '' }}" data-pickup-main-actions>
                 @if($pickup['status_key'] === 'requested')
                     <form method="POST" action="{{ route('logistics.pickups.verify', $pickup['database_id']) }}">
                         @csrf
@@ -309,11 +334,11 @@
                             <div class="pickup-rider-recommendation" role="status">
                                 <span class="pickup-rider-recommendation-icon"><i data-lucide="sparkles" aria-hidden="true"></i></span>
                                 <span>
-                                    <strong>Suggested Rider: {{ $recommendedRider['name'] }}</strong>
+                                    <strong>{{ $recommendedRider['area_match'] ? 'Service-area recommendation' : 'Fallback Rider suggestion' }}: {{ $recommendedRider['name'] }}</strong>
                                     <small>
                                         {{ $recommendedRider['recommendation_reason'] }}.
                                         @if($recommendedRider['distance_label'])
-                                            Based on a fresh Rider location update.
+                                            Based on fresh accurate GPS and straight-line distance; this is not a road route.
                                         @elseif($recommendedRider['location_state'] === 'stale')
                                             The Rider's last location is older than 3 minutes, so it is not used for distance; the Sorting Zone/workload fallback is used.
                                         @elseif($recommendedRider['gps_quality'] === 'low_accuracy')
@@ -321,9 +346,9 @@
                                         @elseif($recommendedRider['location_state'] === 'fresh' && $recommendedRider['gps_quality'] === 'unknown')
                                             The fresh GPS update has no accuracy reading, so Sorting Zone/workload fallback is used.
                                         @elseif($recommendedRider['area_match'])
-                                            Using the Rider's assigned Sorting Zone as the fallback.
+                                            The Rider's assigned Sorting Zone covers this pickup area.
                                         @else
-                                            GPS is missing or stale, so active workload is used as the fallback.
+                                            No eligible available Rider currently matches this pickup service area. GPS is missing or stale, so active workload is used to rank fallback candidates.
                                         @endif
                                         Logistics still confirms the assignment and may choose another Rider.
                                     </small>
@@ -336,11 +361,11 @@
                                 @foreach($pickupRiders as $rider)
                                     <option value="{{ $rider['id'] }}" @selected($loop->first)>
                                         {{ $rider['name'] }} · {{ $rider['vehicle'] }}@if($rider['plate']) · {{ $rider['plate'] }}@endif
-                                        @if($rider['distance_label']) · {{ $rider['distance_label'] }}
-                                        @elseif($rider['location_state'] === 'stale') · GPS stale@if($rider['area_match']) · Same service area@endif
+                                        @if($rider['area_match']) · Seller service area
+                                        @elseif($rider['distance_label']) · Nearby fallback · {{ $rider['distance_label'] }}
+                                        @elseif($rider['location_state'] === 'stale') · GPS stale
                                         @elseif($rider['location_state'] === 'fresh' && $rider['gps_quality'] === 'low_accuracy') · GPS too imprecise (±{{ number_format((float) $rider['accuracy_meters'], 0) }} m)
                                         @elseif($rider['location_state'] === 'fresh' && $rider['gps_quality'] === 'unknown') · GPS accuracy unavailable
-                                        @elseif($rider['area_match']) · Same service area
                                         @else · GPS unavailable
                                         @endif
                                         · {{ $rider['active_jobs'] }} active {{ $rider['active_jobs'] === 1 ? 'job' : 'jobs' }}
@@ -352,6 +377,55 @@
                             <textarea id="pickup-note-{{ $pickup['database_id'] }}" name="notes" maxlength="1000" placeholder="Access or collection instructions"></textarea>
                         </label>
                         <button class="button button-primary" type="submit" @disabled(count($pickupRiders) === 0) @if(count($pickupRiders) === 0) title="No available approved Rider can be assigned." @endif>Assign Rider &amp; schedule pickup</button>
+                    </form>
+                @elseif($pickup['can_replace_rider'] ?? false)
+                    @php($pickupRiders = $pickup['rider_recommendations'] ?? [])
+                    @php($recommendedRider = collect($pickupRiders)->firstWhere('is_recommended', true))
+                    @if($recommendedRider)
+                        <div class="pickup-rider-recommendation" role="status">
+                            <span class="pickup-rider-recommendation-icon"><i data-lucide="sparkles" aria-hidden="true"></i></span>
+                            <span>
+                                <strong>{{ $recommendedRider['area_match'] ? 'Service-area recommendation' : 'Nearby fallback suggestion' }}: {{ $recommendedRider['name'] }}</strong>
+                                <small>
+                                    {{ $recommendedRider['recommendation_reason'] }}.
+                                    @if($recommendedRider['area_match'])
+                                        The Rider's assigned Sorting Zone covers this pickup area.
+                                    @elseif($recommendedRider['distance_label'])
+                                        No eligible available Rider currently matches this pickup service area. Distance is approximate and straight-line, not a road route.
+                                    @else
+                                        No eligible available Rider currently matches this pickup service area, and usable GPS is unavailable; workload is used to rank fallback candidates.
+                                    @endif
+                                    Logistics still chooses and confirms the replacement.
+                                </small>
+                            </span>
+                        </div>
+                    @endif
+                    <form class="pickup-replacement-form{{ $recommendedRider ? ' has-recommendation' : '' }}" method="POST" action="{{ route('logistics.pickups.replace-rider', $pickup['database_id']) }}">
+                        @csrf
+                        @method('PATCH')
+                        <label class="pickup-rider-select" for="pickup-rider-{{ $pickup['database_id'] }}">Replacement Rider
+                            <select id="pickup-rider-{{ $pickup['database_id'] }}" name="rider_profile_id" required>
+                                <option value="">Choose a different available Rider</option>
+                                @foreach($pickupRiders as $rider)
+                                    <option value="{{ $rider['id'] }}">
+                                        {{ $rider['name'] }} · {{ $rider['vehicle'] }}@if($rider['plate']) · {{ $rider['plate'] }}@endif
+                                        @if($rider['area_match']) · Seller service area
+                                        @elseif($rider['distance_label']) · Nearby fallback · approx. {{ $rider['distance_label'] }}
+                                        @elseif($rider['location_state'] === 'stale') · GPS stale
+                                        @elseif($rider['location_state'] === 'fresh' && $rider['gps_quality'] === 'low_accuracy') · GPS too imprecise
+                                        @elseif($rider['location_state'] === 'fresh' && $rider['gps_quality'] === 'unknown') · GPS accuracy unavailable
+                                        @else · No GPS distance
+                                        @endif
+                                        · {{ $rider['active_jobs'] }} active {{ $rider['active_jobs'] === 1 ? 'job' : 'jobs' }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </label>
+                        <label class="pickup-assignment-note" for="pickup-replacement-reason-{{ $pickup['database_id'] }}">Reason for replacement
+                            <textarea id="pickup-replacement-reason-{{ $pickup['database_id'] }}" name="reason" required minlength="5" maxlength="1000" placeholder="For example: the assigned Rider cannot reach the Seller's pickup area."></textarea>
+                        </label>
+                        <p class="pickup-reference-help">The current assignment will be retained as cancelled in the history. Replacement is allowed only before any parcel is picked up.</p>
+                        <button class="button button-primary" type="submit" @disabled(count($pickupRiders) === 0) @if(count($pickupRiders) === 0) title="No other schedule-eligible, available Rider can replace the current Rider." @endif>Replace Rider</button>
                     </form>
                 @endif
             </div>

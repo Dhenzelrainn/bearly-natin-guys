@@ -163,6 +163,78 @@
             </div>
         </article>
 
+        @if($job['status'] !== 'Delivered')
+            <article class="panel rider-delivery-map-panel">
+                <div class="panel-header">
+                    <div>
+                        <h3>Live delivery map</h3>
+                        <p>
+                            {{ $job['purpose'] === 'return'
+                                ? 'Your shared Rider GPS and the Seller destination for this return.'
+                                : 'Your shared Rider GPS and the Buyer destination saved with this order.' }}
+                            Buyer live GPS is not used.
+                        </p>
+                    </div>
+                    <a
+                        class="button button-small"
+                        data-rider-delivery-directions
+                        href="https://www.google.com/maps/dir/?api=1&amp;destination={{ rawurlencode($job['address']) }}&amp;travelmode=driving"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        <i data-lucide="navigation"></i>
+                        Open directions
+                    </a>
+                </div>
+                <div class="panel-body">
+                    <div
+                        class="rider-delivery-map-canvas"
+                        data-rider-delivery-map
+                        data-latitude="{{ $job['destination_latitude'] ?? '' }}"
+                        data-longitude="{{ $job['destination_longitude'] ?? '' }}"
+                        data-destination-label="{{ $job['purpose'] === 'return' ? 'Seller destination' : 'Buyer destination' }}"
+                        data-destination-source="{{ $job['purpose'] === 'return' ? 'return shipment' : 'order' }}"
+                        data-delivery-active="{{ $job['status'] === 'Out for Delivery' ? 'true' : 'false' }}"
+                        data-destination-address="{{ $job['address'] }}"
+                        data-map-tile-url="{{ config('maps.tile_url') }}"
+                        data-map-attribution="{{ config('maps.tile_attribution') }}"
+                        aria-label="Map of the saved delivery destination and your own shared Rider location"
+                    ></div>
+                    <div class="rider-delivery-map-meta">
+                        <p data-rider-delivery-map-status role="status" aria-live="polite">
+                            @if(is_numeric($job['destination_latitude'] ?? null) && is_numeric($job['destination_longitude'] ?? null))
+                                Destination pin uses the coordinates saved with this {{ $job['purpose'] === 'return' ? 'return shipment' : 'order' }}. Turn on Share live location in the header to show your Rider position.
+                            @else
+                                No destination pin was saved with this {{ $job['purpose'] === 'return' ? 'return shipment' : 'order' }}. Use the address above and Open directions; turn on Share live location to show your Rider position.
+                            @endif
+                        </p>
+                        <button class="button button-small" type="button" data-rider-delivery-center hidden>
+                            <i data-lucide="locate-fixed"></i>
+                            Center on my location
+                        </button>
+                    </div>
+                    <div class="rider-delivery-map-legend" aria-label="Map legend">
+                        <span>
+                            <i class="rider-delivery-map-key is-destination" aria-hidden="true">
+                                <svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7M5 9v12h14V9M9 21v-8h6v8"/></svg>
+                            </i>
+                            {{ $job['purpose'] === 'return' ? 'Seller destination' : 'Saved Buyer destination' }}
+                        </span>
+                        <span>
+                            <i class="rider-delivery-map-key is-rider" aria-hidden="true">
+                                <svg viewBox="0 0 24 24"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="m12 17.5 3-6-4-3-3 8m-2.5 1h5l3.5-6h-5"/></svg>
+                            </i>
+                            Your live Rider GPS
+                        </span>
+                        @if($job['status'] === 'Out for Delivery')
+                            <span><i class="rider-delivery-map-key is-trail" aria-hidden="true"></i>Movement trail · this page only</span>
+                            <span><i class="rider-delivery-map-key is-guide" aria-hidden="true"></i>Straight-line guide · not a road route</span>
+                        @endif
+                    </div>
+                </div>
+            </article>
+        @endif
+
         <article class="panel">
             <div class="panel-header">
                 <div>

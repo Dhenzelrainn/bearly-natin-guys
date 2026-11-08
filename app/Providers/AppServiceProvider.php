@@ -2,9 +2,12 @@
 
 namespace App\Providers;
 
+use App\Enums\SellerOrderStatus;
+use App\Enums\UserRole;
 use App\Models\AccountApplication;
 use App\Models\Address;
 use App\Models\Cart;
+use App\Models\Order;
 use App\Models\User;
 use App\Observers\AccountApplicationObserver;
 use App\Observers\AddressObserver;
@@ -102,6 +105,28 @@ class AppServiceProvider extends ServiceProvider
                 'buyerProfilePayload',
                 'buyerCartCount'
             ));
+        });
+
+        View::composer('buyer.partials.buyer-header', function ($view): void {
+            $buyer = Auth::user();
+            $buyerActiveOrderCount = 0;
+
+            if ($buyer instanceof User
+                && $buyer->role === UserRole::Buyer->value
+                && Schema::hasTable('orders')
+                && Schema::hasTable('seller_orders')) {
+                $buyerActiveOrderCount = Order::query()
+                    ->where('buyer_id', $buyer->id)
+                    ->where('status', '!=', 'cancelled')
+                    ->whereHas('sellerOrders', fn ($sellerOrders) => $sellerOrders
+                        ->whereNotIn('status', [
+                            SellerOrderStatus::Completed->value,
+                            SellerOrderStatus::Cancelled->value,
+                        ]))
+                    ->count();
+            }
+
+            $view->with('buyerActiveOrderCount', $buyerActiveOrderCount);
         });
     }
 }

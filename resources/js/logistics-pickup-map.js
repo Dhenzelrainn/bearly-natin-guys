@@ -4,6 +4,22 @@ import './leaflet-default-icon.js';
 
 const DEFAULT_CENTER = [12.8797, 121.7740];
 const REFRESH_INTERVAL_MS = 10_000;
+const PIN_COLLISION_RADIUS_PX = 38;
+const SELLER_PIN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m2 7 1-4h18l1 4M4 7v14h16V7M4 7a2 2 0 0 0 4 0 2 2 0 0 0 4 0 2 2 0 0 0 4 0 2 2 0 0 0 4 0M10 21v-6h4v6"/></svg>';
+const RETURN_PICKUP_PIN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 8-9-5-9 5 9 5 9-5ZM3 8v8l9 5 9-5V8M12 13v8"/></svg>';
+const FACILITY_PIN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-7h6v7M9 9h.01M15 9h.01"/></svg>';
+const LOGISTICS_LIVE_PIN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2"/></svg>';
+const RIDER_PIN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="m12 17.5 3-6-4-3-3 8m-2.5 1h5l3.5-6h-5"/></svg>';
+
+function pickupMapPinIcon(kind, svg, highlighted = false) {
+    return L.divIcon({
+        className: 'pickup-map-leaflet-marker',
+        html: `<span class="pickup-map-pin pickup-map-pin--${kind}${highlighted ? ' pickup-map-pin--highlighted' : ''}" aria-hidden="true">${svg}</span>`,
+        iconSize: [38, 38],
+        iconAnchor: [19, 27],
+        popupAnchor: [0, -25],
+    });
+}
 
 function coordinatePair(latitude, longitude) {
     const parse = (value, minimum, maximum) => {
@@ -57,6 +73,8 @@ export function setupLogisticsPickupMaps() {
         const endpoint = panel.dataset.pickupMapEndpoint || '';
         const tileUrl = panel.dataset.pickupMapTileUrl || '';
         const tileAttribution = panel.dataset.pickupMapAttribution || '&copy; OpenStreetMap contributors';
+        const pickupLabel = panel.dataset.pickupMapPickupLabel || 'Seller pickup';
+        const isReturnPickup = panel.dataset.pickupMapIsReturn === 'true';
         const selectTarget = panel.dataset.pickupMapSelectTarget || '';
 
         if (!mapElement || !riderList) return;
@@ -70,8 +88,13 @@ export function setupLogisticsPickupMaps() {
         let requestInFlight = false;
         let refreshQueued = false;
         let riders = [];
+        let mapPinEntries = [];
+        let pinDetailPopup = null;
+        let nearbyChooserPopup = null;
         let pickupCoordinates = null;
         let pickupData = {};
+        let facilityCoordinates = null;
+        let liveLogisticsLocation = null;
         let statusData = {};
         let freshnessTimer = null;
 
@@ -120,25 +143,34 @@ export function setupLogisticsPickupMaps() {
             if (!connectorLayer) return;
 
             connectorLayer.clearLayers();
-            if (!pickupCoordinates) return;
-
             const rider = selectedRiderForConnector();
-            if (!rider || rider.location_usable !== true || rider.gps_quality !== 'usable') return;
-            const riderCoordinates = coordinatePair(rider?.latitude, rider?.longitude);
-            if (!riderCoordinates) return;
-
-            L.polyline([pickupCoordinates, riderCoordinates], {
+            const riderCoordinates = rider?.location_usable === true && rider?.gps_quality === 'usable'
+                ? coordinatePair(rider.latitude, rider.longitude)
+                : null;
+            const guideOptions = {
                 color: '#c76500',
-                weight: 4,
-                opacity: 0.95,
-                dashArray: '8 7',
+                weight: 3,
+                opacity: 0.88,
+                dashArray: '7 7',
                 lineCap: 'round',
                 interactive: false,
-            }).addTo(connectorLayer);
+            };
+
+            if (riderCoordinates) {
+                if (pickupCoordinates) {
+                    L.polyline([pickupCoordinates, riderCoordinates], guideOptions).addTo(connectorLayer);
+                }
+                if (facilityCoordinates) {
+                    L.polyline([riderCoordinates, facilityCoordinates], guideOptions).addTo(connectorLayer);
+                }
+            } else if (pickupCoordinates && facilityCoordinates) {
+                L.polyline([pickupCoordinates, facilityCoordinates], guideOptions).addTo(connectorLayer);
+            }
         };
 
         const syncMapSelection = () => {
             syncSelectedRider();
+            renderMarkers(pickupData);
             renderDistanceLine();
         };
 
@@ -150,6 +182,120 @@ export function setupLogisticsPickupMaps() {
             } else {
                 syncMapSelection();
             }
+        };
+
+        const showNearbyPinChooser = (entries, anchor) => {
+            if (pinDetailPopup) {
+                map.closePopup(pinDetailPopup);
+                pinDetailPopup = null;
+            }
+            if (nearbyChooserPopup) map.closePopup(nearbyChooserPopup);
+
+            const content = document.createElement('div');
+            content.className = 'pickup-map-nearby-chooser';
+
+            const heading = document.createElement('strong');
+            heading.className = 'pickup-map-nearby-heading';
+            heading.textContent = 'Nearby locations';
+            content.append(heading);
+
+            const options = document.createElement('div');
+            options.className = 'pickup-map-nearby-options';
+            options.setAttribute('role', 'group');
+            options.setAttribute('aria-label', 'Choose a map location');
+
+            entries.forEach((entry) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = `pickup-map-nearby-choice pickup-map-nearby-choice--${entry.kind}`;
+                button.textContent = entry.label;
+                button.addEventListener('click', () => openMapPin(entry.key));
+                options.append(button);
+            });
+
+            content.append(options);
+            L.DomEvent.disableClickPropagation(content);
+            L.DomEvent.disableScrollPropagation(content);
+
+            const popup = L.popup({
+                className: 'pickup-map-nearby-popup',
+                minWidth: 190,
+                maxWidth: 260,
+                autoPan: true,
+            })
+                .setLatLng(anchor)
+                .setContent(content);
+
+            nearbyChooserPopup = popup;
+            map.once('popupopen', (event) => {
+                if (event.popup === popup) content.querySelector('button')?.focus();
+            });
+            popup.openOn(map);
+        };
+
+        const openMapPin = (key) => {
+            let entry = mapPinEntries.find((candidate) => candidate.key === key);
+            if (!map) return;
+
+            if (nearbyChooserPopup) {
+                map.closePopup(nearbyChooserPopup);
+                nearbyChooserPopup = null;
+            }
+            if (pinDetailPopup) {
+                map.closePopup(pinDetailPopup);
+                pinDetailPopup = null;
+            }
+
+            if (!entry) return;
+
+            entry.onSelect?.();
+
+            // Selecting a Rider can synchronously rerender the marker layer.
+            entry = mapPinEntries.find((candidate) => candidate.key === key) || entry;
+            pinDetailPopup = L.popup({
+                className: 'pickup-map-pin-popup',
+                maxWidth: 280,
+                autoPan: true,
+            })
+                .setLatLng(entry.coordinates)
+                .setContent(entry.popupContent)
+                .openOn(map);
+        };
+
+        const handleMapPinClick = (key) => {
+            const entry = mapPinEntries.find((candidate) => candidate.key === key);
+            if (!entry || !map) return;
+
+            const clickedPoint = map.latLngToContainerPoint(entry.coordinates);
+            const nearbyEntries = mapPinEntries.filter((candidate) => map
+                .latLngToContainerPoint(candidate.coordinates)
+                .distanceTo(clickedPoint) <= PIN_COLLISION_RADIUS_PX);
+
+            if (nearbyEntries.length > 1) {
+                showNearbyPinChooser(nearbyEntries, entry.coordinates);
+                return;
+            }
+
+            openMapPin(key);
+        };
+
+        const registerMapPin = ({ key, kind, label, coordinates, popupContent, icon, onSelect = null }) => {
+            const marker = L.marker(coordinates, {
+                icon,
+                title: label,
+            }).addTo(markerLayer);
+
+            mapPinEntries.push({
+                key,
+                kind,
+                label,
+                coordinates: L.latLng(coordinates),
+                popupContent,
+                onSelect,
+            });
+            marker.on('click', () => handleMapPinClick(key));
+
+            return marker;
         };
 
         const ensureMap = () => {
@@ -216,7 +362,11 @@ export function setupLogisticsPickupMaps() {
                     updateLabel = `Updated ${formatTimestamp(rider.last_seen_at)}`;
                 }
 
-                const recommendation = rider.is_recommended ? 'Suggested · ' : '';
+                const recommendation = rider.is_recommended
+                    ? rider.area_match
+                        ? 'Service-area recommendation · '
+                        : 'Nearby fallback · '
+                    : '';
                 const dotClass = hasMapPosition ? '' : ' is-unavailable';
 
                 return `<div class="pickup-map-rider-item${rider.is_recommended ? ' is-recommended' : ''}" data-pickup-map-rider-item="${escapeHtml(rider.id)}">
@@ -235,14 +385,79 @@ export function setupLogisticsPickupMaps() {
             pickupCoordinates = coordinatePair(pickup?.latitude, pickup?.longitude);
             if (!map || !markerLayer) return;
 
+            if (pinDetailPopup) {
+                map.closePopup(pinDetailPopup);
+                pinDetailPopup = null;
+            }
             markerLayer.clearLayers();
+            mapPinEntries = [];
             const points = [];
 
             if (pickupCoordinates) {
                 points.push(pickupCoordinates);
-                L.marker(pickupCoordinates)
-                    .bindPopup('<strong>Pickup location</strong><br>Seller / return pickup')
-                    .addTo(markerLayer);
+                const pickupKind = isReturnPickup ? 'buyer' : 'seller';
+                const pickupSvg = isReturnPickup ? RETURN_PICKUP_PIN_SVG : SELLER_PIN_SVG;
+                registerMapPin({
+                    key: 'pickup',
+                    kind: pickupKind,
+                    label: pickupLabel,
+                    coordinates: pickupCoordinates,
+                    popupContent: `<strong>${escapeHtml(pickupLabel)}</strong><br>Saved pickup coordinates`,
+                    icon: pickupMapPinIcon(pickupKind, pickupSvg),
+                });
+            }
+
+            if (facilityCoordinates) {
+                points.push(facilityCoordinates);
+                registerMapPin({
+                    key: 'facility',
+                    kind: 'facility',
+                    label: 'Logistics facility',
+                    coordinates: facilityCoordinates,
+                    popupContent: '<strong>Logistics facility</strong><br>Saved Sorting Center coordinates',
+                    icon: pickupMapPinIcon('facility', FACILITY_PIN_SVG),
+                });
+            }
+
+            if (liveLogisticsLocation) {
+                const liveCoordinates = coordinatePair(
+                    liveLogisticsLocation.latitude,
+                    liveLogisticsLocation.longitude,
+                );
+
+                if (liveCoordinates) {
+                    points.push(liveCoordinates);
+                    const rawAccuracy = liveLogisticsLocation.accuracy_meters;
+                    const accuracy = rawAccuracy !== null && rawAccuracy !== undefined
+                        && Number.isFinite(Number(rawAccuracy)) && Number(rawAccuracy) >= 0
+                        ? Number(rawAccuracy)
+                        : null;
+                    const accuracyCopy = accuracy === null
+                        ? 'GPS accuracy unavailable; treat as approximate'
+                        : `Reported accuracy ±${Math.round(accuracy)} m`;
+                    const marker = registerMapPin({
+                        key: 'logistics-live',
+                        kind: 'logistics-live',
+                        label: 'Live Logistics device · approximate',
+                        coordinates: liveCoordinates,
+                        popupContent: `<strong>Live Logistics device · approximate</strong><br>${escapeHtml(accuracyCopy)}<br>Updated ${escapeHtml(formatTimestamp(liveLogisticsLocation.last_seen_at))}`,
+                        icon: pickupMapPinIcon('logistics-live', LOGISTICS_LIVE_PIN_SVG),
+                    });
+
+                    if (accuracy !== null && accuracy > 0) {
+                        L.circle(liveCoordinates, {
+                            radius: accuracy,
+                            color: '#17738a',
+                            weight: 2,
+                            dashArray: '5 5',
+                            fillColor: '#55b4c8',
+                            fillOpacity: 0.12,
+                            interactive: false,
+                        }).addTo(markerLayer);
+                    }
+
+                    marker.setZIndexOffset(250);
+                }
             }
 
             riders.forEach((rider) => {
@@ -261,27 +476,36 @@ export function setupLogisticsPickupMaps() {
                     ? `<br>GPS accuracy: ±${Math.round(Number(rider.accuracy_meters))} m`
                     : '';
                 const area = rider.area_match ? 'Same service area' : 'Outside service area';
-                const marker = L.circleMarker(coordinates, {
-                    radius: 8,
-                    color: '#2e8250',
-                    weight: 2,
-                    fillColor: '#5eaf73',
-                    fillOpacity: 0.9,
-                })
-                    .bindPopup(`<strong>${escapeHtml(rider.name)}</strong><br>${escapeHtml(area)}<br>${escapeHtml(distance)}${accuracy}<br>Updated ${escapeHtml(formatTimestamp(rider.last_seen_at))}`)
-                    .addTo(markerLayer);
-
-                marker.on('click', () => selectRider(rider.id));
+                const isSelected = String(rider.id) === String(selectedRiderId());
+                const isHighlighted = isSelected || rider.is_recommended;
+                registerMapPin({
+                    key: `rider:${rider.id}`,
+                    kind: 'rider',
+                    label: `Rider · ${rider.name}`,
+                    coordinates,
+                    popupContent: `<strong>${escapeHtml(rider.name)}</strong><br>${escapeHtml(area)}<br>${escapeHtml(distance)}${accuracy}<br>Updated ${escapeHtml(formatTimestamp(rider.last_seen_at))}`,
+                    icon: pickupMapPinIcon('rider', RIDER_PIN_SVG, isHighlighted),
+                    onSelect: () => selectRider(rider.id),
+                });
             });
 
-            if (!hasFittedRiderLocations && points.length > 1) {
+            const hasUsableRiderLocation = riders.some((rider) => rider.location_usable === true
+                && rider.gps_quality === 'usable'
+                && coordinatePair(rider.latitude, rider.longitude) !== null);
+
+            if (!hasFittedRiderLocations && hasUsableRiderLocation) {
                 map.fitBounds(L.latLngBounds(points), {
                     padding: [28, 28],
                     maxZoom: 15,
                 });
-                hasFittedRiderLocations = riders.some((rider) => rider.location_usable === true
-                    && rider.gps_quality === 'usable'
-                    && coordinatePair(rider.latitude, rider.longitude) !== null);
+                hasFittedRiderLocations = true;
+                hasCenteredInitialPoint = true;
+            } else if (!hasCenteredInitialPoint && points.length > 1) {
+                map.fitBounds(L.latLngBounds(points), {
+                    padding: [28, 28],
+                    maxZoom: 15,
+                });
+                hasCenteredInitialPoint = true;
             } else if (!hasCenteredInitialPoint && points.length === 1) {
                 map.setView(points[0], 15);
                 hasCenteredInitialPoint = true;
@@ -303,9 +527,17 @@ export function setupLogisticsPickupMaps() {
                 ? Math.round(maxAccuracy)
                 : 100;
             const pickupHasCoordinates = coordinatePair(data.pickup?.latitude, data.pickup?.longitude) !== null;
+            const facilityHasCoordinates = coordinatePair(data.facility?.latitude, data.facility?.longitude) !== null;
 
             if (!riders.length) {
-                setStatus('No schedule-eligible, available Local Riders are available for this pickup window.', 'warning');
+                const missingPins = [
+                    !pickupHasCoordinates ? 'the pickup has no saved map pin' : '',
+                    !facilityHasCoordinates ? 'the Logistics facility has no saved map pin' : '',
+                ].filter(Boolean);
+                setStatus(
+                    `No schedule-eligible, available Local Riders are available for this pickup window.${missingPins.length ? ` ${missingPins.join('; ')}.` : ''}`,
+                    'warning',
+                );
             } else {
                 const messages = [];
                 if (mapRiderCount) messages.push(`${pluralize(mapRiderCount, 'accurate Rider position')} shown on the map`);
@@ -318,6 +550,7 @@ export function setupLogisticsPickupMaps() {
                     messages.push(`${pluralize(unknownAccuracyCount, 'fresh GPS fix', 'fresh GPS fixes')} hidden because accuracy was not reported`);
                 }
                 if (!pickupHasCoordinates) messages.push('the pickup has no saved map pin');
+                if (!facilityHasCoordinates) messages.push('the Logistics facility has no saved map pin');
                 messages.push('All listed Riders remain selectable; Sorting Zone/workload fallback remains available');
                 setStatus(
                     `${messages.join('. ')}.`,
@@ -356,6 +589,13 @@ export function setupLogisticsPickupMaps() {
                 return markLocationStale(rider);
             });
 
+            if (liveLogisticsLocation
+                && Number.isFinite(liveLogisticsLocation.local_fresh_until)
+                && now > liveLogisticsLocation.local_fresh_until) {
+                liveLogisticsLocation = null;
+                changed = true;
+            }
+
             if (!changed) return;
 
             renderMarkers(pickupData);
@@ -370,6 +610,10 @@ export function setupLogisticsPickupMaps() {
             const deadlines = riders
                 .map((rider) => rider.local_fresh_until)
                 .filter(Number.isFinite);
+
+            if (Number.isFinite(liveLogisticsLocation?.local_fresh_until)) {
+                deadlines.push(liveLogisticsLocation.local_fresh_until);
+            }
 
             if (!deadlines.length) return;
 
@@ -392,9 +636,29 @@ export function setupLogisticsPickupMaps() {
             const freshnessWindowMs = (Number.isFinite(freshnessSeconds) && freshnessSeconds >= 0
                 ? freshnessSeconds
                 : 180) * 1000;
+            const logisticsFreshnessSeconds = Number(data.logistics_location_stale_after_seconds);
+            const logisticsFreshnessWindowMs = (Number.isFinite(logisticsFreshnessSeconds) && logisticsFreshnessSeconds >= 0
+                ? logisticsFreshnessSeconds
+                : 180) * 1000;
 
             statusData = data;
             pickupData = data.pickup || {};
+            facilityCoordinates = coordinatePair(data.facility?.latitude, data.facility?.longitude);
+            const sharedLogisticsLocation = data.logistics_location;
+            const liveLatitude = Number(sharedLogisticsLocation?.latitude);
+            const liveLongitude = Number(sharedLogisticsLocation?.longitude);
+            const logisticsLastSeenAt = Date.parse(sharedLogisticsLocation?.last_seen_at || '');
+            const logisticsAgeAtResponse = Number.isFinite(serverGeneratedAt) && Number.isFinite(logisticsLastSeenAt)
+                ? Math.max(0, serverGeneratedAt - logisticsLastSeenAt)
+                : Number.POSITIVE_INFINITY;
+            liveLogisticsLocation = Number.isFinite(liveLatitude) && liveLatitude >= -90 && liveLatitude <= 90
+                && Number.isFinite(liveLongitude) && liveLongitude >= -180 && liveLongitude <= 180
+                && logisticsAgeAtResponse + requestDuration <= logisticsFreshnessWindowMs
+                ? {
+                    ...sharedLogisticsLocation,
+                    local_fresh_until: receivedAt + logisticsFreshnessWindowMs - logisticsAgeAtResponse - requestDuration,
+                }
+                : null;
             riders = (Array.isArray(data.riders) ? data.riders : []).map((rider) => {
                 const isPlottable = rider.location_usable === true
                     && rider.gps_quality === 'usable'
@@ -501,6 +765,11 @@ export function setupLogisticsPickupMaps() {
         assignmentSelect()?.addEventListener('change', syncMapSelection);
         window.addEventListener('bearly:rider-location-updated', (event) => {
             if (!Number.isFinite(Number(event.detail?.rider_user_id))) return;
+            if (document.hidden || modal?.hidden) return;
+
+            void refresh();
+        });
+        window.addEventListener('bearly:logistics-location-updated', () => {
             if (document.hidden || modal?.hidden) return;
 
             void refresh();

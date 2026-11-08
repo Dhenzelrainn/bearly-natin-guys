@@ -61,8 +61,13 @@ const iconFor = (skin, item) => {
 
 const rowFor = (skin, item) => {
     const unread = !item.read;
+    const isBuyerLink = skin === 'buyer' && Boolean(item.url);
+    const tag = isBuyerLink ? 'a' : 'article';
+    const action = isBuyerLink
+        ? `href="${escapeHtml(item.url)}" aria-label="${escapeHtml(item.title)}${unread ? ' (unread)' : ''}"`
+        : `tabindex="0" role="button" aria-label="${escapeHtml(item.title)}${unread ? ' (unread)' : ''}"`;
 
-    return `<article class="nc-row${unread ? ' is-unread' : ''}" data-nc-id="${escapeHtml(item.id)}" data-nc-url="${escapeHtml(item.url || '')}" tabindex="0" role="button" aria-label="${escapeHtml(item.title)}${unread ? ' (unread)' : ''}">
+    return `<${tag} class="nc-row${unread ? ' is-unread' : ''}" data-nc-id="${escapeHtml(item.id)}" data-nc-url="${escapeHtml(item.url || '')}" ${action}>
         <span class="nc-row-dot" aria-hidden="true"></span>
         ${iconFor(skin, item)}
         <div class="nc-row-copy">
@@ -73,7 +78,7 @@ const rowFor = (skin, item) => {
             ${item.body ? `<p>${escapeHtml(item.body)}</p>` : ''}
         </div>
         ${item.url ? '<span class="nc-row-arrow" aria-hidden="true">&rsaquo;</span>' : ''}
-    </article>`;
+    </${tag}>`;
 };
 
 const skeletonFor = () => Array.from({ length: 4 }, () => `
@@ -275,14 +280,16 @@ const initCenter = root => {
 
     list.addEventListener('click', event => {
         const row = event.target.closest('[data-nc-id]');
-        if (row) openRow(row);
+        if (!row) return;
+        if (row.tagName === 'A') event.preventDefault();
+        openRow(row);
     });
 
     list.addEventListener('keydown', event => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
 
         const row = event.target.closest('[data-nc-id]');
-        if (!row) return;
+        if (!row || row.tagName === 'A') return;
 
         event.preventDefault();
         openRow(row);

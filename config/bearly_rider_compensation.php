@@ -15,9 +15,15 @@ return [
 
     'pickup_earning_type' => 'pickup_parcel',
 
-    // Verified Courier line-haul compensation is a fixed daily rate in integer
-    // centavos, posted at most once per local calendar work date. It is not a
-    // per-parcel or per-run rate and does not create a stored wallet balance.
-    'courier_daily_rate_minor' => 65000,
+    // Verified Courier compensation uses QR-recorded attendance. Rates and
+    // caps are stored in integer centavos; one ledger row is posted per
+    // qualifying Asia/Manila work date and no wallet balance is created.
+    'courier_hourly_rate_minor' => 8125,
+    'courier_daily_cap_minor' => 65000,
+    'courier_daily_max_paid_seconds' => 28800,
     'courier_daily_earning_type' => 'courier_daily',
+
+    // A provider QR expires quickly. Rotating creates a new random secret;
+    // only its SHA-256 hash is retained in the database.
+    'rider_attendance_qr_ttl_seconds' => 45,
 ];

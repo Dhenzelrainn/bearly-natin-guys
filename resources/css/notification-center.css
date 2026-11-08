@@ -276,7 +276,14 @@ body:not(.bc).bh main.nc-main {
     padding: 16px;
     border-bottom: 1px solid #f2ece6;
     background: var(--nc-surface);
+    color: inherit;
     cursor: pointer;
+}
+
+.nc-page--buyer .nc-row[href] {
+    width: 100%;
+    color: inherit;
+    text-decoration: none;
 }
 
 .nc-row:last-child {

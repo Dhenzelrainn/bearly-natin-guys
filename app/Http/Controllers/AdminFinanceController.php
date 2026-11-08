@@ -219,9 +219,36 @@ class AdminFinanceController extends Controller
 
         $codCollections = $codCash->codCollectionsForFinance()
             ->each(function (CodCashCollection $collection) use ($catalog): void {
+                $allocations = $collection->allocations;
+                $sellerOrders = $allocations
+                    ->map(fn ($allocation) => $allocation->sellerOrder)
+                    ->filter()
+                    ->unique('id')
+                    ->values();
+                if ($sellerOrders->isEmpty() && $collection->sellerOrder) {
+                    $sellerOrders = collect([$collection->sellerOrder]);
+                }
+
+                $collection->setAttribute(
+                    'order_references',
+                    $allocations->map(fn ($allocation) => $allocation->order?->order_no)->filter()->unique()->values()->implode(', ')
+                        ?: (string) ($collection->order?->order_no ?? 'Order unavailable'),
+                );
+                $collection->setAttribute(
+                    'allocation_summaries',
+                    $allocations->map(fn ($allocation): array => [
+                        'seller_order_no' => (string) ($allocation->sellerOrder?->seller_order_no ?? 'Seller Order'),
+                        'order_no' => (string) ($allocation->order?->order_no ?? 'Order'),
+                        'payment_no' => (string) ($allocation->payment?->payment_no ?? 'Payment'),
+                        'amount_due_minor' => (int) $allocation->amount_due_minor,
+                        'amount_collected_minor' => (int) ($allocation->amount_collected_minor ?? 0),
+                        'amount_reconciled_minor' => (int) ($allocation->amount_reconciled_minor ?? 0),
+                    ])->values()->all(),
+                );
                 $collection->setAttribute(
                     'order_item_previews',
-                    ($collection->sellerOrder?->items ?? collect())
+                    $sellerOrders
+                        ->flatMap(fn ($sellerOrder) => $sellerOrder->items)
                         ->map(fn ($item): array => [
                             'name' => $item->product_name ?: 'Unnamed product',
                             'variant' => trim((string) $item->variant_name),
@@ -260,13 +287,24 @@ class AdminFinanceController extends Controller
     ): View {
         $shippingSettlements = $shippingSettlementService->financeSettlements()
             ->map(function (ShippingSettlement $settlement) use ($catalog): ShippingSettlement {
+                $allocations = $settlement->allocations;
+                $sellerOrders = $allocations
+                    ->map(fn ($allocation) => $allocation->sellerOrder)
+                    ->filter()
+                    ->unique('id')
+                    ->values();
+                if ($sellerOrders->isEmpty() && $settlement->sellerOrder) {
+                    $sellerOrders = collect([$settlement->sellerOrder]);
+                }
+
                 $itemEntries = $settlement->settlement_type === 'return'
                     ? ($settlement->returnRequest?->items ?? collect())
                         ->map(fn (ReturnItem $returnItem): array => [
                             'item' => $returnItem->orderItem,
                             'quantity' => (int) $returnItem->quantity,
                         ])
-                    : ($settlement->sellerOrder?->items ?? collect())
+                    : $sellerOrders
+                        ->flatMap(fn ($sellerOrder) => $sellerOrder->items)
                         ->map(fn (OrderItem $item): array => [
                             'item' => $item,
                             'quantity' => (int) $item->quantity,
@@ -284,6 +322,15 @@ class AdminFinanceController extends Controller
                         'quantity' => (int) $entry['quantity'],
                         'image_url' => $catalog->orderItemImageUrl($entry['item']),
                     ])
+                    ->all());
+                $settlement->setAttribute('seller_order_allocations', $allocations
+                    ->map(fn ($allocation): array => [
+                        'seller_order_no' => (string) ($allocation->sellerOrder?->seller_order_no ?? 'Seller Order'),
+                        'original_shipping_fee_minor' => (int) $allocation->original_shipping_fee_minor,
+                        'buyer_paid_shipping_fee_minor' => (int) $allocation->buyer_paid_shipping_fee_minor,
+                        'platform_shipping_subsidy_minor' => (int) $allocation->platform_shipping_subsidy_minor,
+                    ])
+                    ->values()
                     ->all());
 
                 return $settlement;
@@ -477,6 +524,9 @@ class AdminFinanceController extends Controller
         $collection->load([
             'order',
             'sellerOrder.store',
+            'allocations.order',
+            'allocations.payment',
+            'allocations.sellerOrder.store',
             'logisticsProfile',
             'riderProfile.user',
             'financeReconciler',

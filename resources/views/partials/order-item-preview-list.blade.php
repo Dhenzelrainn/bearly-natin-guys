@@ -13,7 +13,7 @@
             </span>
             <span class="order-item-preview-copy">
                 <strong>{{ $item['name'] }}</strong>
-                <small>{{ $item['variant'] ?: 'Variant not specified' }} · Qty {{ $item['quantity'] }}@if(filled($item['price'] ?? null)) · {{ $item['price'] }}@endif</small>
+                <small>{{ $item['variant'] ?: 'Variant not specified' }}@if (! ($referenceOnly ?? false)) · Qty {{ $item['quantity'] }}@endif{{ filled($item['price'] ?? null) ? ' · '.$item['price'] : '' }}</small>
             </span>
         </div>
     @empty

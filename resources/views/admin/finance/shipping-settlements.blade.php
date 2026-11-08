@@ -123,6 +123,16 @@
                                 <div><dt>Original zone fee</dt><dd>₱{{ number_format($settlement->feeAmountMinor() / 100, 2) }} · Zone {{ (int) $settlement->zone_level }}</dd></div>
                                 <div><dt>Buyer paid</dt><dd>₱{{ number_format((int) $settlement->buyer_paid_shipping_fee_minor / 100, 2) }}</dd></div>
                                 <div><dt>Bearly subsidy</dt><dd>₱{{ number_format((int) $settlement->platform_shipping_subsidy_minor / 100, 2) }} · {{ str($settlement->shipping_funding_source)->replace('_', ' ')->title() }}</dd></div>
+                                @if(count($settlement->seller_order_allocations ?? []) > 1)
+                                    <div>
+                                        <dt>Original Seller Order fee snapshots</dt>
+                                        <dd>
+                                            @foreach($settlement->seller_order_allocations as $allocation)
+                                                <small class="table-subline">{{ $allocation['seller_order_no'] }} · Fee ₱{{ number_format($allocation['original_shipping_fee_minor'] / 100, 2) }} · Buyer ₱{{ number_format($allocation['buyer_paid_shipping_fee_minor'] / 100, 2) }} · Subsidy ₱{{ number_format($allocation['platform_shipping_subsidy_minor'] / 100, 2) }}</small>
+                                            @endforeach
+                                        </dd>
+                                    </div>
+                                @endif
                             @endif
                         </dl>
                     </td>

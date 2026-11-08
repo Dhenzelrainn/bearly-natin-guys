@@ -22,10 +22,12 @@ use App\Services\SellerFulfillmentService;
 use App\Services\SellerIdentityService;
 use App\Services\SellerInventoryService;
 use App\Services\SellerNotificationService;
+use App\Services\SellerOrderPackingConsolidationService;
 use App\Services\SellerOrderTrackingService;
 use App\Services\SellerOrderWorkflowService;
 use App\Services\SellerPickupRequestService;
 use App\Services\SellerWalletService;
+use App\Services\ShippingPolicyService;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Http\JsonResponse;
@@ -299,13 +301,14 @@ class SellerWorkflowController extends Controller
         Request $request,
         BuyerCatalogService $catalog,
         SellerOrderTrackingService $tracking,
+        bool $includeShipmentGroups = false,
     ): array {
         $storeId = $request->user()->sellerProfile?->store?->id;
         if (! $storeId) {
             return [];
         }
 
-        return SellerOrder::query()
+        $query = SellerOrder::query()
             ->where('store_id', $storeId)
             ->with([
                 'order.payments',
@@ -313,13 +316,26 @@ class SellerWorkflowController extends Controller
                 'items.variant',
                 'statusHistory.actor',
                 'shipments.events',
-            ])
+            ]);
+
+        if ($includeShipmentGroups) {
+            $query->with('shipments.sellerOrders:id,store_id');
+        }
+
+        return $query
             ->latest('created_at')
             ->get()
-            ->map(function (SellerOrder $sellerOrder) use ($catalog, $tracking): array {
+            ->map(function (SellerOrder $sellerOrder) use ($catalog, $tracking, $storeId, $includeShipmentGroups): array {
                 $order = $sellerOrder->order;
                 $status = (string) $sellerOrder->status;
                 $trackingState = $tracking->snapshot($sellerOrder);
+                $outboundShipment = $includeShipmentGroups
+                    ? $sellerOrder->shipments->first(fn (Shipment $shipment): bool => $shipment->purpose === 'outbound')
+                    : null;
+                $shipmentMembers = $outboundShipment?->sellerOrders ?? collect();
+                $canGroupShipment = $outboundShipment
+                    && $shipmentMembers->count() > 1
+                    && $shipmentMembers->every(fn (SellerOrder $member): bool => (int) $member->store_id === (int) $storeId);
                 $payment = $order?->payments?->first();
                 $paymentLabel = $payment?->method === 'cod'
                     ? ($status === 'cancelled'
@@ -374,6 +390,10 @@ class SellerWorkflowController extends Controller
 
                 return [
                     'seller_order_id' => (int) $sellerOrder->id,
+                    'shipment_group_id' => $canGroupShipment ? (int) $outboundShipment->id : null,
+                    'shipment_group_label' => $canGroupShipment
+                        ? (string) ($outboundShipment->shipment_no ?: 'Shipment #'.$outboundShipment->id)
+                        : null,
                     'id' => '#'.$sellerOrder->seller_order_no,
                     'customer' => (string) ($order?->recipient_name ?? 'Buyer'),
                     'items' => $quantity.' '.($quantity === 1 ? 'item' : 'items'),
@@ -385,6 +405,7 @@ class SellerWorkflowController extends Controller
                     'deadline' => $deadline,
                     'date_key' => $dateKey,
                     'urgent' => false,
+                    'seller_status' => $status,
                     'status' => $trackingState['status_label'],
                     'status_detail' => $trackingState['status_detail'],
                     'canonical_status' => $trackingState['canonical_status'],
@@ -394,21 +415,23 @@ class SellerWorkflowController extends Controller
                     'next_step' => $trackingState['next_step'],
                     'action' => match ($status) {
                         'pending', 'placed' => 'Confirm Order',
-                        'accepted' => 'Start Preparing',
+                        'accepted' => 'Create Packing Plan',
                         'packing' => 'Mark Ready for Pickup',
                         default => 'View Details',
                     },
                     'transition_action' => match ($status) {
                         'pending', 'placed' => 'confirm',
-                        'accepted' => 'start_preparing',
                         'packing' => 'mark_ready',
                         default => null,
                     },
                     'transition_url' => route('seller.orders.status', ['sellerOrder' => $sellerOrder->id]),
+                    'packing_url' => route('seller.orders.packing', ['sellerOrder' => $sellerOrder->id]),
                     'tracking_url' => route('seller.orders.tracking', ['sellerOrder' => $sellerOrder->id]),
                     'status_history' => $trackingState['timeline_history'],
                     'tracking_updated_at' => $trackingState['updated_at'],
-                    'action_url' => null,
+                    'action_url' => $status === 'accepted'
+                        ? route('seller.orders.packing', ['sellerOrder' => $sellerOrder->id])
+                        : null,
                     'order_date' => $createdAt?->format('M j, Y g:i A') ?? '',
                     'address' => $address,
                     'sku' => $items->count() === 1 ? (string) $items->first()->sku : '',
@@ -607,7 +630,37 @@ class SellerWorkflowController extends Controller
         BuyerCatalogService $catalog,
         SellerOrderTrackingService $tracking,
     ): View {
-        $orders = $this->persistedOrdersData($request, $catalog, $tracking);
+        $orders = $this->persistedOrdersData($request, $catalog, $tracking, includeShipmentGroups: true);
+        $orderDisplayGroups = collect($orders)
+            ->groupBy(fn (array $order): string => ! empty($order['shipment_group_id'])
+                ? 'shipment-'.$order['shipment_group_id']
+                : 'seller-order-'.$order['seller_order_id'])
+            ->map(function ($members): array {
+                $shipmentGroupId = $members->first()['shipment_group_id'] ?? null;
+                $isShipmentGroup = $shipmentGroupId !== null && $members->count() > 1;
+                $statusCounts = $isShipmentGroup ? $members->countBy('status') : collect();
+                $statusSummary = $statusCounts->count() === 1
+                    ? $members->first()['status'].' · '.$members->count().' of '.$members->count().' Seller Orders'
+                    : $statusCounts->map(fn ($count, $label): string => $label.' · '.$count)->implode(' / ');
+                $canMarkReady = $isShipmentGroup && $members->every(fn (array $member): bool => ($member['seller_status'] ?? null) === 'packing');
+                $waitingForPreparation = $isShipmentGroup
+                    && ! $canMarkReady
+                    && $members->every(fn (array $member): bool => in_array($member['seller_status'] ?? null, ['pending', 'accepted', 'packing'], true));
+                $actionNote = $waitingForPreparation
+                    ? 'Ready for Pickup becomes available when every Seller Order is preparing.'
+                    : null;
+
+                return [
+                    'orders' => $members,
+                    'shipment_group_id' => $isShipmentGroup ? (int) $shipmentGroupId : null,
+                    'is_shipment_group' => $isShipmentGroup,
+                    'status_summary' => $statusSummary,
+                    'can_mark_ready' => $canMarkReady,
+                    'action_note' => $actionNote,
+                    'has_side_content' => $canMarkReady || $actionNote !== null,
+                    'dom_id' => $isShipmentGroup ? 'shipment-orders-'.$shipmentGroupId : null,
+                ];
+            });
         $allowed = ['all', 'new', 'to-prepare', 'ready-pickup', 'shipped', 'completed', 'cancelled-returned'];
         $requestedStatus = (string) $request->query('status', 'all');
         $defaultStatus = in_array($requestedStatus, $allowed, true) ? $requestedStatus : 'all';
@@ -645,6 +698,7 @@ class SellerWorkflowController extends Controller
                 ['key' => 'cancelled-returned', 'label' => 'Cancelled / Returned', 'count' => $count('cancelled-returned')],
             ],
             'orders' => $orders,
+            'orderDisplayGroups' => $orderDisplayGroups,
         ]);
     }
 
@@ -677,7 +731,7 @@ class SellerWorkflowController extends Controller
         SellerOrderWorkflowService $workflow,
     ): JsonResponse|RedirectResponse {
         $validated = $request->validate([
-            'action' => ['required', 'string', Rule::in(['confirm', 'start_preparing', 'mark_ready', 'cancel'])],
+            'action' => ['required', 'string', Rule::in(['confirm', 'mark_ready', 'cancel'])],
             'reason' => ['nullable', 'string', 'required_if:action,cancel', 'min:5', 'max:1000'],
         ]);
 
@@ -690,7 +744,6 @@ class SellerWorkflowController extends Controller
 
         $message = match ($validated['action']) {
             'confirm' => 'Order confirmed. You can now prepare it.',
-            'start_preparing' => 'Order moved to preparation. Print and attach its waybill, then confirm it in Fulfillment → Waybills.',
             'mark_ready' => 'Order marked ready for pickup.',
             'cancel' => 'Seller Order cancelled and its reserved stock released.',
         };
@@ -701,9 +754,7 @@ class SellerWorkflowController extends Controller
             'cancelled' => 'cancelled-returned',
             default => 'all',
         };
-        $redirectTo = $validated['action'] === 'start_preparing'
-            ? route('seller.fulfillment.waybills', ['status' => 'ready'])
-            : route('seller.orders', ['status' => $statusFilter]);
+        $redirectTo = route('seller.orders', ['status' => $statusFilter]);
 
         $request->session()->flash('success', $message);
 
@@ -719,6 +770,191 @@ class SellerWorkflowController extends Controller
         }
 
         return redirect()->to($redirectTo);
+    }
+
+    public function packingPlan(
+        Request $request,
+        string $sellerOrder,
+        SellerFulfillmentService $fulfillment,
+        SellerOrderPackingConsolidationService $consolidation,
+        BuyerCatalogService $catalog,
+        ShippingPolicyService $shippingPolicies,
+    ): View {
+        $storeId = (int) ($request->user()->sellerProfile?->store?->id ?? 0);
+        abort_unless($storeId > 0, 404, 'Seller Store not found.');
+
+        $sellerOrder = SellerOrder::query()
+            ->where('store_id', $storeId)
+            ->with([
+                'order',
+                'items.product.images.variant',
+                'items.variant',
+                'items.sellerOrder.order',
+            ])
+            ->findOrFail($sellerOrder);
+
+        abort_unless(
+            $sellerOrder->status === 'accepted',
+            409,
+            'This Seller Order is no longer awaiting a packing plan. Refresh the order list.',
+        );
+
+        $pickupAddress = $fulfillment->pickupAddressFor($request->user());
+        $assignedPickupProvider = null;
+        $providerOptions = collect();
+        $providerError = null;
+
+        if (! $pickupAddress) {
+            $providerError = 'Set a valid pickup address in your Seller profile before creating a Shipment.';
+        } else {
+            try {
+                $assignedPickupProvider = $fulfillment->activeProviderForPickupAddress($pickupAddress);
+                $providerOptions = $assignedPickupProvider
+                    ? collect([$fulfillment->providerOptionForPickupAddress($pickupAddress, $assignedPickupProvider)])
+                    : $fulfillment->nearbyProvidersForPickupAddress($pickupAddress);
+
+                if ($providerOptions->isEmpty()) {
+                    $providerError = 'No active nearby Logistics provider with a usable service location is available. Contact an administrator before preparing this order.';
+                }
+            } catch (ValidationException $exception) {
+                $providerError = collect($exception->errors())->flatten()->first()
+                    ?: 'The Seller pickup address does not have a verified municipality/city.';
+            }
+        }
+
+        $candidateSellerOrders = $consolidation->candidates($request->user(), $sellerOrder);
+        $rawSelectedIds = $request->old('additional_seller_order_ids', $request->query('additional_seller_order_ids', []));
+        $selectedIds = $consolidation->normalizeIds($rawSelectedIds, (int) $sellerOrder->id);
+        $candidateById = $candidateSellerOrders->keyBy('id');
+        foreach ($selectedIds as $selectedId) {
+            abort_unless($candidateById->has($selectedId), 409, 'A selected variant order is no longer eligible. Refresh the packing plan.');
+        }
+
+        $packingSellerOrders = collect([$sellerOrder])
+            ->concat($candidateSellerOrders->whereIn('id', $selectedIds))
+            ->keyBy('id')
+            ->values()
+            ->sortBy('id')
+            ->values();
+        $packingSellerOrders->each(fn (SellerOrder $included): SellerOrder => $included->loadMissing([
+            'items.product.images.variant',
+            'items.variant',
+            'items.sellerOrder.order',
+            'order.payments',
+        ]));
+
+        $defaults = $fulfillment->defaultPackingPlanForOrders($packingSellerOrders);
+        $sellerOrdersById = $packingSellerOrders->keyBy('id');
+        $itemModels = $packingSellerOrders->flatMap(fn (SellerOrder $included) => $included->items)->keyBy('id');
+        $packingItems = collect($defaults['items'])
+            ->map(function (array $item) use ($catalog, $itemModels, $sellerOrdersById): array {
+                $model = $itemModels->get($item['id']);
+                $imagePath = trim((string) $model?->product_image_path);
+                $imageDisk = (string) ($model?->product_image_disk ?: 'public');
+                $itemSellerOrder = $sellerOrdersById->get($model?->seller_order_id);
+
+                if ($imagePath === '' && $model?->product && $model?->variant) {
+                    $image = $catalog->orderImageRecord($model->product, $model->variant);
+                    $imagePath = trim((string) ($image?->path ?? ''));
+                    $imageDisk = (string) ($image?->disk ?: 'public');
+                }
+
+                return [
+                    ...$item,
+                    'seller_order_id' => (int) ($model?->seller_order_id ?? 0),
+                    'seller_order_no' => (string) ($itemSellerOrder?->seller_order_no ?? ''),
+                    'order_no' => (string) ($itemSellerOrder?->order?->order_no ?? ''),
+                    'image' => $this->sellerOrderImageUrl($imagePath, $imageDisk),
+                ];
+            })
+            ->values()
+            ->all();
+
+        $initialParcels = $defaults['parcels'];
+        $oldParcels = $request->session()->getOldInput('parcels');
+        $maxParcelCount = (int) collect($defaults['items'])->sum('quantity');
+
+        if (is_array($oldParcels)
+            && array_is_list($oldParcels)
+            && $oldParcels !== []
+            && count($oldParcels) <= $maxParcelCount) {
+            $allowedItemIds = collect($packingItems)->pluck('id')->map(fn ($id): int => (int) $id)->all();
+            $initialParcels = collect($oldParcels)
+                ->map(function ($parcel) use ($allowedItemIds): array {
+                    $parcel = is_array($parcel) ? $parcel : [];
+                    $rawItems = is_array($parcel['items'] ?? null) ? $parcel['items'] : [];
+                    $items = [];
+
+                    foreach ($allowedItemIds as $itemId) {
+                        $quantity = filter_var($rawItems[$itemId] ?? 0, FILTER_VALIDATE_INT);
+                        $items[$itemId] = $quantity !== false && $quantity >= 0 ? $quantity : 0;
+                    }
+
+                    $number = fn (mixed $value, mixed $fallback): mixed => is_scalar($value)
+                        && is_numeric($value)
+                        && is_finite((float) $value)
+                        ? $value
+                        : $fallback;
+
+                    return [
+                        'items' => $items,
+                        'weight_kg' => $number($parcel['weight_kg'] ?? null, ''),
+                        'length_cm' => $number($parcel['length_cm'] ?? null, ''),
+                        'width_cm' => $number($parcel['width_cm'] ?? null, ''),
+                        'height_cm' => $number($parcel['height_cm'] ?? null, ''),
+                    ];
+                })
+                ->all();
+        }
+
+        return view('seller.fulfillment.packing-plan', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'sellerOrder' => $sellerOrder,
+            'packingItems' => $packingItems,
+            'initialParcels' => $initialParcels,
+            'candidateSellerOrders' => $candidateSellerOrders,
+            'selectedAdditionalSellerOrderIds' => $selectedIds,
+            'shippingPolicies' => $shippingPolicies->publishedPolicies(),
+            'pickupAddress' => $pickupAddress,
+            'assignedPickupProvider' => $assignedPickupProvider,
+            'providerOptions' => $providerOptions,
+            'providerError' => $providerError,
+        ]);
+    }
+
+    public function storePackingPlan(
+        Request $request,
+        string $sellerOrder,
+        SellerOrderWorkflowService $workflow,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'logistics_profile_id' => ['nullable', 'integer', 'min:1'],
+            'additional_seller_order_ids' => ['sometimes', 'array', 'max:50'],
+            'additional_seller_order_ids.*' => ['required', 'integer', 'distinct', 'min:1'],
+            'parcels' => ['required', 'array', 'min:1', 'max:65535'],
+            'parcels.*' => ['required', 'array'],
+            'parcels.*.items' => ['required', 'array', 'min:1'],
+            'parcels.*.items.*' => ['required', 'integer', 'min:0'],
+            'parcels.*.weight_kg' => ['required', 'numeric', 'gt:0', 'max:9999999.999'],
+            'parcels.*.length_cm' => ['required', 'numeric', 'gt:0', 'max:99999999.99'],
+            'parcels.*.width_cm' => ['required', 'numeric', 'gt:0', 'max:99999999.99'],
+            'parcels.*.height_cm' => ['required', 'numeric', 'gt:0', 'max:99999999.99'],
+        ]);
+
+        $workflow->startPreparingWithPlan(
+            $request->user(),
+            (int) $sellerOrder,
+            $validated['parcels'],
+            $validated['additional_seller_order_ids'] ?? [],
+            isset($validated['logistics_profile_id'])
+                ? (int) $validated['logistics_profile_id']
+                : null,
+        );
+
+        return redirect()
+            ->route('seller.fulfillment.waybills', ['status' => 'ready'])
+            ->with('success', 'Packing plan saved. Print one label for each parcel before confirming the order is ready.');
     }
 
     public function orderTracking(
@@ -759,27 +995,42 @@ class SellerWorkflowController extends Controller
 
         $provider = null;
         $providerError = null;
+        $providerOptions = collect();
 
         if (! $sellerProfile->pickupAddress) {
             $providerError = 'Add a valid pickup address to your Seller profile before scheduling collection.';
         } else {
             try {
-                $provider = $fulfillment->providerForPickupAddress($sellerProfile->pickupAddress);
+                $provider = $fulfillment->activeProviderForPickupAddress($sellerProfile->pickupAddress);
+                $providerOptions = $fulfillment->nearbyProvidersForPickupAddress($sellerProfile->pickupAddress);
+
+                if ($provider) {
+                    $providerOptions = collect([
+                        $fulfillment->providerOptionForPickupAddress($sellerProfile->pickupAddress, $provider),
+                    ])->concat($providerOptions->reject(
+                        fn (array $option): bool => (int) $option['id'] === (int) $provider->id,
+                    ));
+                }
+
+                if ($providerOptions->isEmpty()) {
+                    $providerError = 'No active nearby Logistics provider is available for new pickup requests.';
+                }
             } catch (ValidationException $exception) {
                 $providerError = collect($exception->errors())->flatten()->first();
             }
         }
 
+        $eligibleShipments = collect();
         $eligibleOrders = collect();
+        $eligibleProviderOptions = collect();
 
-        if ($provider) {
-            $eligibleOrders = SellerOrder::query()
+        if ($sellerProfile->pickupAddress) {
+            $eligibleSellerOrders = SellerOrder::query()
                 ->where('store_id', $store->id)
                 ->where('status', 'ready_for_pickup')
                 ->whereHas('order', fn ($query) => $query->where('status', '!=', 'cancelled'))
                 ->whereHas('shipments', fn ($query) => $query
                     ->where('purpose', 'outbound')
-                    ->where('logistics_profile_id', $provider->id)
                     ->where('status', ShipmentStatus::ReadyForPickup->value)
                     ->whereHas('waybill', fn ($waybills) => $waybills
                         ->whereNotNull('printed_at')
@@ -792,37 +1043,134 @@ class SellerWorkflowController extends Controller
                     'order',
                     'shipments' => fn ($query) => $query
                         ->where('purpose', 'outbound')
-                        ->with(['waybill', 'parcels']),
+                        ->with([
+                            'waybill',
+                            'parcels',
+                            'logisticsProfile.user',
+                            'sellerOrders.order',
+                            'sellerOrders.items',
+                        ]),
                 ])
                 ->orderBy('ready_at')
                 ->orderBy('id')
-                ->get()
-                ->map(function (SellerOrder $sellerOrder): array {
-                    $quote = (array) $sellerOrder->shipping_quote;
-                    $shipment = $sellerOrder->shipments->first();
-                    $parcels = $shipment?->parcels ?? collect();
+                ->get();
+
+            $eligibleShipments = $eligibleSellerOrders
+                ->flatMap(fn (SellerOrder $sellerOrder) => $sellerOrder->shipments)
+                ->unique('id')
+                ->filter(function (Shipment $shipment) use ($store): bool {
+                    $members = $shipment->includedSellerOrders();
+
+                    return $members->isNotEmpty()
+                        && $members->every(fn (SellerOrder $member): bool => (int) $member->store_id === (int) $store->id
+                            && $member->status === 'ready_for_pickup'
+                            && $member->order?->status !== 'cancelled');
+                })
+                ->values();
+
+            $parcelIds = $eligibleShipments
+                ->flatMap(fn (Shipment $shipment) => $shipment->parcels)
+                ->pluck('id')
+                ->map(fn ($id): int => (int) $id)
+                ->unique()
+                ->values();
+            $rejectedProviderIdsByShipment = collect();
+
+            if ($parcelIds->isNotEmpty()) {
+                $rejectedRequests = PickupRequest::query()
+                    ->where('store_id', $store->id)
+                    ->where('status', 'cancelled')
+                    ->whereNotNull('cancellation_reason')
+                    ->whereHas('parcels', fn ($query) => $query->whereIn('parcels.id', $parcelIds))
+                    ->with(['parcels' => fn ($query) => $query
+                        ->whereIn('parcels.id', $parcelIds)
+                        ->with('shipment:id')])
+                    ->get(['id', 'logistics_profile_id']);
+
+                foreach ($rejectedRequests as $rejectedRequest) {
+                    foreach ($rejectedRequest->parcels as $parcel) {
+                        $shipmentId = (int) $parcel->shipment_id;
+                        $rejectedProviderIdsByShipment->put(
+                            $shipmentId,
+                            $rejectedProviderIdsByShipment->get($shipmentId, collect())
+                                ->push((int) $rejectedRequest->logistics_profile_id)
+                                ->unique()
+                                ->values(),
+                        );
+                    }
+                }
+            }
+
+            $eligibleOrders = $eligibleShipments
+                ->map(function (Shipment $shipment) use ($catalog, $providerOptions, $sellerProfile, $fulfillment, $rejectedProviderIdsByShipment, &$eligibleProviderOptions): ?array {
+                    $sellerOrders = $shipment->includedSellerOrders(withItems: true);
+                    $primarySellerOrder = $sellerOrders->firstWhere('id', (int) $shipment->seller_order_id)
+                        ?? $sellerOrders->first();
+
+                    if (! $primarySellerOrder || ! $shipment->logisticsProfile) {
+                        return null;
+                    }
+
+                    $quote = (array) ($primarySellerOrder?->shipping_quote ?? []);
+                    $parcels = $shipment->parcels;
                     $weight = $parcels->isNotEmpty()
                         ? $parcels->sum(fn (Parcel $parcel): float => (float) $parcel->weight_kg)
                         : ($quote['actual_weight_kg'] ?? null);
-                    $order = $sellerOrder->order;
+                    $order = $primarySellerOrder?->order;
                     $packages = $parcels->count();
+                    $rejectedProviderIds = $rejectedProviderIdsByShipment
+                        ->get((int) $shipment->id, collect())
+                        ->all();
+                    $candidateOptions = $providerOptions;
+
+                    if (! in_array((int) $shipment->logistics_profile_id, $candidateOptions->pluck('id')->map(fn ($id): int => (int) $id)->all(), true)) {
+                        $currentProvider = $fulfillment->activeProviderById((int) $shipment->logistics_profile_id);
+
+                        if ($currentProvider && $rejectedProviderIds === []) {
+                            $candidateOptions = $candidateOptions->prepend(
+                                $fulfillment->providerOptionForPickupAddress($sellerProfile->pickupAddress, $currentProvider),
+                            );
+                        }
+                    }
+
+                    $allowedProviderOptions = $rejectedProviderIds === []
+                        ? $candidateOptions->where('id', (int) $shipment->logistics_profile_id)->values()
+                        : $candidateOptions->reject(fn (array $option): bool => in_array((int) $option['id'], $rejectedProviderIds, true))->values();
+
+                    if ($allowedProviderOptions->isEmpty()) {
+                        return null;
+                    }
+
+                    $eligibleProviderOptions = $eligibleProviderOptions->concat($allowedProviderOptions);
 
                     return [
-                        'id' => (int) $sellerOrder->id,
-                        'order' => '#'.$sellerOrder->seller_order_no,
+                        'id' => (int) ($primarySellerOrder?->id ?? 0),
+                        'shipment_id' => (int) $shipment->id,
+                        'order' => $sellerOrders->pluck('seller_order_no')->map(fn ($number): string => '#'.$number)->implode(', '),
                         'packages' => $packages,
                         'weight' => is_numeric($weight) && (float) $weight > 0
                             ? number_format((float) $weight, 3).' kg actual weight'
                             : 'Package details unavailable',
-                        'waybill' => $shipment?->waybill?->waybill_no ?? 'Waybill unavailable',
+                        'waybill' => $shipment->waybill?->waybill_no ?? 'Waybill unavailable',
                         'destination' => $order
                             ? implode(', ', array_filter([
                                 $order->city_municipality,
                                 $order->province,
                             ]))
                             : 'Destination unavailable',
+                        'logistics_profile_id' => (int) $shipment->logistics_profile_id,
+                        'provider_name' => (string) $shipment->logisticsProfile->display_name,
+                        'allowed_provider_ids' => $allowedProviderOptions->pluck('id')->map(fn ($id): int => (int) $id)->all(),
+                        'rejected_provider_ids' => $rejectedProviderIds,
                     ];
-                });
+                })
+                ->filter()
+                ->values();
+
+            $providerOptions = $providerOptions
+                ->concat($eligibleProviderOptions)
+                ->unique('id')
+                ->values();
         }
 
         $pickupRequests = PickupRequest::query()
@@ -834,6 +1182,10 @@ class SellerWorkflowController extends Controller
                 'activeAssignment.riderProfile.currentZone.sortingCenter',
                 'activeAssignment.riderProfile.homeSortingCenter',
                 'parcels.waybill',
+                'parcels.shipment.sellerOrders.store',
+                'parcels.shipment.sellerOrders.items.product.images.variant',
+                'parcels.shipment.sellerOrders.items.variant',
+                'parcels.shipment.sellerOrder.store',
                 'parcels.shipment.sellerOrder.items.product.images.variant',
                 'parcels.shipment.sellerOrder.items.variant',
             ])
@@ -843,12 +1195,12 @@ class SellerWorkflowController extends Controller
         $requests = $pickupRequests
             ->map(function (PickupRequest $pickupRequest) use ($catalog): array {
                 $parcels = $pickupRequest->parcels
-                    ->filter(fn ($parcel): bool => (int) $parcel->shipment?->logistics_profile_id === (int) $pickupRequest->logistics_profile_id
-                        && (int) $parcel->shipment?->sellerOrder?->store_id === (int) $pickupRequest->store_id)
+                    ->filter(fn ($parcel): bool => (int) $parcel->shipment?->sellerOrder?->store_id === (int) $pickupRequest->store_id)
                     ->values();
                 $sellerOrders = $parcels
-                    ->map(fn ($parcel) => $parcel->shipment?->sellerOrder)
-                    ->filter()
+                    ->flatMap(fn ($parcel) => $parcel->shipment?->purpose === 'outbound'
+                        ? $parcel->shipment->includedSellerOrders(withItems: true)
+                        : collect([$parcel->shipment?->sellerOrder])->filter())
                     ->unique('id')
                     ->values();
                 [$status, $statusKey] = $this->sellerPickupStatus($pickupRequest);
@@ -884,6 +1236,7 @@ class SellerWorkflowController extends Controller
                     'instructions' => $pickupRequest->seller_instructions ?: 'No pickup instructions.',
                     'status' => $status,
                     'status_key' => $statusKey,
+                    'cancellation_reason' => $pickupRequest->cancellation_reason,
                 ];
             })
             ->values();
@@ -894,6 +1247,7 @@ class SellerWorkflowController extends Controller
             'eligibleOrders' => $eligibleOrders->all(),
             'requests' => $requests->all(),
             'provider' => $provider,
+            'providerOptions' => $providerOptions,
             'providerError' => $providerError,
             'pickupAddress' => $this->sellerPickupAddressLabel($sellerProfile->pickupAddress),
             'pickupPhone' => $sellerProfile->pickupAddress?->phone,
@@ -982,12 +1336,15 @@ class SellerWorkflowController extends Controller
         $shipments = Shipment::query()
             ->where('purpose', 'outbound')
             ->whereIn('status', $this->trackedShipmentStatuses())
-            ->whereHas('sellerOrder', fn ($query) => $query->where('store_id', $storeId))
+            ->whereHas('sellerOrders', fn ($query) => $query->where('store_id', $storeId))
             ->with([
                 'waybill',
                 'sellerOrder.order.buyer',
                 'sellerOrder.items.product.images.variant',
                 'sellerOrder.items.variant',
+                'sellerOrders.order.buyer',
+                'sellerOrders.items.product.images.variant',
+                'sellerOrders.items.variant',
                 'parcels.pickupRequests.latestAssignment.riderProfile.user',
                 'parcels.dispatchBatches' => fn ($query) => $query
                     ->where('dispatch_batches.status', '!=', 'cancelled')
@@ -1090,10 +1447,15 @@ class SellerWorkflowController extends Controller
         SellerOrderTrackingService $tracking,
         BuyerCatalogService $catalog,
     ): array {
-        $sellerOrder = $shipment->sellerOrder;
+        $includedSellerOrders = $shipment->includedSellerOrders(withItems: true);
+        $sellerOrder = $includedSellerOrders->first(
+            fn (SellerOrder $included): bool => (int) $included->id === (int) $shipment->seller_order_id,
+        ) ?? $shipment->sellerOrder;
         $order = $sellerOrder?->order;
         $waybillNo = (string) ($shipment->waybill?->waybill_no ?: $shipment->shipment_no);
-        $orderLabel = $sellerOrder ? '#'.$sellerOrder->seller_order_no : 'Order unavailable';
+        $orderLabel = $includedSellerOrders->isNotEmpty()
+            ? $includedSellerOrders->pluck('seller_order_no')->map(fn ($number): string => '#'.$number)->implode(' · ')
+            : ($sellerOrder ? '#'.$sellerOrder->seller_order_no : 'Order unavailable');
         $customer = (string) ($order?->recipient_name ?: $order?->buyer?->name ?: 'Recipient');
         $destination = implode(', ', array_filter([
             $order?->city_municipality,
@@ -1109,7 +1471,9 @@ class SellerWorkflowController extends Controller
         // Parcel identity from the immutable purchase snapshot: the cover
         // item's image plus the item count. Never fabricated when the order
         // has no items.
-        $items = $sellerOrder?->items ?? collect();
+        $items = $includedSellerOrders->flatMap(fn (SellerOrder $included) => $included->items)
+            ->unique('id')
+            ->values();
         $coverItem = $items->first();
         $coverName = $coverItem
             ? (trim((string) $coverItem->product_name) ?: 'Unnamed product')

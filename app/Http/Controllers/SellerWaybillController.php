@@ -58,6 +58,9 @@ class SellerWaybillController extends Controller
                 'shipment.sellerOrder.store',
                 'shipment.sellerOrder.items.product.images.variant',
                 'shipment.sellerOrder.items.variant',
+                'shipment.sellerOrders.order',
+                'shipment.sellerOrders.items.product.images.variant',
+                'shipment.sellerOrders.items.variant',
                 'shipment.logisticsProfile',
                 'shipment.originAddress' => fn ($query) => $query->withTrashed(),
                 'parcels.pickupRequests',
@@ -129,6 +132,7 @@ class SellerWaybillController extends Controller
                 ->with([
                     'shipment.sellerOrder.order.buyer',
                     'shipment.sellerOrder.store',
+                    'shipment.sellerOrders.order',
                     'shipment.originAddress' => fn ($query) => $query->withTrashed(),
                     'parcels',
                 ])
@@ -150,7 +154,8 @@ class SellerWaybillController extends Controller
                     [],
                     [
                         'waybill_no' => $waybill->waybill_no,
-                        'seller_order_no' => $waybill->shipment->sellerOrder->seller_order_no,
+                        'seller_order_no' => $waybill->shipment->includedSellerOrders()->pluck('seller_order_no')->implode(', '),
+                        'seller_order_nos' => $waybill->shipment->includedSellerOrders()->pluck('seller_order_no')->values()->all(),
                     ],
                     'info',
                     $request,
@@ -213,7 +218,8 @@ class SellerWaybillController extends Controller
                 ['print_count' => $oldCount],
                 [
                     'waybill_no' => $record->waybill_no,
-                    'seller_order_no' => $record->shipment->sellerOrder->seller_order_no,
+                    'seller_order_no' => $record->shipment->includedSellerOrders()->pluck('seller_order_no')->implode(', '),
+                    'seller_order_nos' => $record->shipment->includedSellerOrders()->pluck('seller_order_no')->values()->all(),
                     'print_count' => $newCount,
                     'printed_at' => $printedAt->toIso8601String(),
                 ],
@@ -229,7 +235,7 @@ class SellerWaybillController extends Controller
     {
         return Waybill::query()->whereHas('shipment', fn (Builder $shipments) => $shipments
             ->where('purpose', 'outbound')
-            ->whereHas('sellerOrder', fn (Builder $sellerOrders) => $sellerOrders->where('store_id', $storeId)));
+            ->whereHas('sellerOrders', fn (Builder $sellerOrders) => $sellerOrders->where('store_id', $storeId)));
     }
 
     private function applyWaybillSearch(Builder $query, string $search): Builder
@@ -255,7 +261,7 @@ class SellerWaybillController extends Controller
                             ->orWhereHas('logisticsProfile', fn (Builder $logistics) => $logistics
                                 ->where('display_name', 'like', $like)
                                 ->orWhere('legal_name', 'like', $like))
-                            ->orWhereHas('sellerOrder', function (Builder $sellerOrders) use ($like): void {
+                             ->orWhereHas('sellerOrders', function (Builder $sellerOrders) use ($like): void {
                                 $sellerOrders->where(function (Builder $sellerOrderMatch) use ($like): void {
                                     $sellerOrderMatch->where('seller_order_no', 'like', $like)
                                         ->orWhere('status', 'like', $like)
@@ -375,6 +381,8 @@ class SellerWaybillController extends Controller
         $shipment = $waybill->shipment;
         $sellerOrder = $shipment->sellerOrder;
         $order = $sellerOrder->order;
+        $includedSellerOrders = $shipment->sellerOrders;
+        $includedItems = $includedSellerOrders->flatMap(fn ($included) => $included->items)->unique('id')->values();
         $pickupRequest = $waybill->parcels
             ->flatMap(fn ($parcel) => $parcel->pickupRequests)
             ->sortByDesc('created_at')
@@ -404,17 +412,23 @@ class SellerWaybillController extends Controller
 
         return [
             'id' => (int) $waybill->id,
-            'order' => (string) $sellerOrder->seller_order_no,
+            'order' => $includedSellerOrders->pluck('seller_order_no')->implode(' · '),
+            'seller_orders' => $includedSellerOrders
+                ->pluck('seller_order_no')
+                ->map(fn ($number): string => (string) $number)
+                ->values()
+                ->all(),
+            'seller_order_count' => $includedSellerOrders->count(),
+            'marketplace_orders' => $includedSellerOrders->map(fn ($included): string => (string) ($included->order?->order_no ?? ''))->filter()->unique()->implode(' · '),
             'customer' => (string) ($order->recipient_name ?: $order->buyer?->name ?: 'Recipient'),
-            'products' => $sellerOrder->items
-                ->take(3)
+            'products' => $includedItems
                 ->map(fn ($item): array => [
                     'name' => (string) ($item->product_name ?: $item->product?->name ?: 'Product'),
                     'image_url' => $catalog->orderItemImageUrl($item),
                 ])
                 ->values()
                 ->all(),
-            'product_count' => $sellerOrder->items->count(),
+            'product_count' => $includedItems->count(),
             'tracking' => (string) $waybill->waybill_no,
             'courier' => (string) ($shipment->logisticsProfile?->display_name ?? 'Bearly Logistics'),
             'packages' => $parcelCount,

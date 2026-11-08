@@ -636,7 +636,14 @@ class RefundCashPayoutService
         return [
             'codCollections' => CodCashCollection::query()
                 ->where('logistics_profile_id', $provider->id)
-                ->with(['order', 'sellerOrder.store', 'riderProfile.user'])
+                ->with([
+                    'order',
+                    'sellerOrder.store',
+                    'allocations.order',
+                    'allocations.payment',
+                    'allocations.sellerOrder.store',
+                    'riderProfile.user',
+                ])
                 ->whereIn('status', ['collected', 'disputed', 'received_by_logistics'])
                 ->orderBy('collected_at')
                 ->get(),

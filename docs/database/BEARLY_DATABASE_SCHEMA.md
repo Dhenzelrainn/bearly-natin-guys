@@ -914,6 +914,27 @@ Finance-verified bank-transfer or GCash destinations owned by one Logistics prof
 - `parcels_status_current_sorting_center_id_index` (status,current_sorting_center_id) — index.
 - `parcels_waybill_id_piece_sequence_unique` (waybill_id,piece_sequence) — unique.
 
+## `parcel_items`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `parcel_id` | `bigint unsigned` | NO | — | MUL |
+| `order_item_id` | `bigint unsigned` | NO | — | MUL |
+| `quantity` | `int unsigned` | NO | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `parcel_id` → `parcels.id`; update NO ACTION, delete RESTRICT.
+- `order_item_id` → `order_items.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `parcel_items_order_item_id_index` (order_item_id) — index.
+- `parcel_items_parcel_id_order_item_id_unique` (parcel_id,order_item_id) — unique.
+
 ## `payments`
 
 | Column | MySQL type | Null | Default | Key |
@@ -997,6 +1018,33 @@ Each outbound COD shipment has at most one Rider collection record. `amount_due_
 ## `cod_cash_collection_events` (added by `2026_10_11_000001_create_cod_cash_and_refund_cash_workflows`)
 
 Append-only custody history. Contains the collection ID, event type, from/to roles and optional users, actor, integer-centavo amount, reference, note, optional JSON metadata, occurrence timestamp, and creation timestamp. Collection deletion is RESTRICT; actor/from/to user deletion sets nullable actor references to NULL. Indexed by (`cod_cash_collection_id`,`occurred_at`).
+
+## `cod_cash_collection_allocations` (added by `2026_11_07_000003_add_seller_order_shipment_consolidation`)
+
+Immutable per-Seller-Order/payment due and cash allocation for one aggregate COD custody record. `amount_collected_minor` and `amount_reconciled_minor` remain null until the corresponding exact stage is confirmed; a discrepancy must not be silently apportioned as a successful payment. Existing one-Seller-Order collections are backfilled as one allocation. The collection header's `payment_id`, `order_id`, and `seller_order_id` remain the legacy/primary allocation references.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `cod_cash_collection_id` | `bigint unsigned` | NO | — | MUL |
+| `payment_id` | `bigint unsigned` | NO | — | MUL |
+| `order_id` | `bigint unsigned` | NO | — | MUL |
+| `seller_order_id` | `bigint unsigned` | NO | — | MUL |
+| `amount_due_minor` | `bigint unsigned` | NO | — |  |
+| `amount_collected_minor` | `bigint unsigned` | YES | — |  |
+| `amount_reconciled_minor` | `bigint unsigned` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `cod_cash_collection_id` → `cod_cash_collections.id`; `payment_id` → `payments.id`; `order_id` → `orders.id`; `seller_order_id` → `seller_orders.id`; all delete RESTRICT.
+
+**Indexes**
+
+- `cod_cash_allocations_collection_order_unique` (`cod_cash_collection_id`,`seller_order_id`) — unique.
+- `cod_cash_allocations_payment_order_idx` (`payment_id`,`seller_order_id`) — index.
+- `cod_cash_allocations_marketplace_order_idx` (`order_id`,`payment_id`) — index.
 
 ## `pickup_assignments`
 
@@ -1125,6 +1173,8 @@ Append-only custody history. Contains the collection ID, event type, from/to rol
 | `code` | `varchar(50)` | NO | — | UNI |
 | `title` | `varchar(180)` | NO | — |  |
 | `category` | `varchar(80)` | NO | — |  |
+| `scope` | `varchar(40)` | NO | platform | MUL |
+| `scope_key` | `varchar(100)` | YES | — | MUL |
 | `status` | `varchar(20)` | NO | active |  |
 | `created_at` | `timestamp` | YES | — |  |
 | `updated_at` | `timestamp` | YES | — |  |
@@ -1132,6 +1182,7 @@ Append-only custody history. Contains the collection ID, event type, from/to rol
 **Indexes**
 
 - `policies_code_unique` (code) — unique.
+- `policies_scope_key_status_index` (scope,scope_key,status) — index.
 
 ## `policy_versions`
 
@@ -1142,6 +1193,9 @@ Append-only custody history. Contains the collection ID, event type, from/to rol
 | `version` | `varchar(20)` | NO | — |  |
 | `body` | `longtext` | NO | — |  |
 | `summary` | `text` | YES | — |  |
+| `title` | `varchar(180)` | YES | — |  |
+| `category` | `varchar(80)` | YES | — |  |
+| `source_reference` | `text` | YES | — |  |
 | `status` | `varchar(20)` | NO | draft |  |
 | `created_by` | `bigint unsigned` | YES | — | MUL |
 | `effective_at` | `timestamp` | YES | — |  |
@@ -1158,6 +1212,28 @@ Append-only custody history. Contains the collection ID, event type, from/to rol
 
 - `policy_versions_created_by_foreign` (created_by) — index.
 - `policy_versions_policy_id_version_unique` (policy_id,version) — unique.
+
+## `shipping_policy_settings`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `provider_key` | `varchar(100)` | NO | — | UNI |
+| `manager_logistics_profile_id` | `bigint unsigned` | YES | — | MUL |
+| `updated_by` | `bigint unsigned` | YES | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `manager_logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete SET NULL.
+- `updated_by` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `shipping_policy_settings_provider_key_unique` (provider_key) — unique.
+- `sps_manager_profile_fk` (manager_logistics_profile_id) — index.
+- `sps_updated_by_fk` (updated_by) — index.
 
 ## `product_compliance_check_matches`
 
@@ -1654,6 +1730,8 @@ Append-only refund custody history with payout ID, event type, from/to statuses,
 | `work_date` | `date` | YES | — | MUL |
 | `size_class_snapshot` | `varchar(20)` | YES | — |  |
 | `rate_minor` | `bigint unsigned` | YES | — |  |
+| `worked_seconds_snapshot` | `int unsigned` | YES | — |  |
+| `daily_cap_minor_snapshot` | `bigint unsigned` | YES | — |  |
 
 **Foreign keys**
 
@@ -1771,7 +1849,7 @@ Unique earning allocation within a payout batch. External payment details and th
 
 ## `rider_shifts` (added by `2026_11_03_000001_add_flexible_rider_assignment_and_payouts`)
 
-Local Rider attendance is report-only and does not gate existing per-job earnings. Courier daily compensation requires a closed check-in/out shift and a run assigned during that shift that is completed after destination Logistics accepts the full manifest; the ₱650 (65,000-centavo) earning is linked to the work-date shift and completed run. One Courier daily row is allowed per Rider/work date, and actual payout remains in the existing reviewed payout batch rather than a wallet.
+Both Local Riders and Couriers must scan their owning Logistics provider's short-lived QR challenge for check-in and check-out. `rider_attendance_scans` stores server-timestamped transition proof and generation metadata; station rows retain only the active challenge SHA-256 hash, never the raw QR token. Local Rider attendance remains reporting-only and does not gate per-job earnings. Courier compensation is ₱81.25/hour (8,125 centavos), rounded from elapsed seconds and capped at ₱650/28,800 paid seconds per Asia/Manila work date. Fully QR-proven closed shifts aggregate into one `courier_daily` ledger row per Rider/PHT date, only when a run assigned during a closed shift is completed after destination Logistics accepts the full manifest. The hourly rate, paid seconds, and daily cap are saved snapshots; historical rows with null hourly snapshots remain unchanged. Payout is blocked while a same-date shift is open, and additional shifts are blocked after the day's earning is batched or paid. Actual payout remains in the existing reviewed payout batch rather than a wallet.
 
 | Column | MySQL type | Null | Default | Key |
 |---|---|---:|---|---|
@@ -1794,6 +1872,85 @@ Local Rider attendance is report-only and does not gate existing per-job earning
 - `rider_shifts_rider_checked_in_idx` (rider_profile_id,checked_in_at) — index.
 - `rider_shifts_rider_profile_id_foreign` (rider_profile_id) — index.
 
+## `rider_attendance_qr_stations` (added by `2026_11_07_000001_add_qr_rider_attendance_and_hourly_courier_pay`)
+
+One provider-scoped row holds the currently valid rotating attendance challenge. `token_hash` is SHA-256 only; raw QR payloads are returned to the authenticated Logistics station client and are not persisted. A newly issued generation replaces the previous one and expires after the configured short TTL.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | UNI |
+| `token_hash` | `char(64)` | YES | — |  |
+| `generation` | `bigint unsigned` | NO | 0 |  |
+| `expires_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `rider_attendance_qr_stations_logistics_profile_id_foreign` (logistics_profile_id) — index.
+- `rider_attendance_qr_stations_logistics_profile_id_unique` (logistics_profile_id) — unique.
+
+## `rider_attendance_scans` (added by `2026_11_07_000001_add_qr_rider_attendance_and_hourly_courier_pay`)
+
+Immutable successful QR redemption records. The generation is unique per station/Rider, allowing one check-in or check-out transition per code generation while the same provider station can serve multiple Riders. No raw token or QR payload is stored.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `station_id` | `bigint unsigned` | NO | — | MUL |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `rider_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `rider_shift_id` | `bigint unsigned` | NO | — | MUL |
+| `generation` | `bigint unsigned` | NO | — |  |
+| `scan_type` | `varchar(20)` | NO | — |  |
+| `scanned_at` | `timestamp` | NO | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `station_id` → `rider_attendance_qr_stations.id`; update NO ACTION, delete RESTRICT.
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete RESTRICT.
+- `rider_shift_id` → `rider_shifts.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `rider_attendance_scans_station_generation_rider_unique` (station_id,generation,rider_profile_id) — unique.
+- `rider_attendance_scans_rider_scanned_idx` (rider_profile_id,scanned_at) — index.
+- `rider_attendance_scans_shift_type_idx` (rider_shift_id,scan_type) — index.
+
+## `rider_attendance_absences` (added by `2026_11_07_000002_create_rider_attendance_absences`)
+
+Immutable manual absence audit for the owning Logistics provider's active, approved Local Rider/Courier roster. One row is allowed per Rider and PHT work date. Logistics can mark absent starting at 11:59 PM PHT only when there is no shift check-in for that date. The marking user and UTC action instant are retained; a later QR check-in is displayed as late and does not remove the absence.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `rider_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `work_date` | `date` | NO | — |  |
+| `marked_by_user_id` | `bigint unsigned` | NO | — | MUL |
+| `marked_at` | `timestamp` | NO | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete RESTRICT.
+- `marked_by_user_id` → `users.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `rider_attendance_absences_rider_date_unique` (rider_profile_id,work_date) — unique.
+- `rider_attendance_absences_provider_date_idx` (logistics_profile_id,work_date) — index.
+
 ## `shipping_settlements`
 
 The `settlement_type` is `outbound` or `return`. Outbound rows use
@@ -1809,6 +1966,7 @@ the Rider earning remains pending until then. Returns remain on their existing
 40/60 split even when transferred. Existing settlement rows are not backfilled
 or rewritten by the inter-hub migration.
 The additive `2026_10_30_000001_add_logistics_payout_destinations` migration adds a nullable verified payout-account link and masked remittance destination snapshots; legacy remittance rows remain null.
+For a consolidated outbound Shipment, the settlement header retains its legacy/primary `seller_order_id` and aggregate totals; `shipping_settlement_allocations` preserves each included Seller Order's immutable checkout shipping-fee, buyer-paid, platform-subsidy, funding-source, zone, and share snapshots. Return settlements continue to use the existing return workflow and do not receive outbound allocations.
 
 | Column | MySQL type | Null | Default | Key |
 |---|---|---:|---|---|
@@ -1871,6 +2029,35 @@ The additive `2026_10_30_000001_add_logistics_payout_destinations` migration add
 - `shipping_settlements_return_request_id_unique` (return_request_id) — unique.
 - `shipping_settlements_settlement_no_unique` (settlement_no) — unique.
 - `shipping_settlements_shipment_id_unique` (shipment_id) — unique.
+
+## `shipping_settlement_allocations` (added by `2026_11_07_000003_add_seller_order_shipment_consolidation`)
+
+One immutable outbound fee/share snapshot per Seller Order included in a shared shipment settlement. The migration backfills one allocation for each existing outbound settlement. Per-order original fee must equal buyer-paid shipping plus platform subsidy; fee and share columns sum to the settlement header's aggregate totals. Amounts are integer centavos.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `shipping_settlement_id` | `bigint unsigned` | NO | — | MUL |
+| `seller_order_id` | `bigint unsigned` | NO | — | MUL |
+| `original_shipping_fee_minor` | `bigint unsigned` | NO | — |  |
+| `buyer_paid_shipping_fee_minor` | `bigint unsigned` | NO | — |  |
+| `platform_shipping_subsidy_minor` | `bigint unsigned` | NO | — |  |
+| `shipping_funding_source` | `varchar(40)` | NO | — |  |
+| `zone_level` | `tinyint unsigned` | NO | — |  |
+| `origin_logistics_share_minor` | `bigint unsigned` | NO | 0 |  |
+| `logistics_share_minor` | `bigint unsigned` | NO | — |  |
+| `rider_share_minor` | `bigint unsigned` | NO | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `shipping_settlement_id` → `shipping_settlements.id`; `seller_order_id` → `seller_orders.id`; delete RESTRICT.
+
+**Indexes**
+
+- `shipping_settlement_allocations_pair_unique` (`shipping_settlement_id`,`seller_order_id`) — unique.
+- `shipping_settlement_allocations_order_idx` (`seller_order_id`,`shipping_settlement_id`) — index.
 
 ## `shipping_settlement_origin_remittances`
 
@@ -1981,6 +2168,34 @@ may see the row. Rows older than three minutes are stale for recommendations.
 
 - `rider_locations_last_seen_at_index` (last_seen_at) — index.
 - `rider_locations_rider_profile_id_unique` (rider_profile_id) — unique.
+
+## `logistics_locations` (added by `2026_11_08_000001_create_logistics_locations_table`)
+
+Stores only the latest explicitly shared foreground device location for a
+Logistics provider. This is not the Sorting Center address pin and is not a
+location-history table. The owning provider's internal Logistics maps may show
+fresh rows (180 seconds); coarse readings remain labeled approximate and are
+not used for distance, routing, or assignment.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | UNI |
+| `latitude` | `decimal(10,7)` | NO | — |  |
+| `longitude` | `decimal(10,7)` | NO | — |  |
+| `accuracy_meters` | `decimal(9,2)` | YES | — |  |
+| `last_seen_at` | `timestamp` | NO | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `logistics_locations_last_seen_at_index` (`last_seen_at`) — index.
+- `logistics_locations_logistics_profile_id_unique` (`logistics_profile_id`) — unique.
 
 ## `rider_vehicle_change_requests` (added by `2026_11_01_000001_add_courier_linehaul_workflows`)
 
@@ -2554,6 +2769,8 @@ Money columns are integer centavos. `seller_bank_accounts.account_number` and `l
 
 ## `shipments`
 
+`shipments.seller_order_id` remains the legacy/primary Seller Order reference. For a consolidated outbound Shipment, use the complete `shipment_seller_orders` membership relation rather than treating this column as the complete set.
+
 | Column | MySQL type | Null | Default | Key |
 |---|---|---:|---|---|
 | `id` | `bigint unsigned` | NO | — | PRI |
@@ -2593,6 +2810,27 @@ Money columns are integer centavos. `seller_bank_accounts.account_number` and `l
 - `shipments_origin_address_id_foreign` (origin_address_id) — index.
 - `shipments_seller_order_id_status_index` (seller_order_id,status) — index.
 - `shipments_shipment_no_unique` (shipment_no) — unique.
+
+## `shipment_seller_orders` (added by `2026_11_07_000003_add_seller_order_shipment_consolidation`)
+
+Shipment membership for all Seller Orders fulfilled by the same physical outbound Shipment/Waybill. The migration backfills the current primary Seller Order for every existing Shipment; it does not rewrite shipments, Seller Orders, or financial snapshots. Application validation limits new consolidated outbound shipments to compatible Seller Orders from the same Store/Buyer and same Product family.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `shipment_id` | `bigint unsigned` | NO | — | MUL |
+| `seller_order_id` | `bigint unsigned` | NO | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `shipment_id` → `shipments.id`; `seller_order_id` → `seller_orders.id`; delete RESTRICT.
+
+**Indexes**
+
+- `shipment_seller_orders_pair_unique` (`shipment_id`,`seller_order_id`) — unique.
+- `shipment_seller_orders_order_idx` (`seller_order_id`,`shipment_id`) — index.
 
 ## `shipment_transfers`
 

@@ -269,10 +269,12 @@ class RiderDeliveryHistoryService
                 ->with([
                     'sellerOrder.items.product.images.variant',
                     'sellerOrder.items.variant',
+                    'sellerOrders.items.product.images.variant',
+                    'sellerOrders.items.variant',
                 ])
                 ->get()
                 ->mapWithKeys(function (Shipment $shipment) use ($catalog): array {
-                    $products = ($shipment->sellerOrder?->items ?? collect())
+                    $products = $shipment->includedOrderItems()
                         ->map(fn (OrderItem $item): array => [
                             'name' => $item->product_name ?: 'Unnamed product',
                             'variant' => trim((string) $item->variant_name),

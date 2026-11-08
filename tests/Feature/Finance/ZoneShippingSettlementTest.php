@@ -5,6 +5,7 @@ namespace Tests\Feature\Finance;
 use App\Events\RiderShippingEarningUpdated;
 use App\Models\Address;
 use App\Models\CodCashCollection;
+use App\Models\CodCashCollectionAllocation;
 use App\Models\DeliveryAttempt;
 use App\Models\LogisticsPayoutAccount;
 use App\Models\LogisticsProfile;
@@ -395,6 +396,14 @@ class ZoneShippingSettlementTest extends TestCase
             'remitted_to_finance_at' => now()->subDays(8),
             'remitted_to_finance_by' => $scenario['provider']['user']->id,
         ]);
+        $allocation = CodCashCollectionAllocation::query()->create([
+            'cod_cash_collection_id' => $collection->id,
+            'payment_id' => $scenario['payment']->id,
+            'order_id' => $scenario['order']->id,
+            'seller_order_id' => $scenario['sellerOrder']->id,
+            'amount_due_minor' => $scenario['shipment']->cod_amount_minor,
+            'amount_collected_minor' => $scenario['shipment']->cod_amount_minor,
+        ]);
 
         $service = app(ShippingSettlementService::class);
         $service->materializeEligibleSettlements();
@@ -407,6 +416,9 @@ class ZoneShippingSettlementTest extends TestCase
             'finance_reference' => 'BFR-2026-COD-GATE',
             'reconciled_at' => now()->subDays(7),
             'reconciled_by' => $this->user('admin', 'COD Gate Finance')->id,
+        ]);
+        $allocation->update([
+            'amount_reconciled_minor' => $scenario['shipment']->cod_amount_minor,
         ]);
 
         $service->materializeEligibleSettlements();

@@ -5,9 +5,11 @@ namespace App\Services;
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Models\CodCashCollection;
+use App\Models\CodCashCollectionAllocation;
 use App\Models\CodCashCollectionEvent;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Models\SellerOrder;
 use App\Models\Shipment;
 use App\Models\User;
 use App\Notifications\WorkflowNotification;
@@ -33,7 +35,6 @@ class CodCashCollectionService
     public function recordRiderCollection(Shipment $shipment, User $riderUser, int $actualAmountMinor): CodCashCollection
     {
         return DB::transaction(function () use ($shipment, $riderUser, $actualAmountMinor): CodCashCollection {
-            $lockedShipment = Shipment::query()->whereKey($shipment->id)->lockForUpdate()->firstOrFail();
             $rider = $riderUser->riderProfile()->first();
 
             if ($riderUser->role !== UserRole::Rider->value
@@ -42,6 +43,50 @@ class CodCashCollectionService
                 || $rider->verification_status !== 'approved') {
                 throw new AuthorizationException('An active, approved Rider is required to record COD cash.');
             }
+
+            // Match the commerce workflow lock order: marketplace Orders,
+            // Seller Orders, then Shipment and Payment. Locking Shipment first
+            // can deadlock with checkout/fulfillment paths that start at Order.
+            $shipmentStub = Shipment::query()->whereKey($shipment->id)->firstOrFail();
+            $memberStubs = $shipmentStub->sellerOrders()
+                ->orderBy('seller_orders.id')
+                ->get(['seller_orders.id', 'seller_orders.order_id']);
+            if ($memberStubs->isEmpty()) {
+                throw new ConflictHttpException('This Shipment has no Seller Order membership to allocate COD cash.');
+            }
+
+            $orderIds = $memberStubs->pluck('order_id')->unique()->sort()->values();
+            $orders = Order::query()
+                ->whereIn('id', $orderIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+            if ($orders->count() !== $orderIds->count()) {
+                throw new ConflictHttpException('A marketplace order in this Shipment is unavailable.');
+            }
+
+            $sellerOrderIds = $memberStubs->pluck('id')->unique()->sort()->values();
+            $sellerOrders = SellerOrder::query()
+                ->whereIn('id', $sellerOrderIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+            if ($sellerOrders->count() !== $sellerOrderIds->count()) {
+                throw new ConflictHttpException('A Seller Order in this Shipment is unavailable.');
+            }
+
+            $lockedShipment = Shipment::query()->whereKey($shipment->id)->lockForUpdate()->firstOrFail();
+            $lockedMemberIds = $lockedShipment->sellerOrders()
+                ->orderBy('seller_orders.id')
+                ->pluck('seller_orders.id')
+                ->map(fn ($id): int => (int) $id)
+                ->values();
+            if ($lockedMemberIds->all() !== $sellerOrderIds->map(fn ($id): int => (int) $id)->values()->all()) {
+                throw new ConflictHttpException('The Shipment membership changed while COD collection was being recorded.');
+            }
+
             if ($lockedShipment->purpose !== 'outbound' || (int) $lockedShipment->cod_amount_minor < 1) {
                 throw ValidationException::withMessages(['cod_collected_amount' => 'This delivery has no COD cash due.']);
             }
@@ -54,16 +99,51 @@ class CodCashCollectionService
                 throw ValidationException::withMessages(['cod_collected_amount' => 'Enter the actual cash collected in centavos.']);
             }
 
-            $sellerOrder = $lockedShipment->sellerOrder()->lockForUpdate()->firstOrFail();
-            $order = Order::query()->whereKey($sellerOrder->order_id)->lockForUpdate()->firstOrFail();
-            $payment = Payment::query()
-                ->where('order_id', $order->id)
+            $payments = Payment::query()
+                ->whereIn('order_id', $orderIds)
                 ->where('method', 'cod')
+                ->where('status', '!=', 'cancelled')
+                ->orderBy('id')
                 ->lockForUpdate()
-                ->first();
+                ->get()
+                ->groupBy('order_id');
+            $allocations = $sellerOrders->map(function (SellerOrder $sellerOrder) use ($orders, $payments): array {
+                $order = $orders->get($sellerOrder->order_id);
+                $orderPayments = $payments->get($sellerOrder->order_id, collect());
+                if ($orderPayments->count() > 1) {
+                    throw new ConflictHttpException('A marketplace order has more than one active COD payment.');
+                }
+                $payment = $orderPayments->first();
+                if (! $order) {
+                    throw new ConflictHttpException('A marketplace order in this Shipment is unavailable.');
+                }
+                if (! $payment) {
+                    return [
+                        'seller_order' => $sellerOrder,
+                        'order' => $order,
+                        'payment' => null,
+                        'amount_due_minor' => 0,
+                    ];
+                }
+                if (! in_array($payment->status, ['pending', 'paid'], true)) {
+                    throw new ConflictHttpException('A marketplace COD payment in this Shipment is not collectible.');
+                }
 
-            if (! $payment || ! in_array($payment->status, ['pending', 'paid'], true)) {
-                throw new ConflictHttpException('The marketplace COD payment is not collectible.');
+                return [
+                    'seller_order' => $sellerOrder,
+                    'order' => $order,
+                    'payment' => $payment,
+                    'amount_due_minor' => $this->codAmountDueMinor($sellerOrder),
+                ];
+            })->filter(fn (array $allocation): bool => $allocation['payment'] !== null
+                && $allocation['amount_due_minor'] > 0)
+                ->values();
+            if ($allocations->isEmpty()) {
+                throw new ConflictHttpException('This Shipment has no unpaid COD payment allocation.');
+            }
+            $expectedMinor = (int) $allocations->sum('amount_due_minor');
+            if ($expectedMinor !== (int) $lockedShipment->cod_amount_minor || $expectedMinor < 1) {
+                throw new ConflictHttpException('The Shipment COD total no longer matches its Seller Order payment allocations.');
             }
 
             $existing = CodCashCollection::query()
@@ -77,18 +157,19 @@ class CodCashCollectionService
                 }
                 throw new ConflictHttpException('COD cash collection has already been recorded for this shipment.');
             }
-            if ($payment->status !== 'pending') {
-                throw new ConflictHttpException('A paid COD order cannot accept a new cash collection record.');
+            if ($allocations->contains(fn (array $allocation): bool => $allocation['payment']->status !== 'pending')) {
+                throw new ConflictHttpException('A paid COD payment cannot accept a new cash collection record.');
             }
 
             $collectedAt = now();
             $discrepancyMinor = $actualAmountMinor - $expectedMinor;
+            $primary = $allocations->first();
             $collection = CodCashCollection::query()->create([
                 'collection_no' => 'COD-'.Str::upper((string) Str::ulid()),
                 'shipment_id' => $lockedShipment->id,
-                'payment_id' => $payment->id,
-                'order_id' => $order->id,
-                'seller_order_id' => $sellerOrder->id,
+                'payment_id' => $primary['payment']->id,
+                'order_id' => $primary['order']->id,
+                'seller_order_id' => $primary['seller_order']->id,
                 'logistics_profile_id' => $rider->logistics_profile_id,
                 'rider_profile_id' => $rider->id,
                 'amount_due_minor' => $expectedMinor,
@@ -98,6 +179,17 @@ class CodCashCollectionService
                 'collected_at' => $collectedAt,
                 'collected_by' => $riderUser->id,
             ]);
+
+            foreach ($allocations as $allocation) {
+                CodCashCollectionAllocation::query()->create([
+                    'cod_cash_collection_id' => $collection->id,
+                    'payment_id' => $allocation['payment']->id,
+                    'order_id' => $allocation['order']->id,
+                    'seller_order_id' => $allocation['seller_order']->id,
+                    'amount_due_minor' => $allocation['amount_due_minor'],
+                    'amount_collected_minor' => $discrepancyMinor === 0 ? $allocation['amount_due_minor'] : null,
+                ]);
+            }
 
             $this->event(
                 $collection,
@@ -117,11 +209,7 @@ class CodCashCollectionService
 
             $this->notifyCollectionRecorded($collection, $riderUser, $discrepancyMinor);
 
-            if ($discrepancyMinor === 0) {
-                $this->captureMarketplacePaymentWhenFullyCollected($order, $payment);
-            }
-
-            return $collection->fresh(['shipment', 'payment', 'events']);
+            return $collection->fresh(['shipment', 'payment', 'allocations.payment', 'allocations.sellerOrder', 'events']);
         }, attempts: 3);
     }
 
@@ -280,6 +368,71 @@ class CodCashCollectionService
                 throw new AuthorizationException('An active Admin/Finance user is required to reconcile COD cash.');
             }
 
+            $collectionStub = CodCashCollection::query()->whereKey($collectionId)->firstOrFail();
+            $allocationStubs = CodCashCollectionAllocation::query()
+                ->where('cod_cash_collection_id', $collectionId)
+                ->orderBy('order_id')
+                ->orderBy('seller_order_id')
+                ->get(['order_id', 'seller_order_id', 'payment_id']);
+            $orderIds = $allocationStubs->pluck('order_id')
+                ->push($collectionStub->order_id)
+                ->filter()
+                ->map(fn ($id): int => (int) $id)
+                ->unique()
+                ->sort()
+                ->values();
+            $orders = Order::query()
+                ->whereIn('id', $orderIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+            if ($orders->count() !== $orderIds->count()) {
+                throw new ConflictHttpException('A marketplace order in this COD collection is unavailable.');
+            }
+
+            // Finance capture may inspect other Seller Orders and outbound
+            // shipments belonging to the same marketplace Order. Lock them in
+            // the same deterministic parent-to-child order before Payment.
+            $sellerOrders = SellerOrder::query()
+                ->whereIn('order_id', $orderIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+            $sellerOrderIds = $sellerOrders->keys()->map(fn ($id): int => (int) $id)->values();
+            $shipmentIds = DB::table('shipment_seller_orders')
+                ->join('shipments', 'shipments.id', '=', 'shipment_seller_orders.shipment_id')
+                ->whereIn('shipment_seller_orders.seller_order_id', $sellerOrderIds)
+                ->where('shipments.purpose', 'outbound')
+                ->orderBy('shipments.id')
+                ->pluck('shipments.id')
+                ->map(fn ($id): int => (int) $id)
+                ->unique()
+                ->values();
+            if ($shipmentIds->isNotEmpty()) {
+                Shipment::query()
+                    ->whereIn('id', $shipmentIds)
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get(['id']);
+            }
+
+            // Match Rider collection's lock order: parent commerce rows,
+            // Shipment, Payment, collection, then allocations. Never hold the
+            // collection while waiting on a Payment that collection recording
+            // may already have locked.
+            $paymentIds = $allocationStubs->pluck('payment_id')->unique()->sort()->values();
+            $payments = Payment::query()
+                ->whereIn('id', $paymentIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+            if ($payments->count() !== $paymentIds->count()) {
+                throw new ConflictHttpException('A marketplace COD payment in this collection is unavailable.');
+            }
+
             $collection = CodCashCollection::query()->whereKey($collectionId)->lockForUpdate()->firstOrFail();
             $this->assertActualAmount($collection, $receivedAmountMinor, 'received_amount');
 
@@ -304,14 +457,39 @@ class CodCashCollectionService
                 'reconciled_at' => $now,
                 'reconciled_by' => $admin->id,
             ]);
+            $allocations = CodCashCollectionAllocation::query()
+                ->where('cod_cash_collection_id', $collection->id)
+                ->orderBy('order_id')
+                ->orderBy('seller_order_id')
+                ->lockForUpdate()
+                ->get();
+            if ($allocations->pluck('payment_id')->unique()->sort()->values()->all() !== $paymentIds->all()) {
+                throw new ConflictHttpException('The COD allocation membership changed during Finance reconciliation.');
+            }
+            if ($receivedAmountMinor === (int) $collection->amount_due_minor) {
+                foreach ($allocations as $allocation) {
+                    $allocation->update([
+                        'amount_collected_minor' => (int) $allocation->amount_due_minor,
+                        'amount_reconciled_minor' => (int) $allocation->amount_due_minor,
+                    ]);
+                }
+
+                foreach ($paymentIds as $paymentId) {
+                    $payment = $payments->get($paymentId);
+                    $order = $payment ? $orders->get($payment->order_id) : null;
+                    if ($payment && $order && $payment->method === 'cod') {
+                        $this->captureMarketplacePaymentWhenFullyCollected($order, $payment);
+                    }
+                }
+            }
             $this->event($collection, 'cash_reconciled_by_finance', 'logistics', (int) $collection->remitted_to_finance_by, 'admin', $admin->id, $admin, $receivedAmountMinor, $reference, null, $now);
             $reconciledNow = true;
 
-            return $collection->fresh(['events']);
+            return $collection->fresh(['events', 'allocations.payment', 'allocations.sellerOrder']);
         }, attempts: 3);
 
         if ($reconciledNow) {
-            $this->refreshSellerAfterFinanceReconciliation($collection);
+            $this->refreshSellersAfterFinanceReconciliation($collection);
         }
 
         return $collection;
@@ -320,7 +498,7 @@ class CodCashCollectionService
     public function assertPaymentCaptured(Order $order): void
     {
         if (! $this->hasPaymentCaptured($order)) {
-            throw new ConflictHttpException('The COD payment cannot be completed until every required Rider cash collection is recorded.');
+            throw new ConflictHttpException('The COD payment cannot be completed until Finance reconciles the exact amount due for every required cash collection.');
         }
     }
 
@@ -331,20 +509,43 @@ class CodCashCollectionService
             return false;
         }
 
-        $expectedShipmentIds = Shipment::query()
-            ->where('purpose', 'outbound')
-            ->where('cod_amount_minor', '>', 0)
-            ->whereHas('sellerOrder', fn ($query) => $query
-                ->where('order_id', $order->id)
-                ->where('status', '!=', 'cancelled'))
-            ->pluck('id');
-        $collections = CodCashCollection::query()->whereIn('shipment_id', $expectedShipmentIds)->get();
+        $sellerOrders = $order->sellerOrders()
+            ->where('status', '!=', 'cancelled')
+            ->orderBy('id')
+            ->get();
+        $codSellerOrders = $sellerOrders->filter(fn ($sellerOrder): bool => $this->codAmountDueMinor($sellerOrder) > 0);
+        if ($codSellerOrders->isEmpty()
+            || (int) $codSellerOrders->sum(fn ($sellerOrder): int => $this->codAmountDueMinor($sellerOrder)) !== (int) $payment->amount_minor) {
+            return false;
+        }
 
-        return $expectedShipmentIds->isNotEmpty()
-            && $collections->count() === $expectedShipmentIds->count()
-            && ! $collections->contains(fn (CodCashCollection $collection): bool => ! in_array($collection->status, ['collected', 'received_by_logistics', 'remitted_to_finance', 'reconciled'], true)
-                || (int) $collection->amount_due_minor !== (int) $collection->amount_collected_minor)
-            && (int) $collections->sum('amount_collected_minor') === (int) $payment->amount_minor;
+        foreach ($codSellerOrders as $sellerOrder) {
+            $shipment = $sellerOrder->shipments()
+                ->where('shipments.purpose', 'outbound')
+                ->where('shipments.cod_amount_minor', '>', 0)
+                ->first();
+            if (! $shipment) {
+                return false;
+            }
+
+            $allocation = CodCashCollectionAllocation::query()
+                ->where('seller_order_id', $sellerOrder->id)
+                ->where('payment_id', $payment->id)
+                ->whereHas('collection', fn ($query) => $query
+                    ->where('shipment_id', $shipment->id)
+                    ->where('status', 'reconciled')
+                    ->whereColumn('amount_reconciled_minor', 'amount_due_minor'))
+                ->first();
+            $due = $this->codAmountDueMinor($sellerOrder);
+            if (! $allocation
+                || (int) $allocation->amount_due_minor !== $due
+                || (int) $allocation->amount_collected_minor !== $due
+                || (int) $allocation->amount_reconciled_minor !== $due) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public function codCollectionsForFinance()
@@ -355,6 +556,11 @@ class CodCashCollectionService
                 'sellerOrder.store',
                 'sellerOrder.items.product.images.variant',
                 'sellerOrder.items.variant',
+                'allocations.order',
+                'allocations.payment',
+                'allocations.sellerOrder.store',
+                'allocations.sellerOrder.items.product.images.variant',
+                'allocations.sellerOrder.items.variant',
                 'logisticsProfile',
                 'riderProfile.user',
             ])
@@ -381,7 +587,7 @@ class CodCashCollectionService
 
         return $this->statusVersionFor(CodCashCollection::query()
             ->where('status', 'reconciled')
-            ->whereHas('sellerOrder', fn ($orders) => $orders->where('store_id', $storeId)));
+            ->whereHas('allocations.sellerOrder', fn ($orders) => $orders->where('store_id', $storeId)));
     }
 
     private function statusVersionFor(Builder $query): string
@@ -405,79 +611,105 @@ class CodCashCollectionService
         return hash('sha256', $state);
     }
 
-    private function refreshSellerAfterFinanceReconciliation(CodCashCollection $collection): void
+    private function refreshSellersAfterFinanceReconciliation(CodCashCollection $collection): void
     {
-        $collection->loadMissing('sellerOrder.store.sellerProfile.user');
-        $sellerOrder = $collection->sellerOrder;
-        $sellerProfile = $sellerOrder?->store?->sellerProfile;
-        $seller = $sellerProfile?->user;
+        $collection->loadMissing('allocations.sellerOrder.store.sellerProfile.user');
 
-        if (! $sellerOrder || ! $sellerProfile || ! $seller) {
-            return;
+        foreach ($collection->allocations as $allocation) {
+            $sellerOrder = $allocation->sellerOrder;
+            $sellerProfile = $sellerOrder?->store?->sellerProfile;
+            $seller = $sellerProfile?->user;
+
+            if (! $sellerOrder || ! $sellerProfile || ! $seller) {
+                continue;
+            }
+
+            try {
+                $this->sellerWallets->refreshForSeller($sellerProfile);
+            } catch (Throwable $exception) {
+                Log::error('Seller wallet refresh failed after Finance reconciled COD cash.', [
+                    'cod_cash_collection_id' => (int) $collection->id,
+                    'seller_profile_id' => (int) $sellerProfile->id,
+                    'exception' => $exception::class,
+                ]);
+            }
+
+            $this->notifications->send($seller, new WorkflowNotification(
+                eventKey: 'seller_cod_cash_reconciled',
+                title: 'COD cash reconciled by Finance',
+                body: "Finance reconciled the COD cash for {$sellerOrder->seller_order_no}. Earnings remain subject to the return window and other settlement checks.",
+                actionUrl: route('seller.finance.wallet'),
+                type: 'success',
+                meta: [
+                    'seller_order_id' => (int) $sellerOrder->id,
+                    'cod_collection_id' => (int) $collection->id,
+                ],
+            ));
         }
-
-        try {
-            $this->sellerWallets->refreshForSeller($sellerProfile);
-        } catch (Throwable $exception) {
-            Log::error('Seller wallet refresh failed after Finance reconciled COD cash.', [
-                'cod_cash_collection_id' => (int) $collection->id,
-                'seller_profile_id' => (int) $sellerProfile->id,
-                'exception' => $exception::class,
-            ]);
-        }
-
-        $this->notifications->send($seller, new WorkflowNotification(
-            eventKey: 'seller_cod_cash_reconciled',
-            title: 'COD cash reconciled by Finance',
-            body: "Finance reconciled the COD cash for {$sellerOrder->seller_order_no}. Earnings remain subject to the return window and other settlement checks.",
-            actionUrl: route('seller.finance.wallet'),
-            type: 'success',
-            meta: [
-                'seller_order_id' => (int) $sellerOrder->id,
-                'cod_collection_id' => (int) $collection->id,
-            ],
-        ));
     }
 
     private function captureMarketplacePaymentWhenFullyCollected(Order $order, Payment $payment): void
     {
-        $expectedShipments = Shipment::query()
-            ->where('purpose', 'outbound')
-            ->where('cod_amount_minor', '>', 0)
-            ->whereHas('sellerOrder', fn ($query) => $query
-                ->where('order_id', $order->id)
-                ->where('status', '!=', 'cancelled'))
-            ->lockForUpdate()
-            ->get(['id', 'cod_amount_minor']);
+        if ($payment->method !== 'cod' || $payment->status === 'paid') {
+            return;
+        }
 
-        $collections = CodCashCollection::query()
-            ->whereIn('shipment_id', $expectedShipments->pluck('id'))
+        $sellerOrders = $order->sellerOrders()
+            ->where('status', '!=', 'cancelled')
+            ->orderBy('id')
             ->lockForUpdate()
             ->get();
-
-        $expectedMinor = (int) $expectedShipments->sum('cod_amount_minor');
-        $collectedMinor = (int) $collections->sum('amount_collected_minor');
-        if ($expectedShipments->isEmpty()
-            || $expectedMinor !== (int) $payment->amount_minor
-            || $collectedMinor > (int) $payment->amount_minor) {
+        $codSellerOrders = $sellerOrders->filter(fn ($sellerOrder): bool => $this->codAmountDueMinor($sellerOrder) > 0);
+        $expectedMinor = (int) $codSellerOrders->sum(fn ($sellerOrder): int => $this->codAmountDueMinor($sellerOrder));
+        if ($codSellerOrders->isEmpty() || $expectedMinor !== (int) $payment->amount_minor) {
             return;
         }
 
-        if ($collections->count() !== $expectedShipments->count()
-            || $collections->contains(fn (CodCashCollection $collection): bool => $collection->status !== 'collected'
-                || (int) $collection->amount_due_minor !== (int) $collection->amount_collected_minor)
-            || $collectedMinor !== (int) $payment->amount_minor) {
-            return;
-        }
-        if ($payment->status === 'paid') {
-            return;
+        foreach ($codSellerOrders as $sellerOrder) {
+            $shipment = $sellerOrder->shipments()
+                ->where('shipments.purpose', 'outbound')
+                ->where('shipments.cod_amount_minor', '>', 0)
+                ->lockForUpdate()
+                ->first();
+            if (! $shipment || (int) $shipment->cod_amount_minor < $this->codAmountDueMinor($sellerOrder)) {
+                return;
+            }
+
+            $allocation = CodCashCollectionAllocation::query()
+                ->where('seller_order_id', $sellerOrder->id)
+                ->where('payment_id', $payment->id)
+                ->whereHas('collection', fn ($query) => $query
+                    ->where('shipment_id', $shipment->id)
+                    ->where('status', 'reconciled')
+                    ->whereColumn('amount_reconciled_minor', 'amount_due_minor'))
+                ->lockForUpdate()
+                ->first();
+            $due = $this->codAmountDueMinor($sellerOrder);
+            if (! $allocation
+                || (int) $allocation->amount_due_minor !== $due
+                || (int) $allocation->amount_collected_minor !== $due
+                || (int) $allocation->amount_reconciled_minor !== $due) {
+                return;
+            }
         }
 
-        $paidAt = $collections->max('collected_at') ?? now();
+        $paidAt = CodCashCollection::query()
+            ->whereHas('allocations', fn ($query) => $query
+                ->where('payment_id', $payment->id)
+                ->whereIn('seller_order_id', $codSellerOrders->pluck('id')))
+            ->max('reconciled_at') ?? now();
         $payment->update(['status' => 'paid', 'paid_at' => $paidAt]);
         $order->update(['payment_status' => 'paid']);
         $this->promotions->markOrderPaid($order);
         $this->commissionLedger->finalize($payment->fresh());
+    }
+
+    private function codAmountDueMinor(\App\Models\SellerOrder $sellerOrder): int
+    {
+        return max(0, (int) $sellerOrder->total_minor
+            - (int) ($sellerOrder->platform_discount_minor ?? 0)
+            - (int) ($sellerOrder->campaign_platform_discount_minor ?? 0)
+            - (int) ($sellerOrder->platform_shipping_discount_minor ?? 0));
     }
 
     private function assertProvider(CodCashCollection $collection, int $logisticsProfileId): void

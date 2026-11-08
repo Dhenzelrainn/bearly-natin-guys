@@ -8,7 +8,11 @@
     $pickupTabs = ['all' => 'All Requests', 'pending' => 'Pending Logistics', 'assigned' => 'Rider Assigned', 'picked-up' => 'Collected / Received', 'cancelled' => 'Cancelled'];
     $providerNames = $pickupRequests->pluck('provider')->filter()->unique()->implode(', ');
     $hasPickupAddress = $pickupAddress !== 'Pickup address not set';
-    $hasProvider = $provider !== null;
+    $providerOptions = collect($providerOptions);
+    $hasProvider = $providerOptions->isNotEmpty();
+    $defaultProviderId = old('logistics_profile_id')
+        ?? ($eligibleOrders[0]['allowed_provider_ids'][0] ?? $provider?->id ?? $providerOptions->first()['id'] ?? null);
+    $defaultProviderOption = $providerOptions->firstWhere('id', (int) $defaultProviderId);
 @endphp
 
 <div class="pickups-page">
@@ -43,7 +47,7 @@
                 @elseif (! $hasProvider)
                     {{ $providerError ?: 'No active Logistics provider is available for your pickup city. Contact an administrator before scheduling collection.' }}
                 @elseif ($readyCount)
-                    Select packed orders with printed waybills and a pickup window. The request goes to {{ $provider->display_name }}, the provider serving your pickup city.
+                    Select packed orders with printed Waybills and a pickup window. Requests normally go to the provider assigned to your pickup municipality. After a rejection, choose another nearby active provider from the request form.
                 @else
                     Mark an order ready after you print and confirm its waybill in Fulfillment → Waybills. Only those packed orders appear here.
                 @endif
@@ -117,8 +121,17 @@
                     <legend>Select ready orders</legend>
                     @forelse ($eligibleOrders as $order)
                         <label class="pickup-order-option">
-                            <input type="checkbox" name="order_ids[]" value="{{ $order['id'] }}" data-pickup-order @checked(in_array($order['id'], (array) old('order_ids', [])))>
-                            <span><strong>{{ $order['order'] }}</strong><small>{{ $order['packages'] }} {{ $order['packages'] === 1 ? 'parcel' : 'parcels' }} · {{ $order['weight'] }} · {{ $order['destination'] }} · Waybill {{ $order['waybill'] }} printed</small></span>
+                            <input type="checkbox" name="order_ids[]" value="{{ $order['id'] }}" data-pickup-order data-allowed-provider-ids="{{ implode(',', $order['allowed_provider_ids']) }}" @checked(in_array($order['id'], (array) old('order_ids', [])))>
+                            <span>
+                                <strong>{{ $order['order'] }}</strong>
+                                <small>{{ $order['packages'] }} {{ $order['packages'] === 1 ? 'parcel' : 'parcels' }} · {{ $order['weight'] }} · {{ $order['destination'] }} · Waybill {{ $order['waybill'] }} printed</small>
+                                <small>
+                                    Current provider: {{ $order['provider_name'] }}
+                                    @if ($order['rejected_provider_ids'])
+                                        · Previous provider rejected this pickup
+                                    @endif
+                                </small>
+                            </span>
                         </label>
                     @empty
                         <p>No orders are currently eligible for a new pickup request.</p>
@@ -128,8 +141,26 @@
                 <div class="pickup-form-grid">
                     <label>
                         <span>Logistics provider</span>
-                        <input type="text" value="{{ $provider?->display_name ?? 'No provider available' }}" readonly aria-describedby="pickup-provider-note">
-                        <small id="pickup-provider-note">Assigned automatically from your Seller pickup city. You cannot choose another provider.</small>
+                        <select id="pickup-logistics-provider" name="logistics_profile_id" required data-pickup-provider-select aria-describedby="pickup-provider-note">
+                            <option value="">Choose a Logistics provider</option>
+                            @foreach ($providerOptions as $option)
+                                <option
+                                    value="{{ $option['id'] }}"
+                                    data-rider-count="{{ $option['available_rider_count'] }}"
+                                    @selected((string) $defaultProviderId === (string) $option['id'])
+                                >{{ $option['name'] }} · {{ $option['location'] }}@if ($option['distance_label']) · {{ $option['distance_label'] }}@endif</option>
+                            @endforeach
+                        </select>
+                        <small id="pickup-provider-note" class="pickup-provider-note" data-pickup-provider-status role="status" aria-live="polite">
+                            @if (! $defaultProviderOption)
+                                Choose an eligible provider for the selected orders. A provider may review and accept or reject the request.
+                            @elseif ($defaultProviderOption['available_rider_count'] === 0)
+                                No Riders are currently marked available. You can still submit this pickup request; Logistics will review it.
+                            @else
+                                {{ $defaultProviderOption['available_rider_count'] }} pickup-capable Rider(s) are currently marked available. Availability may change before assignment.
+                            @endif
+                            The municipality's assigned provider stays selectable. After a rejection, you can choose another nearby active provider.
+                        </small>
                     </label>
                     <label><span>Pickup date</span><input type="date" name="requested_date" min="{{ now()->toDateString() }}" value="{{ old('requested_date') }}" required></label>
                     <label>
@@ -171,6 +202,11 @@
                 <div><dt>Pickup address</dt><dd data-pickup-address>—</dd></div>
                 <div><dt>Instructions</dt><dd data-pickup-instructions>—</dd></div>
             </dl>
+            <section class="pickup-rejection-note" data-pickup-rejection-note hidden aria-label="Pickup rejection reason">
+                <strong>Logistics rejected this pickup</strong>
+                <p data-pickup-rejection-reason></p>
+                <p>Choose another nearby active provider in Create Pickup Request. The existing Waybill number and parcel barcodes will be kept.</p>
+            </section>
             <section class="handover-check"><i data-lucide="scan-line" aria-hidden="true"></i><div><strong>Next steps</strong><p>Logistics verifies the request and assigns a Rider. A Sorting Center scan records the parcel as received.</p></div></section>
             <div class="modal-actions"><button class="draft-button" type="button" data-modal-close>Close</button></div>
         </section>

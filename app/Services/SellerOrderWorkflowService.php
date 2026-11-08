@@ -19,9 +19,16 @@ class SellerOrderWorkflowService
         private readonly NotificationService $notifications,
         private readonly SellerFulfillmentService $fulfillment,
         private readonly PromotionService $promotions,
+        private readonly SellerOrderPackingConsolidationService $packingConsolidation,
     ) {}
 
-    public function transition(User $actor, int $sellerOrderId, string $action, ?string $reason = null): SellerOrder
+    public function transition(
+        User $actor,
+        int $sellerOrderId,
+        string $action,
+        ?string $reason = null,
+        ?array $packingPlan = null,
+    ): SellerOrder
     {
         $storeId = $actor->sellerProfile?->store?->id;
 
@@ -34,7 +41,11 @@ class SellerOrderWorkflowService
             ->where('store_id', $storeId)
             ->findOrFail($sellerOrderId);
 
-        return DB::transaction(function () use ($actor, $action, $reason, $sellerOrderId, $storeId, $target): SellerOrder {
+        if ($action === 'mark_ready') {
+            return $this->markReadyForShipmentGroup($actor, $target, (int) $storeId);
+        }
+
+        return DB::transaction(function () use ($actor, $action, $reason, $packingPlan, $sellerOrderId, $storeId, $target): SellerOrder {
             $order = Order::query()
                 ->whereKey($target->order_id)
                 ->lockForUpdate()
@@ -63,7 +74,7 @@ class SellerOrderWorkflowService
                     'confirmed_at',
                     'Seller confirmed that this order can be fulfilled.',
                 ),
-                'start_preparing' => $this->startPreparing($sellerOrder, $actor),
+                'start_preparing' => $this->startPreparing($sellerOrder, $actor, $packingPlan),
                 'mark_ready' => $this->markReady($sellerOrder, $actor),
                 'cancel' => $this->cancelPending($order, $sellerOrders, $sellerOrder, $actor, trim((string) $reason)),
                 default => abort(422, 'Unsupported Seller Order action.'),
@@ -71,8 +82,197 @@ class SellerOrderWorkflowService
         }, attempts: 3);
     }
 
-    private function startPreparing(SellerOrder $sellerOrder, User $actor): SellerOrder
+    /**
+     * Start preparation only after the Seller explicitly submits a packing plan.
+     *
+     * @param  array<int|string, mixed>  $packingPlan
+     */
+    public function startPreparingWithPlan(
+        User $actor,
+        int $sellerOrderId,
+        array $packingPlan,
+        array $additionalSellerOrderIds = [],
+        ?int $logisticsProfileId = null,
+    ): SellerOrder
     {
+        $storeId = (int) ($actor->sellerProfile?->store?->id ?? 0);
+        abort_unless($storeId > 0, 403, 'Your Seller account does not have an active Store.');
+
+        $additionalSellerOrderIds = $this->packingConsolidation->normalizeIds(
+            $additionalSellerOrderIds,
+            $sellerOrderId,
+        );
+        $sellerOrderIds = collect([$sellerOrderId, ...$additionalSellerOrderIds])->unique()->sort()->values();
+        $stubs = SellerOrder::query()
+            ->where('store_id', $storeId)
+            ->whereIn('id', $sellerOrderIds)
+            ->get(['id', 'order_id']);
+
+        abort_unless($stubs->count() === $sellerOrderIds->count(), 404, 'One or more selected Seller Orders could not be found.');
+        $orderIds = $stubs->pluck('order_id')->unique()->sort()->values();
+
+        return DB::transaction(function () use ($actor, $packingPlan, $sellerOrderIds, $orderIds, $sellerOrderId, $storeId, $logisticsProfileId): SellerOrder {
+            $orders = Order::query()
+                ->whereIn('id', $orderIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+            abort_unless($orders->count() === $orderIds->count(), 404, 'A selected marketplace order could not be found.');
+
+            $sellerOrders = SellerOrder::query()
+                ->where('store_id', $storeId)
+                ->whereIn('id', $sellerOrderIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->with(['order.payments', 'items'])
+                ->get()
+                ->keyBy('id');
+            abort_unless($sellerOrders->count() === $sellerOrderIds->count(), 404, 'One or more selected Seller Orders could not be found.');
+
+            $base = $sellerOrders->get($sellerOrderId);
+            abort_unless($base, 404);
+            abort_if($base->order?->status === 'cancelled', 409, 'This marketplace order has already been cancelled.');
+
+            foreach ($sellerOrders as $included) {
+                abort_if($included->order?->status === 'cancelled', 409, "Marketplace order for {$included->seller_order_no} has been cancelled.");
+                abort_unless(
+                    $included->status === SellerOrderStatus::Accepted->value,
+                    409,
+                    "Seller Order {$included->seller_order_no} is no longer awaiting a packing plan. Refresh the order list.",
+                );
+            }
+
+            $additional = $sellerOrders->reject(fn (SellerOrder $included): bool => (int) $included->id === $sellerOrderId)->values();
+            $this->packingConsolidation->assertCompatible($actor, $base, $additional);
+
+            $pickupAddress = $this->fulfillment->pickupAddressFor($actor, lock: true);
+            abort_unless($pickupAddress, 409, 'Set a valid Seller pickup address before starting preparation.');
+
+            $provider = $this->fulfillment->resolveProviderForPickupAddress(
+                $pickupAddress,
+                $logisticsProfileId,
+                lock: true,
+            );
+            $this->fulfillment->createShipmentFor(
+                $base,
+                $actor,
+                $provider,
+                $pickupAddress,
+                $packingPlan,
+                $sellerOrders,
+            );
+
+            $includedNumbers = $sellerOrders->pluck('seller_order_no')->implode(', ');
+            foreach ($sellerOrders as $included) {
+                $this->advance(
+                    $included,
+                    $actor,
+                    [SellerOrderStatus::Accepted->value],
+                    SellerOrderStatus::Packing,
+                    'preparing_at',
+                    $sellerOrders->count() > 1
+                        ? "Seller started a combined shipment for Seller Orders: {$includedNumbers}."
+                        : 'Seller started preparing the order and generated its waybill.',
+                );
+            }
+
+            return $base->fresh(['statusHistory.actor']);
+        }, attempts: 3);
+    }
+
+    private function markReadyForShipmentGroup(User $actor, SellerOrder $target, int $storeId): SellerOrder
+    {
+        $shipment = $target->shipments()
+            ->where('shipments.purpose', 'outbound')
+            ->orderBy('shipments.id')
+            ->first();
+
+        if (! $shipment) {
+            return DB::transaction(function () use ($actor, $target, $storeId): SellerOrder {
+                $order = Order::query()->whereKey($target->order_id)->lockForUpdate()->firstOrFail();
+                $sellerOrder = SellerOrder::query()
+                    ->where('store_id', $storeId)
+                    ->whereKey($target->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+                abort_if($order->status === 'cancelled', 409, 'This marketplace order has already been cancelled.');
+                return $this->markReady($sellerOrder, $actor);
+            }, attempts: 3);
+        }
+
+        $memberStubs = $shipment->sellerOrders()
+            ->orderBy('seller_orders.id')
+            ->get(['seller_orders.id', 'seller_orders.order_id', 'seller_orders.store_id']);
+        abort_unless($memberStubs->isNotEmpty()
+            && $memberStubs->contains(fn (SellerOrder $member): bool => (int) $member->id === (int) $target->id)
+            && $memberStubs->every(fn (SellerOrder $member): bool => (int) $member->store_id === $storeId),
+            404,
+            'The Shipment is unavailable to this Store.');
+        $sellerOrderIds = $memberStubs->pluck('id')->unique()->sort()->values();
+        $orderIds = $memberStubs->pluck('order_id')->unique()->sort()->values();
+
+        return DB::transaction(function () use ($actor, $target, $storeId, $shipment, $sellerOrderIds, $orderIds): SellerOrder {
+            $orders = Order::query()
+                ->whereIn('id', $orderIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+            abort_unless($orders->count() === $orderIds->count(), 404);
+
+            $members = SellerOrder::query()
+                ->where('store_id', $storeId)
+                ->whereIn('id', $sellerOrderIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+            abort_unless($members->count() === $sellerOrderIds->count(), 404);
+
+            foreach ($members as $member) {
+                abort_if($orders->get($member->order_id)?->status === 'cancelled', 409, 'A marketplace order in this shipment has been cancelled.');
+                abort_unless(
+                    $member->status === SellerOrderStatus::Packing->value,
+                    409,
+                    "Seller Order {$member->seller_order_no} is not ready to be marked ready for pickup.",
+                );
+            }
+
+            $lockedShipment = $shipment->newQuery()->whereKey($shipment->id)->lockForUpdate()->firstOrFail();
+            abort_unless(
+                $lockedShipment->sellerOrders()->whereIn('seller_orders.id', $sellerOrderIds)->count() === $sellerOrderIds->count(),
+                409,
+                'The consolidated Shipment membership changed. Refresh the order list.',
+            );
+
+            $this->fulfillment->markShipmentReady($members->get($target->id), $actor);
+            $numbers = $members->pluck('seller_order_no')->implode(', ');
+            foreach ($members as $member) {
+                $this->advance(
+                    $member,
+                    $actor,
+                    [SellerOrderStatus::Packing->value],
+                    SellerOrderStatus::ReadyForPickup,
+                    'ready_at',
+                    $members->count() > 1
+                        ? "Seller completed the packing checklist for combined Seller Orders: {$numbers}."
+                        : 'Seller completed the packing checklist and marked the order ready for pickup.',
+                );
+            }
+
+            return $members->get($target->id)->fresh(['statusHistory.actor']);
+        }, attempts: 3);
+    }
+
+    private function startPreparing(
+        SellerOrder $sellerOrder,
+        User $actor,
+        ?array $packingPlan,
+    ): SellerOrder
+    {
+        abort_unless($packingPlan !== null, 422, 'Submit a complete packing plan before starting preparation.');
+
         abort_unless(
             $sellerOrder->status === SellerOrderStatus::Accepted->value,
             409,
@@ -93,6 +293,7 @@ class SellerOrderWorkflowService
             $actor,
             $provider,
             $pickupAddress,
+            $packingPlan,
         );
 
         return $this->advance(

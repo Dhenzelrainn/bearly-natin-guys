@@ -24,8 +24,9 @@ class CourierDailyEarningService
     private const EXCLUDED_STATUSES = ['reversed', 'cancelled'];
 
     /**
-     * Reconcile a closed attendance shift. Safe to call repeatedly; the
-     * rider/type/work-date unique constraint remains the final duplicate guard.
+     * Reconcile the QR-recorded attendance for a closed shift's PHT work date.
+     * The existing rider/type/work-date unique constraint remains the final
+     * duplicate guard; legacy fixed-rate rows are never rewritten.
      */
     public function reconcileShift(RiderShift $shift): ?RiderEarning
     {
@@ -39,7 +40,10 @@ class CourierDailyEarningService
                 return null;
             }
 
-            return $this->reconcileClosedShift($lockedShift);
+            return $this->reconcileWorkDate(
+                (int) $lockedShift->rider_profile_id,
+                $this->workDateFor($lockedShift),
+            );
         }, attempts: 3);
     }
 
@@ -68,13 +72,19 @@ class CourierDailyEarningService
                 ->whereNotNull('checked_out_at')
                 ->where('checked_in_at', '<=', $lockedRun->assigned_at)
                 ->where('checked_out_at', '>=', $lockedRun->assigned_at)
+                ->where('check_in_source', 'qr')
+                ->where('check_out_source', 'qr')
+                ->with('attendanceScans')
                 ->orderBy('checked_in_at')
                 ->orderBy('id')
-                ->lockForUpdate()
                 ->get();
 
             return $shifts
-                ->map(fn (RiderShift $shift): ?RiderEarning => $this->reconcileClosedShift($shift))
+                ->filter(fn (RiderShift $shift): bool => $this->hasQrAttendanceProof($shift))
+                ->map(fn (RiderShift $shift): ?RiderEarning => $this->reconcileWorkDate(
+                    (int) $shift->rider_profile_id,
+                    $this->workDateFor($shift),
+                ))
                 ->filter()
                 ->unique('id')
                 ->values();
@@ -85,6 +95,8 @@ class CourierDailyEarningService
      * @return array{
      *     rate_minor: int,
      *     rate: string,
+     *     daily_cap_minor: int,
+     *     daily_cap: string,
      *     today_work_date: string,
      *     today: RiderEarning|null,
      *     qualifying_days: int,
@@ -115,8 +127,10 @@ class CourierDailyEarningService
         $todayWorkDate = now(self::TIMEZONE)->toDateString();
 
         return [
-            'rate_minor' => $this->dailyRateMinor(),
-            'rate' => $this->formatMinor($this->dailyRateMinor()),
+            'rate_minor' => $this->hourlyRateMinor(),
+            'rate' => $this->formatMinor($this->hourlyRateMinor()),
+            'daily_cap_minor' => $this->dailyCapMinor(),
+            'daily_cap' => $this->formatMinor($this->dailyCapMinor()),
             'today_work_date' => $todayWorkDate,
             'today' => (clone $base)->whereDate('work_date', $todayWorkDate)->first(),
             'qualifying_days' => (int) (clone $active)->count(),
@@ -155,34 +169,79 @@ class CourierDailyEarningService
             ->toDateString();
     }
 
-    private function reconcileClosedShift(RiderShift $shift): ?RiderEarning
+    private function reconcileWorkDate(int $riderProfileId, string $workDate): ?RiderEarning
     {
-        if ($shift->checked_out_at === null) {
-            return null;
-        }
-
         $rider = RiderProfile::query()
-            ->whereKey($shift->rider_profile_id)
+            ->whereKey($riderProfileId)
+            ->lockForUpdate()
             ->first();
 
         if (! $rider || ! $this->isEligibleCourierProfile($rider)) {
             return null;
         }
 
-        $run = $this->qualifyingRunFor($rider, $shift);
+        $shifts = $this->closedQrShiftsForWorkDate($rider, $workDate);
 
-        if (! $run) {
+        if ($shifts->isEmpty()) {
             return null;
         }
 
-        $workDate = $this->workDateFor($shift);
-        $earnedAt = collect([$shift->checked_out_at, $run->completed_at])
+        $qualifyingPair = $shifts
+            ->map(fn (RiderShift $shift): ?array => ($run = $this->qualifyingRunFor($rider, $shift))
+                ? ['shift' => $shift, 'run' => $run]
+                : null)
+            ->filter()
+            ->sortBy(fn (array $pair): string => $pair['run']->completed_at?->toDateTimeString() ?? '')
+            ->first();
+
+        if (! $qualifyingPair) {
+            return null;
+        }
+
+        /** @var RiderShift $qualifyingShift */
+        $qualifyingShift = $qualifyingPair['shift'];
+        /** @var LinehaulRun $run */
+        $run = $qualifyingPair['run'];
+        $workedSeconds = min(
+            $this->dailyMaxPaidSeconds(),
+            (int) $shifts->sum(fn (RiderShift $shift): int => max(
+                0,
+                $shift->checked_out_at->getTimestamp() - $shift->checked_in_at->getTimestamp(),
+            )),
+        );
+        $amountMinor = $this->amountForWorkedSeconds($workedSeconds);
+
+        if ($workedSeconds < 1 || $amountMinor < 1) {
+            return null;
+        }
+
+        $earnedAt = $shifts
+            ->pluck('checked_out_at')
+            ->push($run->completed_at)
             ->filter()
             ->map(fn ($value): Carbon => Carbon::parse($value))
             ->max() ?? now();
-
-        $amountMinor = $this->dailyRateMinor();
         $now = now();
+        $earningQuery = RiderEarning::query()
+            ->where('rider_profile_id', $rider->id)
+            ->where('type', $this->earningType())
+            ->whereDate('work_date', $workDate);
+        $existing = (clone $earningQuery)->lockForUpdate()->first();
+
+        // A row without the new work-time snapshot is a historical daily-rate
+        // earning. Keep that financial history exactly as recorded.
+        if ($existing && $existing->worked_seconds_snapshot === null) {
+            return $existing;
+        }
+
+        if ($existing && (
+            $existing->status !== 'posted'
+            || $existing->paid_at !== null
+            || $existing->payout()->exists()
+            || $existing->payoutBatchItem()->exists()
+        )) {
+            return $existing;
+        }
 
         // insertOrIgnore keeps concurrent reconciliation from failing an
         // acceptance/check-out transaction; the unique key is the final guard.
@@ -196,24 +255,154 @@ class CourierDailyEarningService
             'type' => $this->earningType(),
             'amount_minor' => $amountMinor,
             'status' => 'posted',
-            'description' => "Courier daily pay for {$workDate} · {$run->run_no}",
+            'description' => "Courier hourly pay for {$workDate} · {$run->run_no}",
             'earned_at' => $earnedAt,
             'posted_at' => $now,
             'paid_at' => null,
             'work_date' => $workDate,
-            'rider_shift_id' => (int) $shift->id,
+            'rider_shift_id' => (int) $qualifyingShift->id,
             'linehaul_run_id' => (int) $run->id,
             'size_class_snapshot' => null,
-            'rate_minor' => $amountMinor,
+            'rate_minor' => $this->hourlyRateMinor(),
+            'worked_seconds_snapshot' => $workedSeconds,
+            'daily_cap_minor_snapshot' => $this->dailyCapMinor(),
             'created_at' => $now,
             'updated_at' => $now,
         ]);
 
-        return RiderEarning::query()
+        $earning = (clone $earningQuery)->lockForUpdate()->firstOrFail();
+
+        if ($earning->worked_seconds_snapshot === null
+            || $earning->status !== 'posted'
+            || $earning->paid_at !== null
+            || $earning->payout()->exists()
+            || $earning->payoutBatchItem()->exists()) {
+            return $earning;
+        }
+
+        $earning->update([
+            'logistics_profile_id' => (int) $run->origin_logistics_profile_id,
+            'amount_minor' => $amountMinor,
+            'description' => "Courier hourly pay for {$workDate} · {$run->run_no}",
+            'earned_at' => $earnedAt,
+            'posted_at' => $earning->posted_at ?? $now,
+            'rider_shift_id' => (int) $qualifyingShift->id,
+            'linehaul_run_id' => (int) $run->id,
+            'rate_minor' => $this->hourlyRateMinor(),
+            'worked_seconds_snapshot' => $workedSeconds,
+            'daily_cap_minor_snapshot' => $this->dailyCapMinor(),
+        ]);
+
+        return $earning->fresh();
+    }
+
+    /**
+     * Total paid seconds from fully QR-proven closed shifts for a PHT work date,
+     * capped at the configured daily paid-time maximum.
+     */
+    public function workedSecondsForWorkDate(RiderProfile $rider, string $workDate): int
+    {
+        $shifts = $this->closedQrShiftsForWorkDate($rider, $workDate);
+
+        return min(
+            $this->dailyMaxPaidSeconds(),
+            (int) $shifts->sum(fn (RiderShift $shift): int => max(
+                0,
+                $shift->checked_out_at->getTimestamp() - $shift->checked_in_at->getTimestamp(),
+            )),
+        );
+    }
+
+    public function hasOpenShiftForWorkDate(RiderProfile $rider, string $workDate): bool
+    {
+        $start = Carbon::parse($workDate, self::TIMEZONE)->startOfDay()->utc();
+        $end = $start->copy()->addDay();
+
+        return RiderShift::query()
             ->where('rider_profile_id', $rider->id)
-            ->where('type', $this->earningType())
-            ->whereDate('work_date', $workDate)
-            ->firstOrFail();
+            ->whereNull('checked_out_at')
+            ->where('checked_in_at', '>=', $start)
+            ->where('checked_in_at', '<', $end)
+            ->exists();
+    }
+
+    public function isValidPayoutSnapshot(RiderEarning $earning): bool
+    {
+        if ($earning->worked_seconds_snapshot === null) {
+            // Preserve the existing payout rule for historical fixed daily rows.
+            return $earning->rate_minor !== null
+                && (int) $earning->rate_minor === (int) $earning->amount_minor;
+        }
+
+        $rider = $earning->riderProfile;
+
+        if (! $rider
+            || $earning->work_date === null
+            || $earning->rate_minor === null
+            || $earning->daily_cap_minor_snapshot === null
+            || $this->hasOpenShiftForWorkDate($rider, $earning->work_date->toDateString())) {
+            return false;
+        }
+
+        $seconds = (int) $earning->worked_seconds_snapshot;
+        $rate = (int) $earning->rate_minor;
+        $cap = (int) $earning->daily_cap_minor_snapshot;
+
+        return $seconds > 0
+            && $seconds <= $this->dailyMaxPaidSeconds()
+            && $seconds === $this->workedSecondsForWorkDate($rider, $earning->work_date->toDateString())
+            && $rate > 0
+            && $cap > 0
+            && (int) $earning->amount_minor === $this->amountForWorkedSeconds($seconds, $rate, $cap);
+    }
+
+    public function amountForWorkedSeconds(int $seconds, ?int $rateMinor = null, ?int $capMinor = null): int
+    {
+        $seconds = max(0, $seconds);
+        $rateMinor ??= $this->hourlyRateMinor();
+        $capMinor ??= $this->dailyCapMinor();
+
+        return min(
+            max(0, $capMinor),
+            intdiv(($seconds * max(0, $rateMinor)) + 1800, 3600),
+        );
+    }
+
+    private function closedQrShiftsForWorkDate(RiderProfile $rider, string $workDate): Collection
+    {
+        $start = Carbon::parse($workDate, self::TIMEZONE)->startOfDay()->utc();
+        $end = $start->copy()->addDay();
+
+        return RiderShift::query()
+            ->where('rider_profile_id', $rider->id)
+            ->where('check_in_source', 'qr')
+            ->where('check_out_source', 'qr')
+            ->whereNotNull('checked_out_at')
+            ->where('checked_in_at', '>=', $start)
+            ->where('checked_in_at', '<', $end)
+            ->with('attendanceScans')
+            ->orderBy('checked_in_at')
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (RiderShift $shift): bool => $this->hasQrAttendanceProof($shift))
+            ->values();
+    }
+
+    private function hasQrAttendanceProof(RiderShift $shift): bool
+    {
+        if ($shift->check_in_source !== 'qr'
+            || $shift->check_out_source !== 'qr'
+            || $shift->checked_in_at === null
+            || $shift->checked_out_at === null) {
+            return false;
+        }
+
+        $scans = $shift->relationLoaded('attendanceScans')
+            ? $shift->attendanceScans
+            : $shift->attendanceScans()->get();
+
+        return $scans->contains(fn ($scan): bool => $scan->scan_type === 'check_in')
+            && $scans->contains(fn ($scan): bool => $scan->scan_type === 'check_out');
     }
 
     private function qualifyingRunFor(RiderProfile $rider, RiderShift $shift): ?LinehaulRun
@@ -256,9 +445,19 @@ class CourierDailyEarningService
             && $rider->courier_vehicle_verified_at !== null;
     }
 
-    private function dailyRateMinor(): int
+    private function hourlyRateMinor(): int
     {
-        return max(0, (int) config('bearly_rider_compensation.courier_daily_rate_minor', 65000));
+        return max(0, (int) config('bearly_rider_compensation.courier_hourly_rate_minor', 8125));
+    }
+
+    private function dailyCapMinor(): int
+    {
+        return max(0, (int) config('bearly_rider_compensation.courier_daily_cap_minor', 65000));
+    }
+
+    private function dailyMaxPaidSeconds(): int
+    {
+        return max(0, (int) config('bearly_rider_compensation.courier_daily_max_paid_seconds', 28800));
     }
 
     private function earningType(): string

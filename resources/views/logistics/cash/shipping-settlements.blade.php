@@ -342,6 +342,11 @@
                                     {{ str($item->earning_type)->replace('_', ' ')->title() }} ·
                                     @if($item->earning_type === config('bearly_rider_compensation.courier_daily_earning_type', 'courier_daily'))
                                         {{ $earning?->linehaulRun?->run_no ?? 'Line-haul run' }} · Work date {{ $earning?->work_date?->format('M j, Y') ?? '—' }}
+                                        @if($earning?->worked_seconds_snapshot !== null)
+                                            · {{ number_format((int) $earning->worked_seconds_snapshot / 3600, 2) }} hours at ₱{{ number_format((int) $earning->rate_minor / 100, 2) }}/hour
+                                        @else
+                                            · legacy fixed daily rate
+                                        @endif
                                     @else
                                         {{ $earning?->parcel?->parcel_no ?? $earning?->shipment?->shipment_no ?? 'Earning #'.$item->rider_earning_id }}
                                     @endif

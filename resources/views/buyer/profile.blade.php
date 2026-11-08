@@ -222,10 +222,10 @@
 
     <section class="profile-card account-panel" id="tracking-panel" data-account-panel="tracking" hidden>
         <div class="tracking-head">
-            <div><button id="tracking-back" class="tracking-back" type="button"><span class="material-symbols-outlined">arrow_back</span> My Purchases</button><h1>Order Tracking</h1><p>Follow your order from confirmation until delivery.</p></div>
+            <div><button id="tracking-back" class="tracking-back" type="button"><span class="material-symbols-outlined">arrow_back</span> My Purchases</button><h1>Order Tracking</h1><p>Follow each Seller shipment. Approximate Rider location appears only while it is out for delivery.</p></div>
             <span id="tracking-order-id" class="tracking-order-id"></span>
         </div>
-        <div id="tracking-content"></div>
+        <div id="tracking-content" data-live-map-tile-url="{{ config('maps.tile_url') }}" data-live-map-attribution="{{ config('maps.tile_attribution') }}"></div>
     </section>
 
     <section class="profile-card account-panel" id="vouchers-panel" data-account-panel="vouchers" hidden>

@@ -8,6 +8,7 @@ import {
     GPS_ACCURACY_TARGET_METERS,
     GPS_STABLE_READINGS_REQUIRED,
     GPS_WATCH_DURATION_MS,
+    isWithinGpsAccuracyLimit,
 } from './geolocation-fix';
 
 function coordinatePair(latitude, longitude) {
@@ -30,9 +31,13 @@ export function createAddressMapPicker({
     clearButton,
     locationButton,
     manualPlacementButton,
+    continuousLocation = false,
+    locationControl = null,
+    stopLocationButton = null,
     reverseGeocodeUrl,
     forwardGeocodeUrl,
     stableLocation = false,
+    maximumLocationAccuracyMeters = null,
     saveLabel = 'Save Address',
     fields = {},
     status,
@@ -55,6 +60,26 @@ export function createAddressMapPicker({
         else status.dataset.state = state;
     };
 
+    const setLocationControl = (state, title, description) => {
+        if (!locationControl) return;
+
+        locationControl.hidden = state === 'off';
+        locationControl.dataset.state = state;
+        const label = locationControl.querySelector('[data-facility-location-label]');
+        const help = locationControl.querySelector('[data-facility-location-help]');
+        const dot = locationControl.querySelector('[data-facility-location-dot]');
+
+        if (label) label.textContent = title;
+        if (help) help.textContent = description;
+        if (dot) {
+            dot.classList.toggle('is-sharing', state === 'sharing');
+            dot.classList.toggle('is-pending', state === 'pending');
+            dot.classList.toggle('is-error', state === 'error');
+        }
+
+        if (stopLocationButton) stopLocationButton.hidden = state !== 'sharing' && state !== 'pending';
+    };
+
     let activeLocationRequest = null;
     const stopLocationDetection = (request = activeLocationRequest) => {
         if (!request || activeLocationRequest !== request) return;
@@ -63,6 +88,7 @@ export function createAddressMapPicker({
         if (request.watchId !== null) navigator.geolocation?.clearWatch(request.watchId);
         if (request.timeoutId !== null) window.clearTimeout(request.timeoutId);
         if (locationButton) locationButton.disabled = false;
+        setLocationControl('off', 'Location check is off', 'Device location is checked only while this page is open.');
     };
     let manualPlacementActive = false;
     const setManualPlacementActive = (active) => {
@@ -110,10 +136,43 @@ export function createAddressMapPicker({
     }
 
     let marker = null;
+    let approximateLocationCircle = null;
+
+    const clearApproximateLocationCircle = () => {
+        approximateLocationCircle?.remove();
+        approximateLocationCircle = null;
+    };
+
+    const showApproximateLocation = (reading) => {
+        if (marker || !Number.isFinite(reading.accuracy) || reading.accuracy <= 0) return;
+
+        const isFirstCircle = !approximateLocationCircle;
+        if (isFirstCircle) {
+            approximateLocationCircle = L.circle([reading.latitude, reading.longitude], {
+                radius: reading.accuracy,
+                color: '#a96b1f',
+                weight: 2,
+                dashArray: '6 5',
+                fillColor: '#e9a72f',
+                fillOpacity: 0.14,
+            }).addTo(map);
+        } else {
+            approximateLocationCircle.setLatLng([reading.latitude, reading.longitude]);
+            approximateLocationCircle.setRadius(reading.accuracy);
+        }
+
+        if (isFirstCircle) {
+            map.fitBounds(approximateLocationCircle.getBounds(), {
+                padding: [24, 24],
+                maxZoom: 14,
+            });
+        }
+    };
 
     if (!initialCoordinates) clearButton?.setAttribute('hidden', 'hidden');
 
     const setPin = (latlng, announce = true) => {
+        clearApproximateLocationCircle();
         const lat = Number(latlng.lat).toFixed(7);
         const lng = Number(latlng.lng).toFixed(7);
         latitudeInput.value = lat;
@@ -169,6 +228,7 @@ export function createAddressMapPicker({
     const clearPin = () => {
         stopLocationDetection();
         setManualPlacementActive(false);
+        clearApproximateLocationCircle();
         marker?.remove();
         marker = null;
         latitudeInput.value = '';
@@ -179,6 +239,22 @@ export function createAddressMapPicker({
 
     const applyDetectedLocation = (reading, quality, zoom = 16) => {
         setManualPlacementActive(false);
+
+        if (!isWithinGpsAccuracyLimit(reading, maximumLocationAccuracyMeters)) {
+            showApproximateLocation(reading);
+
+            const accuracyCopy = reading.accuracy === null
+                ? 'The device did not report GPS accuracy.'
+                : `Reported GPS accuracy is ±${Math.round(reading.accuracy)} m.`;
+            const mapCopy = marker
+                ? 'The existing pin and map view were left unchanged.'
+                : Number.isFinite(reading.accuracy)
+                    ? 'The dashed circle shows the approximate GPS area; no pin was placed.'
+                    : 'The map was left unchanged; no pin was placed.';
+            setStatus(`${accuracyCopy} This is too imprecise for a facility pin (maximum ±${maximumLocationAccuracyMeters} m). ${mapCopy} Try a phone with Precise Location enabled at the facility or place the pin manually.`, 'warning');
+            return;
+        }
+
         map.setView([reading.latitude, reading.longitude], zoom);
         setPin({ lat: reading.latitude, lng: reading.longitude }, false);
         if (reverseGeocodeUrl) {
@@ -211,9 +287,10 @@ export function createAddressMapPicker({
             : 'Manual pin placement canceled. You can still tap the map or drag the pin.');
     });
     locationButton?.addEventListener('click', () => {
-        const geolocationMethod = stableLocation ? 'watchPosition' : 'getCurrentPosition';
+        const geolocationMethod = stableLocation || continuousLocation ? 'watchPosition' : 'getCurrentPosition';
         if (!navigator.geolocation || typeof navigator.geolocation[geolocationMethod] !== 'function') {
             setStatus('Browser location is unavailable. Place the pin manually.', 'error');
+            setLocationControl('error', 'Device location unavailable', 'This browser cannot provide a location fix. Place the pin manually.');
             return;
         }
 
@@ -221,11 +298,14 @@ export function createAddressMapPicker({
 
         locationButton.disabled = true;
         setManualPlacementActive(false);
+        setLocationControl('pending', 'Requesting device location', 'Allow this site to use location. The check stays on this device and runs only while this page is open.');
         setStatus(stableLocation
             ? 'Requesting your location permission. Keep this page open while the device gathers GPS readings; you can still place the pin manually.'
-            : 'Requesting your location permission…');
+            : continuousLocation
+                ? 'Checking device location. The facility pin will change only when the reported accuracy is ±100 m or better.'
+                : 'Requesting your location permission…');
 
-        if (!stableLocation) {
+        if (!stableLocation && !continuousLocation) {
             try {
                 navigator.geolocation.getCurrentPosition(
                     position => {
@@ -239,16 +319,19 @@ export function createAddressMapPicker({
                         const quality = reading.accuracy === null
                             ? 'Device location selected. GPS accuracy is unavailable.'
                             : `Device location selected. Reported GPS accuracy: ±${Math.round(reading.accuracy)} m.`;
+                        setLocationControl('off', 'Location check is off', 'Device location is checked only while this page is open.');
                         applyDetectedLocation(reading, quality);
                     },
                     () => {
                         locationButton.disabled = false;
+                        setLocationControl('error', 'Location unavailable', 'Allow device and browser location, or place the pin manually.');
                         setStatus('Location permission was denied or unavailable. Place the pin manually.', 'error');
                     },
                     { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
                 );
             } catch {
                 locationButton.disabled = false;
+                setLocationControl('error', 'Location unavailable', 'The browser could not start location detection. Place the pin manually.');
                 setStatus('The browser could not start location detection. Place the pin manually.', 'error');
             }
             return;
@@ -278,12 +361,19 @@ export function createAddressMapPicker({
             const reportedAccuracy = selected.accuracy === null
                 ? 'GPS accuracy is unavailable.'
                 : `Reported GPS accuracy: ±${Math.round(selected.accuracy)} m.`;
-            const fixQuality = stableFix
-                ? `Stable fix confirmed by ${GPS_STABLE_READINGS_REQUIRED} readings within ${GPS_STABLE_RADIUS_METERS} m. ${reportedAccuracy}`
-                : `Approximate location: ${reason} No stable fix with reported accuracy of ±${GPS_ACCURACY_TARGET_METERS} m or better was confirmed. Best available reading: ${reportedAccuracy}`;
+            const fixQuality = continuousLocation
+                ? `${reason} Best available device reading: ${reportedAccuracy}`
+                : stableFix
+                    ? `Stable fix confirmed by ${GPS_STABLE_READINGS_REQUIRED} readings within ${GPS_STABLE_RADIUS_METERS} m. ${reportedAccuracy}`
+                    : `Approximate location: ${reason} No stable fix with reported accuracy of ±${GPS_ACCURACY_TARGET_METERS} m or better was confirmed. Best available reading: ${reportedAccuracy}`;
 
             applyDetectedLocation(selected, fixQuality, 18);
         };
+        request.finish = finishLocationDetection;
+
+        if (continuousLocation) {
+            setLocationControl('sharing', 'Location active · approximate', 'Waiting for a fix at ±100 m or better. No facility pin is saved from a coarse reading.');
+        }
 
         request.timeoutId = window.setTimeout(
             () => finishLocationDetection('The 45-second GPS check ended.'),
@@ -302,6 +392,24 @@ export function createAddressMapPicker({
                     }
 
                     request.bestReading = bestGpsReading([request.bestReading, reading].filter(Boolean));
+
+                    if (continuousLocation) {
+                        if (isWithinGpsAccuracyLimit(reading, maximumLocationAccuracyMeters)) {
+                            finishLocationDetection('An acceptable facility location fix was found.');
+                            return;
+                        }
+
+                        showApproximateLocation(reading);
+                        const accuracyLabel = reading.accuracy === null
+                            ? 'GPS accuracy is unavailable.'
+                            : `Current GPS accuracy: ±${Math.round(reading.accuracy)} m.`;
+                        setLocationControl(
+                            'sharing',
+                            reading.accuracy === null ? 'Location active · accuracy unavailable' : 'Location active · approximate',
+                            `${accuracyLabel} Waiting for ±100 m or better. This check is local to this page; no coarse pin is saved.`,
+                        );
+                        return;
+                    }
 
                     if (reading.accuracy !== null && reading.accuracy <= GPS_ACCURACY_TARGET_METERS) {
                         request.accurateReadings.push(reading);
@@ -333,6 +441,10 @@ export function createAddressMapPicker({
         } catch {
             finishLocationDetection('The browser could not start GPS location detection.');
         }
+    });
+
+    stopLocationButton?.addEventListener('click', () => {
+        activeLocationRequest?.finish?.('Location check stopped.');
     });
 
     return {

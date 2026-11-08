@@ -79,6 +79,9 @@ if (userId > 0 && key) {
                 window.BearlyNotifications?.refresh?.();
                 window.dispatchEvent(new CustomEvent('bearly:notification-created', { detail: payload }));
             })
+            .listen('.shipping-policy.submitted', (payload) => {
+                window.dispatchEvent(new CustomEvent('bearly:shipping-policy-submitted', { detail: payload }));
+            })
             .listen('.seller.return-status-updated', (payload) => {
                 window.dispatchEvent(new CustomEvent('bearly:seller-return-status-updated', { detail: payload }));
             })

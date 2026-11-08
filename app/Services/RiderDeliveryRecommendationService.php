@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Parcel;
 use App\Models\RiderProfile;
+use App\Models\Shipment;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -160,7 +161,17 @@ class RiderDeliveryRecommendationService
             return null;
         }
 
-        $orders = $parcels->map(fn (Parcel $parcel) => $parcel->shipment?->sellerOrder?->order);
+        $shipments = $parcels
+            ->map(fn (Parcel $parcel) => $parcel->shipment)
+            ->filter()
+            ->unique('id')
+            ->values();
+        $sellerOrders = $shipments
+            ->flatMap(fn (Shipment $shipment) => $shipment->includedSellerOrders())
+            ->unique('id')
+            ->values();
+        $sellerOrders->loadMissing('order');
+        $orders = $sellerOrders->map(fn ($sellerOrder) => $sellerOrder->order);
 
         if ($orders->contains(null)) {
             return null;

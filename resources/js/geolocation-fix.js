@@ -8,7 +8,7 @@ const toRadians = (degrees) => degrees * (Math.PI / 180);
 export function gpsReadingFromPosition(position) {
     const latitude = Number(position?.coords?.latitude);
     const longitude = Number(position?.coords?.longitude);
-    const reportedAccuracy = Number(position?.coords?.accuracy);
+    const reportedAccuracy = position?.coords?.accuracy;
 
     if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
         || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
@@ -20,6 +20,16 @@ export function gpsReadingFromPosition(position) {
         longitude,
         accuracy: Number.isFinite(reportedAccuracy) && reportedAccuracy >= 0 ? reportedAccuracy : null,
     };
+}
+
+export function isWithinGpsAccuracyLimit(reading, maximumAccuracyMeters = null) {
+    if (!reading) return false;
+    if (maximumAccuracyMeters === null) return true;
+
+    return Number.isFinite(maximumAccuracyMeters)
+        && Number.isFinite(reading.accuracy)
+        && reading.accuracy >= 0
+        && reading.accuracy <= maximumAccuracyMeters;
 }
 
 function distanceBetweenReadings(first, second) {

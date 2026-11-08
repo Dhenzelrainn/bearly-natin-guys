@@ -32,4 +32,11 @@ class OrderItem extends Model
     {
         return $this->hasMany(PromotionRedemptionAllocation::class);
     }
+
+    public function parcels()
+    {
+        return $this->belongsToMany(Parcel::class, 'parcel_items')
+            ->withPivot('quantity')
+            ->withTimestamps();
+    }
 }

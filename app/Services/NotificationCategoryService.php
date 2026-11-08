@@ -84,7 +84,17 @@ class NotificationCategoryService
             ],
             'handoffs' => [
                 'label' => 'Handoffs',
-                'events' => ['logistics_handoff_sent', 'logistics_handoff_accepted'],
+                'events' => [
+                    'logistics_handoff_sent',
+                    'logistics_handoff_accepted',
+                    'logistics_linehaul_assigned',
+                    'logistics_linehaul_loading_started',
+                    'logistics_linehaul_cargo_loaded',
+                    'logistics_linehaul_departed',
+                    'logistics_linehaul_arrived',
+                    'logistics_linehaul_exception_reported',
+                    'logistics_linehaul_exception_resolved',
+                ],
             ],
             'cash' => [
                 'label' => 'COD & refund cash',
@@ -106,11 +116,19 @@ class NotificationCategoryService
         'rider' => [
             'pickups' => [
                 'label' => 'Pickup assignments',
-                'events' => ['rider_pickup_assigned'],
+                'events' => ['rider_pickup_assigned', 'rider_pickup_assignment_cancelled'],
             ],
             'deliveries' => [
                 'label' => 'Delivery assignments',
                 'events' => ['rider_dispatch_assigned'],
+            ],
+            'linehaul' => [
+                'label' => 'Courier runs',
+                'events' => [
+                    'rider_linehaul_assigned',
+                    'rider_linehaul_completed',
+                    'rider_linehaul_exception_resolved',
+                ],
             ],
             'refund_cash' => [
                 'label' => 'Refund cash assignments',

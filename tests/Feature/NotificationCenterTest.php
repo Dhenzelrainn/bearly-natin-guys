@@ -149,6 +149,24 @@ class NotificationCenterTest extends TestCase
         $this->assertFalse($buyerEvents->has('seller_withdrawal_status_changed'));
         $this->assertTrue($buyerEvents['buyer_shipment_updates']['email']);
         $this->assertTrue($buyerEvents['buyer_message_received']['email']);
+
+        $logistics = User::factory()->create(['role' => 'logistics', 'status' => 'active']);
+        $logisticsEvents = collect($this->actingAs($logistics)
+            ->getJson(route('notifications.preferences'))
+            ->json('data.events'))
+            ->keyBy('key');
+
+        foreach ([
+            'logistics_linehaul_assigned' => false,
+            'logistics_linehaul_loading_started' => false,
+            'logistics_linehaul_cargo_loaded' => false,
+            'logistics_linehaul_departed' => false,
+            'logistics_linehaul_arrived' => true,
+        ] as $event => $emailDefault) {
+            $this->assertTrue($logisticsEvents->has($event));
+            $this->assertTrue($logisticsEvents[$event]['in_app']);
+            $this->assertSame($emailDefault, $logisticsEvents[$event]['email']);
+        }
     }
 
     public function test_every_role_receives_registry_events_on_their_declared_default_channels(): void
@@ -549,6 +567,24 @@ class NotificationCenterTest extends TestCase
         $this->assertFalse(collect($unread->json('data.items'))->contains('event', 'buyer_order_updates'));
     }
 
+    public function test_buyer_shipment_notification_routes_to_my_purchases_including_legacy_tracking_links(): void
+    {
+        $buyer = $this->buyer();
+
+        $buyer->notify(new WorkflowNotification(
+            eventKey: 'buyer_shipment_updates',
+            title: 'Order delivered',
+            body: 'Your shipment was delivered.',
+            actionUrl: route('buyer.profile').'#tracking',
+        ));
+
+        $this->actingAs($buyer)
+            ->getJson(route('notifications.index'))
+            ->assertOk()
+            ->assertJsonPath('data.items.0.title', 'Order delivered')
+            ->assertJsonPath('data.items.0.url', route('buyer.profile').'#purchases');
+    }
+
     public function test_history_search_matches_title_and_body_within_the_authenticated_users_rows(): void
     {
         $buyer = $this->buyer();
@@ -695,6 +731,7 @@ class NotificationCenterTest extends TestCase
             ->assertOk()
             ->assertSee('data-skin="logistics"', false)
             ->assertSee('data-nc-category="pickups"', false)
+            ->assertSee('data-nc-category="handoffs"', false)
             ->assertSee('COD & refund cash')
             ->assertSee('Rider applications');
 
@@ -706,6 +743,7 @@ class NotificationCenterTest extends TestCase
             ->assertSee('data-skin="rider"', false)
             ->assertSee('Pickup assignments')
             ->assertSee('Delivery assignments')
+            ->assertSee('Courier runs')
             ->assertSee('Refund cash assignments')
             // Riders intentionally have no Messages category.
             ->assertDontSee('data-nc-category="messages"', false);
@@ -751,6 +789,12 @@ class NotificationCenterTest extends TestCase
         // Account and security alerts intentionally have no dedicated tab.
         $this->assertNull($categories->categoryForEvent('buyer', 'account_status_changed'));
         $this->assertNull($categories->categoryForEvent('seller', 'account_status_changed'));
+        $this->assertSame('linehaul', $categories->categoryForEvent('rider', 'rider_linehaul_assigned'));
+        $this->assertSame('handoffs', $categories->categoryForEvent('logistics', 'logistics_linehaul_assigned'));
+        $this->assertSame('handoffs', $categories->categoryForEvent('logistics', 'logistics_linehaul_loading_started'));
+        $this->assertSame('handoffs', $categories->categoryForEvent('logistics', 'logistics_linehaul_cargo_loaded'));
+        $this->assertSame('handoffs', $categories->categoryForEvent('logistics', 'logistics_linehaul_departed'));
+        $this->assertSame('handoffs', $categories->categoryForEvent('logistics', 'logistics_linehaul_arrived'));
 
         // Platform announcements map for every role that can receive them.
         foreach (['buyer', 'seller', 'logistics', 'rider'] as $role) {

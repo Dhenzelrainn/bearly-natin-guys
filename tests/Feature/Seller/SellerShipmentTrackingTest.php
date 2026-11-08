@@ -46,10 +46,38 @@ class SellerShipmentTrackingTest extends TestCase
             'product_image_disk' => 'public',
             'product_image_path' => $imagePath,
         ]);
+        foreach (range(2, 5) as $itemNumber) {
+            OrderItem::query()->create([
+                'seller_order_id' => $record['sellerOrder']->id,
+                'product_name' => "Waybill Product {$itemNumber}",
+                'variant_name' => 'Standard',
+                'sku' => "WAYBILL-PRODUCT-{$itemNumber}",
+                'unit_price_minor' => 1000,
+                'quantity' => 1,
+                'discount_minor' => 0,
+                'subtotal_minor' => 1000,
+            ]);
+        }
 
         $this->actingAs($seller)
             ->get(route('seller.fulfillment.waybills'))
             ->assertOk()
+            ->assertSee('Seller Order / Recipient')
+            ->assertSee('Seller Orders')
+            ->assertSee('1 linked order')
+            ->assertSee('Recipient')
+            ->assertSee('SO-WAYBILL-IMAGE')
+            ->assertSee('<dt>Waybill Number</dt>', false)
+            ->assertSee('<dt>Label Status</dt>', false)
+            ->assertSee('Actions')
+            ->assertSee('Download PDF')
+            ->assertSee('Mark Printed &amp; Attached', false)
+            ->assertSee('+2')
+            ->assertSee('aria-label="Show 2 more product images"', false)
+            ->assertSee('aria-expanded="false"', false)
+            ->assertSee('id="waybill-extra-products-'.$record['waybill']->id.'"', false)
+            ->assertSee('aria-label="Additional product images in SO-WAYBILL-IMAGE" hidden', false)
+            ->assertSee('Waybill Product 4')
             ->assertSee(Storage::disk('public')->url($imagePath), false)
             ->assertSee('alt="Wireless Headphones"', false)
             ->assertSee('Products in SO-WAYBILL-IMAGE', false);
@@ -172,6 +200,67 @@ class SellerShipmentTrackingTest extends TestCase
 
         $buyer = User::factory()->create(['role' => 'buyer', 'status' => 'active']);
         $this->actingAs($buyer)->get(route('seller.fulfillment.tracking'))->assertForbidden();
+    }
+
+    public function test_tracking_row_lists_every_seller_order_and_item_on_a_shared_shipment(): void
+    {
+        [$seller, , $store] = $this->sellerFixture('Combined Tracking Seller', 'combined-tracking-seller');
+        $record = $this->makeShipment($store, 'TRACK-COMBINED', 'out_for_delivery');
+        $primaryOrder = $record['sellerOrder']->order;
+
+        $secondOrder = Order::query()->create([
+            'order_no' => 'ORD-TRACK-COMBINED-SECOND',
+            'buyer_id' => $primaryOrder->buyer_id,
+            'recipient_name' => $primaryOrder->recipient_name,
+            'recipient_phone' => $primaryOrder->recipient_phone,
+            'address_line' => $primaryOrder->address_line,
+            'barangay' => $primaryOrder->barangay,
+            'city_municipality' => $primaryOrder->city_municipality,
+            'province' => $primaryOrder->province,
+            'postal_code' => $primaryOrder->postal_code,
+            'subtotal_minor' => 10_000,
+            'shipping_fee_minor' => 0,
+            'discount_minor' => 0,
+            'total_minor' => 10_000,
+            'status' => 'processing',
+            'payment_status' => 'paid',
+        ]);
+        $secondSellerOrder = SellerOrder::query()->create([
+            'seller_order_no' => 'SO-TRACK-COMBINED-SECOND',
+            'order_id' => $secondOrder->id,
+            'store_id' => $store->id,
+            'status' => 'handed_to_logistics',
+            'subtotal_minor' => 10_000,
+            'total_minor' => 10_000,
+        ]);
+        $record['shipment']->sellerOrders()->attach($secondSellerOrder->id);
+
+        foreach ([[$record['sellerOrder'], 'Primary Product Variant'], [$secondSellerOrder, 'Second Product Variant']] as [$sellerOrder, $name]) {
+            OrderItem::query()->create([
+                'seller_order_id' => $sellerOrder->id,
+                'product_name' => $name,
+                'variant_name' => 'Variant',
+                'sku' => strtoupper(str_replace(' ', '-', $name)),
+                'unit_price_minor' => 10_000,
+                'quantity' => 1,
+                'discount_minor' => 0,
+                'subtotal_minor' => 10_000,
+            ]);
+        }
+
+        $this->actingAs($seller)
+            ->get(route('seller.fulfillment.waybills'))
+            ->assertOk()
+            ->assertSee('2 linked orders')
+            ->assertSee('<li>SO-TRACK-COMBINED</li>', false)
+            ->assertSee('<li>SO-TRACK-COMBINED-SECOND</li>', false);
+
+        $this->actingAs($seller)
+            ->get(route('seller.fulfillment.tracking'))
+            ->assertOk()
+            ->assertSee('#SO-TRACK-COMBINED · #SO-TRACK-COMBINED-SECOND')
+            ->assertSee('2 items')
+            ->assertSee('second product variant', false);
     }
 
     public function test_tab_counts_and_attention_banner_follow_persisted_shipment_statuses(): void

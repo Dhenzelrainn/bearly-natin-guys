@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\ParcelStatus;
+use App\Enums\RiderWorkType;
 use App\Enums\SellerOrderStatus;
 use App\Enums\ShipmentStatus;
+use App\Enums\UserRole;
 use App\Models\Address;
 use App\Models\Cart;
 use App\Models\CartItem;
@@ -12,10 +15,12 @@ use App\Models\Order;
 use App\Models\PlatformPromotion;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\Shipment;
 use App\Models\Store;
 use App\Models\Wishlist;
 use App\Services\BuyerCatalogService;
 use App\Services\BuyerOrderConfirmationService;
+use App\Services\BuyerTrackingRouteService;
 use App\Services\CampaignService;
 use App\Services\CheckoutService;
 use App\Services\ConversationService;
@@ -24,6 +29,7 @@ use App\Services\PostalCodeLookup;
 use App\Services\ProductPricingService;
 use App\Services\ProductReviewService;
 use App\Services\PromotionService;
+use App\Services\RiderLocationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -273,12 +279,148 @@ class BuyerController extends Controller
         ]);
     }
 
+    public function shipmentLiveLocation(
+        Request $request,
+        string $shipmentNo,
+        RiderLocationService $locations,
+    ): JsonResponse
+    {
+        $shipment = Shipment::query()
+            ->where('shipment_no', $shipmentNo)
+            ->where('purpose', 'outbound')
+            ->whereHas('sellerOrder', fn ($query) => $query
+                ->where('status', '!=', SellerOrderStatus::Cancelled->value)
+                ->whereHas('order', fn ($orderQuery) => $orderQuery
+                    ->where('buyer_id', $request->user()->id)))
+            ->firstOrFail();
+
+        $responseData = [
+            'shipment_status' => (string) $shipment->status,
+            'available' => false,
+            'locations' => [],
+        ];
+
+        if ($shipment->status !== ShipmentStatus::OutForDelivery->value) {
+            return $this->privateLiveLocationResponse(
+                $responseData,
+                'Live location is available only while this shipment is out for delivery.',
+            );
+        }
+
+        $shipment->load([
+            'parcels' => fn ($query) => $query->where('status', ParcelStatus::OutForDelivery->value),
+            'parcels.dispatchBatches' => fn ($query) => $query
+                ->where('dispatch_batches.status', 'dispatched'),
+            'parcels.dispatchBatches.riderProfile.user',
+            'parcels.dispatchBatches.riderProfile.liveLocation',
+        ]);
+
+        $now = now();
+        $currentRiders = $shipment->parcels
+            ->where('status', ParcelStatus::OutForDelivery->value)
+            ->flatMap(fn ($parcel) => $parcel->dispatchBatches
+                ->where('status', 'dispatched')
+                ->pluck('riderProfile'))
+            ->filter()
+            ->unique('id')
+            ->filter(function ($rider) use ($shipment, $locations, $now): bool {
+                $user = $rider->user;
+                $location = $rider->liveLocation;
+
+                return (int) $rider->logistics_profile_id === (int) $shipment->logistics_profile_id
+                    && $rider->verification_status === 'approved'
+                    && $rider->availability_status === 'available'
+                    && RiderWorkType::isLocal($rider->work_type)
+                    && $rider->allowsDeliveryWork()
+                    && $user
+                    && $user->role === UserRole::Rider->value
+                    && $user->status === 'active'
+                    && $locations->isUsableForProximity($location, $now)
+                    && $location->last_seen_at->lessThanOrEqualTo($now);
+            })
+            ->map(fn ($rider): array => [
+                'latitude' => round((float) $rider->liveLocation->latitude, 3),
+                'longitude' => round((float) $rider->liveLocation->longitude, 3),
+                'updated_at' => $rider->liveLocation->last_seen_at->toIso8601String(),
+                'fresh_for_seconds' => max(
+                    0,
+                    RiderLocationService::FRESHNESS_SECONDS
+                        - (int) $rider->liveLocation->last_seen_at->diffInSeconds($now)
+                        - 2,
+                ),
+            ])
+            ->values()
+            ->all();
+
+        $responseData['available'] = $currentRiders !== [];
+        $responseData['locations'] = $currentRiders;
+
+        return $this->privateLiveLocationResponse(
+            $responseData,
+            $responseData['available']
+                ? 'Approximate Rider location retrieved successfully.'
+                : 'Rider location is currently unavailable.',
+        );
+    }
+
+    /**
+     * Buyer-scoped pins and guideline geometry for the order-level
+     * "Follow your delivery" map on the tracking panel.
+     */
+    public function orderRouteMap(
+        Request $request,
+        string $orderNo,
+        BuyerTrackingRouteService $routes,
+    ): JsonResponse {
+        $order = Order::query()
+            ->where('order_no', $orderNo)
+            ->where('buyer_id', $request->user()->id)
+            ->with([
+                'shippingAddress',
+                'sellerOrders.store',
+                'sellerOrders.shipments.originAddress',
+                'sellerOrders.shipments.parcels.currentSortingCenter.address',
+            ])
+            ->firstOrFail();
+
+        $pins = $routes->pinsForOrder($order);
+        $legs = $routes->routeLegs([
+            $pins['sellers'][0] ?? null,
+            $pins['hubs'][0] ?? null,
+            $pins['buyer'],
+        ]);
+
+        return $this->privateLiveLocationResponse(
+            [
+                'pins' => $pins,
+                'legs' => $legs,
+            ],
+            'Delivery route map retrieved successfully.',
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function privateLiveLocationResponse(array $data, string $message): JsonResponse
+    {
+        return response()->json([
+            'data' => $data,
+            'message' => $message,
+        ])->header('Cache-Control', 'private, no-store, no-cache, must-revalidate')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
+    }
+
     /** @return array<string, mixed> */
     private function purchasePayload(Order $order, BuyerCatalogService $catalog, BuyerOrderConfirmationService $confirmation, CheckoutService $checkout): array
     {
         $sellerOrders = $order->sellerOrders;
         $active = $sellerOrders->reject(fn ($sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Cancelled->value);
-        $outboundShipments = $active->flatMap(fn ($sellerOrder) => $sellerOrder->shipments->where('purpose', 'outbound'));
+        $outboundShipments = $active
+            ->flatMap(fn ($sellerOrder) => $sellerOrder->shipments->where('purpose', 'outbound'))
+            ->unique('id')
+            ->values();
         $stores = $sellerOrders->map(fn ($sellerOrder): string => (string) ($sellerOrder->store?->name ?? ''))->filter()->unique()->values();
 
         if ($order->status === 'cancelled' || ($sellerOrders->isNotEmpty() && $active->isEmpty())) {
@@ -372,6 +514,29 @@ class BuyerController extends Controller
                     'url' => route('buyer.returns.show', $returnRequest->id),
                 ])->values()->all(),
             ])->values()->all(),
+            'trackingShipments' => $outboundShipments
+                    ->map(fn (Shipment $shipment): array => [
+                        'number' => (string) $shipment->shipment_no,
+                        'store' => (string) ($shipment->sellerOrder?->store?->name ?? 'Seller'),
+                        'status' => (string) $shipment->status,
+                        'statusLabel' => $this->purchaseShipmentTrackingLabel((string) $shipment->status),
+                        'live_location_url' => route(
+                            'buyer.shipments.live-location',
+                            ['shipmentNo' => $shipment->shipment_no],
+                            false,
+                        ),
+                        'events' => $shipment->events
+                            ->map(fn ($event): array => [
+                                'label' => $this->trackingEventLabel((string) $event->event_type, (string) $event->to_status),
+                                'note' => $this->buyerSafeTrackingEventNote((string) $event->event_type),
+                                'date' => $event->occurred_at ? Carbon::parse($event->occurred_at)->toIso8601String() : null,
+                            ])
+                            ->filter(fn (array $event): bool => filled($event['date']))
+                            ->values()
+                            ->all(),
+                    ])
+                    ->values()
+                    ->all(),
             'paymentMethod' => 'Cash on Delivery',
             'server' => true,
             'can_confirm' => $canConfirm,
@@ -488,7 +653,11 @@ class BuyerController extends Controller
 
         return match ($bucket) {
             'to-pay' => 'Order Placed',
-            'to-ship' => 'Preparing to Ship',
+            'to-ship' => match ($deliveryState) {
+                'out_for_delivery' => 'Out for Delivery',
+                'in_transit' => 'In Transit',
+                default => 'Preparing to Ship',
+            },
             'to-receive' => match ($deliveryState) {
                 'out_for_delivery' => 'Out for Delivery',
                 'in_transit' => 'In Transit',
@@ -497,6 +666,27 @@ class BuyerController extends Controller
             'completed' => $deliveryState === 'delivered' ? 'Delivered' : 'Delivery status needs review',
             'cancelled' => 'Cancelled',
             default => 'Order update',
+        };
+    }
+
+    private function purchaseShipmentTrackingLabel(string $status): string
+    {
+        return match ($status) {
+            ShipmentStatus::Pending->value => 'Order placed',
+            ShipmentStatus::ReadyForPickup->value => 'Ready for pickup',
+            ShipmentStatus::AwaitingBuyerDropoff->value => 'Awaiting Buyer drop-off',
+            ShipmentStatus::PickupAssigned->value => 'Pickup assigned',
+            ShipmentStatus::PickedUp->value => 'Picked up by Bearly Logistics',
+            ShipmentStatus::AtSortingCenter->value => 'At sorting center',
+            ShipmentStatus::HandoffPending->value => 'In transfer',
+            ShipmentStatus::Sorted->value => 'Sorted for delivery',
+            ShipmentStatus::Dispatched->value => 'Dispatched to Rider',
+            ShipmentStatus::OutForDelivery->value => 'Out for delivery',
+            ShipmentStatus::Delivered->value => 'Delivered',
+            ShipmentStatus::DeliveryFailed->value => 'Delivery attempt unsuccessful',
+            ShipmentStatus::ReturnToSender->value => 'Returning to Seller',
+            ShipmentStatus::Cancelled->value => 'Cancelled',
+            default => 'Shipment update',
         };
     }
 

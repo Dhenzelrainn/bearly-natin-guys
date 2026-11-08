@@ -73,6 +73,12 @@ class ShippingSettlement extends Model
         return $this->belongsTo(Shipment::class);
     }
 
+    public function allocations()
+    {
+        return $this->hasMany(ShippingSettlementAllocation::class, 'shipping_settlement_id')
+            ->orderBy('seller_order_id');
+    }
+
     public function logisticsProfile()
     {
         return $this->belongsTo(LogisticsProfile::class);

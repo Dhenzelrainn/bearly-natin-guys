@@ -551,8 +551,7 @@ class RiderPayoutBatchService
                 || $run->assigned_at->lt($shift->checked_in_at)
                 || $run->assigned_at->gt($shift->checked_out_at)
                 || $earning->work_date->toDateString() !== $this->courierDaily->workDateFor($shift)
-                || $earning->rate_minor === null
-                || (int) $earning->rate_minor !== (int) $earning->amount_minor
+                || ! $this->courierDaily->isValidPayoutSnapshot($earning)
                 || ! $this->courierDaily->runHasAcceptedManifest($run)) {
                 return false;
             }

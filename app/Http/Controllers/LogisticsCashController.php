@@ -79,7 +79,7 @@ class LogisticsCashController extends Controller
                             'item' => $returnItem->orderItem,
                             'quantity' => (int) $returnItem->quantity,
                         ])
-                    : ($earning->shipment?->sellerOrder?->items ?? collect())
+                    : ($earning->shipment?->includedOrderItems() ?? collect())
                         ->map(fn (OrderItem $item): array => [
                             'item' => $item,
                             'quantity' => (int) $item->quantity,

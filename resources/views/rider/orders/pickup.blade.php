@@ -129,6 +129,9 @@
                         data-destination-map
                         data-latitude="{{ $job['latitude'] ?? '' }}"
                         data-longitude="{{ $job['longitude'] ?? '' }}"
+                        data-pickup-marker-label="{{ $job['location_label'] ?? 'Seller pickup location' }}"
+                        data-pickup-marker-kind="{{ ($job['location_label'] ?? '') === 'Buyer pickup location' ? 'buyer' : 'seller' }}"
+                        data-pickup-status="{{ $job['status_raw'] }}"
                         data-map-tile-url="{{ config('maps.tile_url') }}"
                         data-map-attribution="{{ config('maps.tile_attribution') }}"
                         data-map-forward-geocode-url="{{ route('maps.forward-geocode') }}"
@@ -144,7 +147,7 @@
                             : '' }}"
                         data-pickup-route-enabled="{{ $canShowPickupRoute ? 'true' : 'false' }}"
                         data-pickup-route-status-target="#pickup-route-status"
-                        aria-label="Pickup location on OpenStreetMap"
+                        aria-label="Pickup location and your shared Rider location on OpenStreetMap"
                     ></div>
 
                     <div class="map-meta">
@@ -182,19 +185,26 @@
                             ? 'Share your live location to display the road route to this pickup.'
                             : 'A saved pickup map pin is required to calculate a road route.' }}
                     @elseif($job['status_raw'] === 'assigned')
-                        Accept this pickup assignment and share your live location to display a road route.
+                        Share live location to show your Rider pin and direct guide. Accept this pickup and share accurate GPS to display a road route.
                     @else
                         Road routing is available after accepting the assignment and ends when pickup is confirmed.
                     @endif
                 </p>
 
-                @if($canShowPickupRoute)
-                    <div class="pickup-route-legend" aria-label="Pickup map legend">
+                <div class="pickup-route-legend" aria-label="Pickup map legend">
+                    <span>
+                        <i class="pickup-route-legend-pin is-seller" aria-hidden="true"><i data-lucide="store"></i></i>
+                        {{ $job['location_label'] ?? 'Seller pickup location' }}
+                    </span>
+                    <span>
+                        <i class="pickup-route-legend-pin is-rider" aria-hidden="true"><i data-lucide="bike"></i></i>
+                        Your shared Rider location
+                    </span>
+                    @if($canShowPickupRoute)
                         <span><i class="pickup-route-legend-key is-road" aria-hidden="true"></i>Road route</span>
-                        <span><i class="pickup-route-legend-key is-rider" aria-hidden="true"></i>Your shared location</span>
-                        <span><i data-lucide="map-pin" aria-hidden="true"></i>Pickup point</span>
-                    </div>
-                @endif
+                    @endif
+                    <span><i class="pickup-route-legend-key is-guide" aria-hidden="true"></i>Direct guide line · not a road route</span>
+                </div>
 
                 <a
                     id="pickup-osm-link"

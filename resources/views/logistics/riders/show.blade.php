@@ -678,7 +678,7 @@
             <div>
                 <p class="page-kicker">Courier monitoring</p>
                 <h3 id="courier-attendance-heading">Attendance and daily earnings</h3>
-                <p>₱650 is earned once per qualifying work date after check-in/out and full destination acceptance of at least one run assigned during the shift.</p>
+                <p>Courier compensation is ₱81.25 per QR-recorded hour, capped at ₱650 per PHT work date. A completed assigned line-haul run must be accepted in full by destination Logistics.</p>
             </div>
         </div>
         <div class="panel-body">

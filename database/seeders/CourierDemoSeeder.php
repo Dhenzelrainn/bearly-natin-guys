@@ -18,21 +18,35 @@ use RuntimeException;
 
 class CourierDemoSeeder extends Seeder
 {
-    private const EMAIL = 'courier.demo@bearly.test';
+    protected const EMAIL = 'courier.demo@bearly.test';
 
-    private const APPLICATION_NO = 'DEMO-COURIER-0001';
+    protected const APPLICATION_NO = 'DEMO-COURIER-0001';
 
-    private const PASSWORD = 'Password123';
+    protected const PASSWORD = 'Password123';
 
-    private const PHONE = '+639170000001';
+    protected const PHONE = '+639170000001';
 
-    private const PLATE_NUMBER = 'DEMO-COURIER-001';
+    protected const PLATE_NUMBER = 'DEMO-COURIER-001';
+
+    protected const NAME = 'Demo Courier';
+
+    protected const FIRST_NAME = 'Demo';
+
+    protected const LAST_NAME = 'Courier';
+
+    protected const STREET_ADDRESS = '1 Demo Courier Road';
+
+    protected const STREET = 'Demo Courier Road';
+
+    protected const VEHICLE_MODEL = 'Demo four-wheel van';
+
+    protected const SPONSOR_DISPLAY_NAME = null;
 
     public function run(): void
     {
         if (! app()->environment(['local', 'testing'])) {
             throw new RuntimeException(
-                'CourierDemoSeeder may only run in local or testing environments.'
+                class_basename(static::class).' may only run in local or testing environments.'
             );
         }
 
@@ -52,7 +66,7 @@ class CourierDemoSeeder extends Seeder
             );
 
             $user = User::withTrashed()
-                ->where('email', self::EMAIL)
+                ->where('email', static::EMAIL)
                 ->first();
 
             if ($user?->trashed()) {
@@ -68,21 +82,21 @@ class CourierDemoSeeder extends Seeder
             }
 
             $now = now();
-            $name = 'Demo Courier';
+            $name = static::NAME;
             $cityCode = (string) $sponsorProfile->psgc_city_code;
-            $streetAddress = '1 Demo Courier Road';
+            $streetAddress = static::STREET_ADDRESS;
 
             $userAttributes = [
                 'name' => $name,
-                'first_name' => 'Demo',
-                'last_name' => 'Courier',
+                'first_name' => static::FIRST_NAME,
+                'last_name' => static::LAST_NAME,
                 'middle_initial' => null,
                 'sex' => 'prefer_not_to_say',
                 'birthday' => '1995-01-01',
-                'email' => self::EMAIL,
+                'email' => static::EMAIL,
                 'email_verified_at' => $now,
-                'phone' => self::PHONE,
-                'contact_number' => self::PHONE,
+                'phone' => static::PHONE,
+                'contact_number' => static::PHONE,
                 'role' => UserRole::Rider->value,
                 'status' => AccountStatus::Active->value,
                 'province' => $sponsorAddress->province,
@@ -90,14 +104,14 @@ class CourierDemoSeeder extends Seeder
                 'barangay' => $sponsorAddress->barangay,
                 'street_address' => $streetAddress,
                 'vehicle_type' => RiderWorkType::vehicleTypes(RiderWorkType::Courier)[0],
-                'plate_number' => self::PLATE_NUMBER,
+                'plate_number' => static::PLATE_NUMBER,
                 'logistics_id' => $sponsor->id,
                 'approved_by' => $sponsor->id,
                 'approved_at' => $now,
                 'terms_accepted_at' => $now,
                 'terms_version' => config('bearly-policies.version'),
                 'privacy_version' => config('bearly-policies.version'),
-                'password' => Hash::make(self::PASSWORD),
+                'password' => Hash::make(static::PASSWORD),
             ];
 
             if ($user) {
@@ -120,9 +134,9 @@ class CourierDemoSeeder extends Seeder
                 ],
                 [
                     'recipient_name' => $name,
-                    'phone' => self::PHONE,
+                    'phone' => static::PHONE,
                     'house_number' => '1',
-                    'street' => 'Demo Courier Road',
+                    'street' => static::STREET,
                     'barangay' => $sponsorAddress->barangay,
                     'city_municipality' => $sponsorAddress->city_municipality,
                     'province' => $sponsorAddress->province,
@@ -136,7 +150,7 @@ class CourierDemoSeeder extends Seeder
             );
 
             $application = AccountApplication::query()
-                ->where('application_no', self::APPLICATION_NO)
+                ->where('application_no', static::APPLICATION_NO)
                 ->first();
 
             if ($application && (int) $application->user_id !== (int) $user->id) {
@@ -147,12 +161,12 @@ class CourierDemoSeeder extends Seeder
 
             $application ??= new AccountApplication;
             $application->forceFill([
-                'application_no' => self::APPLICATION_NO,
+                'application_no' => static::APPLICATION_NO,
                 'user_id' => $user->id,
                 'requested_role_id' => $riderRole->id,
                 'sponsor_logistics_profile_id' => $sponsorProfile->id,
                 'requested_work_type' => RiderWorkType::Courier->value,
-                'rider_vehicle_model' => 'Demo four-wheel van',
+                'rider_vehicle_model' => static::VEHICLE_MODEL,
                 'status' => 'approved',
                 'submitted_at' => $now,
                 'review_started_at' => $now,
@@ -179,8 +193,8 @@ class CourierDemoSeeder extends Seeder
                     ->orderBy('id')
                     ->value('id'),
                 'vehicle_type' => RiderWorkType::vehicleTypes(RiderWorkType::Courier)[0],
-                'vehicle_model' => 'Demo four-wheel van',
-                'plate_number' => self::PLATE_NUMBER,
+                'vehicle_model' => static::VEHICLE_MODEL,
+                'plate_number' => static::PLATE_NUMBER,
                 'parcel_capacity' => null,
                 'availability_status' => 'available',
                 'verification_status' => 'approved',
@@ -193,34 +207,55 @@ class CourierDemoSeeder extends Seeder
         });
 
         $this->command?->info('Local demo Courier account seeded.');
-        $this->command?->line('Email: '.self::EMAIL);
-        $this->command?->line('Password: '.self::PASSWORD);
+        $this->command?->line('Email: '.static::EMAIL);
+        $this->command?->line('Password: '.static::PASSWORD);
         $this->command?->line('Sponsor: '.$sponsorProfile->display_name.' ('.$sponsor->email.')');
         $this->command?->warn('Demo-only approval metadata; no real identity documents were reviewed.');
     }
 
     /** @return array{0: LogisticsProfile, 1: Address} */
-    private function sponsoringLogisticsProvider(): array
+    protected function sponsoringLogisticsProvider(): array
     {
-        $profiles = LogisticsProfile::query()
+        $profilesQuery = LogisticsProfile::query()
             ->where('status', AccountStatus::Active->value)
             ->whereNotNull('psgc_city_code')
             ->whereHas('user', fn ($query) => $query
                 ->where('role', UserRole::Logistics->value)
                 ->where('status', AccountStatus::Active->value))
             ->with(['user.addresses', 'sortingCenters'])
-            ->orderBy('id')
-            ->get();
+            ->orderBy('id');
 
-        foreach ($profiles as $profile) {
+        if (static::SPONSOR_DISPLAY_NAME !== null) {
+            $profilesQuery->where('display_name', static::SPONSOR_DISPLAY_NAME);
+        }
+
+        $eligibleProfiles = [];
+
+        foreach ($profilesQuery->get() as $profile) {
             $cityCode = (string) $profile->psgc_city_code;
             $address = $profile->user?->addresses
                 ?->first(fn (Address $candidate): bool => (string) $candidate->psgc_city_code === $cityCode
                 );
 
             if ($address) {
-                return [$profile, $address];
+                $eligibleProfiles[] = [$profile, $address];
             }
+        }
+
+        if (static::SPONSOR_DISPLAY_NAME !== null) {
+            if (count($eligibleProfiles) !== 1) {
+                throw new RuntimeException(
+                    'VictoriaCourierDemoSeeder needs exactly one active Logistics profile named '
+                    .static::SPONSOR_DISPLAY_NAME
+                    .' with a service address matching its PSGC city code.'
+                );
+            }
+
+            return $eligibleProfiles[0];
+        }
+
+        if ($eligibleProfiles !== []) {
+            return $eligibleProfiles[0];
         }
 
         throw new RuntimeException(

@@ -125,8 +125,12 @@ export const opsIcon = type => ({
 
 const actionAttributes = item => `data-notification-id="${escapeHtml(item.id)}" data-notification-url="${escapeHtml(item.url || '')}"`;
 
-const rowBuyer = item => `
-    <button type="button" class="buyer-notification-item${item.read ? '' : ' unread'}" ${actionAttributes(item)}>
+const rowBuyer = item => {
+    const tag = item.url ? 'a' : 'button';
+    const action = item.url ? `href="${escapeHtml(item.url)}"` : 'type="button"';
+
+    return `
+    <${tag} ${action} class="buyer-notification-item${item.read ? '' : ' unread'}" ${actionAttributes(item)}>
         <span class="buyer-notification-unread-dot" aria-hidden="true"></span>
         <span class="buyer-notification-icon material-symbols-outlined" aria-hidden="true">${BUYER_ICONS[item.event] || 'notifications'}</span>
         <span class="buyer-notification-copy">
@@ -135,7 +139,8 @@ const rowBuyer = item => `
             <small>${escapeHtml(item.created_at_human || '')}</small>
         </span>
         <span class="material-symbols-outlined buyer-notification-arrow" aria-hidden="true">chevron_right</span>
-    </button>`;
+    </${tag}>`;
+};
 
 /*
  * Standard popover row shared by the Seller, Admin, Logistics, and Rider
@@ -215,6 +220,7 @@ function initRoot(root) {
     list.addEventListener('click', async event => {
         const row = event.target.closest('[data-notification-id]');
         if (!row) return;
+        if (row.tagName === 'A') event.preventDefault();
 
         const id = row.dataset.notificationId;
         const url = row.dataset.notificationUrl;
@@ -228,7 +234,18 @@ function initRoot(root) {
             /* Navigation still proceeds; the row simply stays unread for the next load. */
         }
 
-        if (url) window.location.href = url;
+        if (url) {
+            const destination = new URL(url, window.location.href);
+
+            if (destination.origin === window.location.origin
+                && destination.pathname === window.location.pathname
+                && destination.hash === '#purchases'
+                && typeof window.bearlyShowAccountPanel === 'function') {
+                window.bearlyShowAccountPanel('purchases');
+            } else {
+                window.location.href = destination.href;
+            }
+        }
     });
 
     root.querySelector('[data-notification-mark-all]')?.addEventListener('click', async () => {

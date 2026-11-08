@@ -269,18 +269,28 @@
     <div class="table-wrap">
         <table class="data-table">
             <thead>
-                <tr><th data-sort>Waybill / Parcel</th><th>Seller</th><th>Destination</th><th>Package</th><th>Matching zones</th><th>Status</th><th>Action</th></tr>
+                <tr><th data-sort>Waybill / Parcel</th><th>Products</th><th>Seller</th><th>Destination</th><th>Package</th><th>Matching zones</th><th>Status</th><th>Action</th></tr>
             </thead>
             <tbody>
                 @foreach($parcels as $parcel)
                     <tr data-row data-record-row data-record-type="sorting" data-record-id="{{ $parcel['parcel_no'] }}" data-status="{{ $parcel['status'] }}" data-zone="{{ $parcel['zone'] }}">
-                        <td><span class="cell-title"><strong>{{ $parcel['waybill'] }}</strong><small>{{ $parcel['parcel_no'] }}</small></span></td>
+                        <td><span class="cell-title"><strong>{{ $parcel['waybill'] }}</strong><small>{{ $parcel['parcel_no'] }} · {{ $parcel['piece'] }}</small></span></td>
+                        <td class="sorting-products-cell">
+                            @if ($parcel['contents_recorded'])
+                                @include('partials.order-item-preview-list', ['items' => $parcel['products']])
+                            @else
+                                <span class="order-item-preview-empty">Package contents not recorded.</span>
+                                @if (! empty($parcel['reference_products']))
+                                    @include('partials.order-item-preview-list', ['items' => $parcel['reference_products'], 'referenceOnly' => true])
+                                @endif
+                            @endif
+                        </td>
                         <td><span class="cell-title"><strong>{{ $parcel['seller'] }}</strong><small>{{ $parcel['purpose_label'] }}</small></span></td>
                         <td>
                             @if($parcel['destination'])<span class="cell-title"><strong>{{ $parcel['destination'] }}</strong><small>{{ $parcel['destination_area'] }}</small></span>
                             @else{{ $parcel['destination_area'] }}@endif
                         </td>
-                        <td>{{ $parcel['size'] }}</td>
+                        <td><span class="cell-title"><strong>{{ $parcel['size'] }}</strong><small>{{ $parcel['dimensions'] }}</small></span></td>
                         <td>
                             @if($parcel['can_sort'])
                                 <form id="sort-parcel-{{ $parcel['id'] }}" method="POST" action="{{ route('logistics.sorting.parcels.update', $parcel['id']) }}">
@@ -324,7 +334,7 @@
                         </td>
                     </tr>
                 @endforeach
-                <tr><td class="empty-row" colspan="7" data-empty-row>No parcels match these filters.</td></tr>
+                <tr><td class="empty-row" colspan="8" data-empty-row>No parcels match these filters.</td></tr>
             </tbody>
         </table>
     </div>

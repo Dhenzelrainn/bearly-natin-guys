@@ -290,6 +290,16 @@ erDiagram
         timestamp updated_at
         timestamp deleted_at
     }
+    logistics_locations {
+        bigint id PK
+        bigint logistics_profile_id UK
+        decimal latitude
+        decimal longitude
+        decimal accuracy_meters
+        timestamp last_seen_at
+        timestamp created_at
+        timestamp updated_at
+    }
     logistics_payout_accounts {
         bigint id PK
         bigint logistics_profile_id
@@ -463,6 +473,48 @@ erDiagram
         timestamp created_at
         timestamp updated_at
     }
+    cod_cash_collections {
+        bigint id PK
+        varchar collection_no UK
+        bigint shipment_id UK
+        bigint payment_id
+        bigint order_id
+        bigint seller_order_id
+        bigint logistics_profile_id
+        bigint rider_profile_id
+        bigint amount_due_minor
+        bigint amount_collected_minor
+        bigint discrepancy_minor
+        bigint amount_received_by_logistics_minor
+        bigint amount_remitted_to_finance_minor
+        bigint amount_reconciled_minor
+        varchar status
+        timestamp collected_at
+        bigint collected_by
+        varchar logistics_reference
+        timestamp logistics_received_at
+        bigint logistics_received_by
+        varchar finance_remittance_reference
+        timestamp remitted_to_finance_at
+        bigint remitted_to_finance_by
+        varchar finance_reference
+        timestamp reconciled_at
+        bigint reconciled_by
+        timestamp created_at
+        timestamp updated_at
+    }
+    cod_cash_collection_allocations {
+        bigint id PK
+        bigint cod_cash_collection_id
+        bigint payment_id
+        bigint order_id
+        bigint seller_order_id
+        bigint amount_due_minor
+        bigint amount_collected_minor
+        bigint amount_reconciled_minor
+        timestamp created_at
+        timestamp updated_at
+    }
     pickup_assignments {
         bigint id PK
         bigint pickup_request_id
@@ -523,6 +575,8 @@ erDiagram
         varchar code UK
         varchar title
         varchar category
+        varchar scope
+        varchar scope_key
         varchar status
         timestamp created_at
         timestamp updated_at
@@ -533,10 +587,21 @@ erDiagram
         varchar version
         longtext body
         text summary
+        varchar title
+        varchar category
+        text source_reference
         varchar status
         bigint created_by
         timestamp effective_at
         timestamp published_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    shipping_policy_settings {
+        bigint id PK
+        varchar provider_key UK
+        bigint manager_logistics_profile_id
+        bigint updated_by
         timestamp created_at
         timestamp updated_at
     }
@@ -769,6 +834,21 @@ erDiagram
         varchar remitted_to_account_name
         char remitted_to_last4
     }
+    shipping_settlement_allocations {
+        bigint id PK
+        bigint shipping_settlement_id
+        bigint seller_order_id
+        bigint original_shipping_fee_minor
+        bigint buyer_paid_shipping_fee_minor
+        bigint platform_shipping_subsidy_minor
+        varchar shipping_funding_source
+        tinyint zone_level
+        bigint origin_logistics_share_minor
+        bigint logistics_share_minor
+        bigint rider_share_minor
+        timestamp created_at
+        timestamp updated_at
+    }
     rider_profiles {
         bigint id PK
         bigint user_id UK
@@ -790,6 +870,16 @@ erDiagram
         timestamp created_at
         timestamp updated_at
         timestamp deleted_at
+    }
+    rider_attendance_absences {
+        bigint id PK
+        bigint logistics_profile_id FK
+        bigint rider_profile_id FK
+        date work_date
+        bigint marked_by_user_id FK
+        timestamp marked_at
+        timestamp created_at
+        timestamp updated_at
     }
     rider_vehicle_change_requests {
         bigint id PK
@@ -1064,6 +1154,13 @@ erDiagram
         timestamp occurred_at
         timestamp created_at
     }
+    shipment_seller_orders {
+        bigint id PK
+        bigint shipment_id
+        bigint seller_order_id
+        timestamp created_at
+        timestamp updated_at
+    }
     shipments {
         bigint id PK
         varchar shipment_no UK
@@ -1295,6 +1392,20 @@ erDiagram
     account_applications ||--|{ application_documents : application_id
     users ||--o{ application_documents : verified_by
     users ||--o{ audit_logs : actor_user_id
+    shipments ||--o| cod_cash_collections : shipment_id
+    payments ||--o{ cod_cash_collections : payment_id
+    orders ||--o{ cod_cash_collections : order_id
+    seller_orders ||--o{ cod_cash_collections : seller_order_id
+    logistics_profiles ||--o{ cod_cash_collections : logistics_profile_id
+    rider_profiles ||--o{ cod_cash_collections : rider_profile_id
+    users ||--o{ cod_cash_collections : collected_by
+    users o|--o{ cod_cash_collections : logistics_received_by
+    users o|--o{ cod_cash_collections : remitted_to_finance_by
+    users o|--o{ cod_cash_collections : reconciled_by
+    cod_cash_collections ||--|{ cod_cash_collection_allocations : cod_cash_collection_id
+    payments ||--o{ cod_cash_collection_allocations : payment_id
+    orders ||--o{ cod_cash_collection_allocations : order_id
+    seller_orders ||--o{ cod_cash_collection_allocations : seller_order_id
     carts ||--|{ cart_items : cart_id
     product_variants ||--|{ cart_items : product_variant_id
     users ||--o{ carts : user_id
@@ -1335,6 +1446,7 @@ erDiagram
     product_variants ||--|{ inventory_movements : variant_id
     account_applications ||--o{ logistics_profiles : application_id
     users ||--|{ logistics_profiles : user_id
+    logistics_profiles ||--o| logistics_locations : logistics_profile_id
     logistics_profiles ||--o{ logistics_payout_accounts : logistics_profile_id
     users o|--o{ logistics_payout_accounts : created_by
     users o|--o{ logistics_payout_accounts : reviewed_by
@@ -1365,6 +1477,8 @@ erDiagram
     seller_orders ||--|{ platform_commissions : seller_order_id
     users ||--o{ policy_versions : created_by
     policies ||--|{ policy_versions : policy_id
+    logistics_profiles ||--o{ shipping_policy_settings : manager_logistics_profile_id
+    users ||--o{ shipping_policy_settings : updated_by
     product_compliance_checks ||--|{ product_compliance_check_matches : check_id
     compliance_rules ||--|{ product_compliance_check_matches : rule_id
     categories ||--o{ product_compliance_checks : category_id_snapshot
@@ -1401,6 +1515,9 @@ erDiagram
     delivery_attempts ||--o{ rider_earnings : delivery_attempt_id
     pickup_assignments ||--o{ rider_earnings : pickup_assignment_id
     rider_profiles ||--|{ rider_earnings : rider_profile_id
+    logistics_profiles ||--o{ rider_attendance_absences : logistics_profile_id
+    rider_profiles ||--o{ rider_attendance_absences : rider_profile_id
+    users ||--o{ rider_attendance_absences : marked_by_user_id
     users ||--o{ rider_profiles : courier_vehicle_verified_by
     sorting_zones ||--o{ rider_profiles : current_zone_id
     sorting_centers ||--o{ rider_profiles : home_sorting_center_id
@@ -1449,6 +1566,7 @@ erDiagram
     payments ||--o{ seller_transactions : payment_id
     refunds ||--o{ seller_transactions : refund_id
     seller_orders ||--o{ seller_transactions : seller_order_id
+    seller_orders ||--o{ shipping_settlement_allocations : seller_order_id
     seller_profiles ||--|{ seller_transactions : seller_profile_id
     users ||--o{ seller_warnings : issued_by
     seller_profiles ||--|{ seller_warnings : seller_profile_id
@@ -1456,11 +1574,14 @@ erDiagram
     users ||--o{ shipment_events : actor_user_id
     parcels ||--o{ shipment_events : parcel_id
     shipments ||--|{ shipment_events : shipment_id
+    shipments ||--|{ shipment_seller_orders : shipment_id
+    seller_orders ||--o{ shipment_seller_orders : seller_order_id
     sorting_centers ||--o{ shipment_events : sorting_center_id
     sorting_zones ||--o{ shipment_events : sorting_zone_id
     addresses ||--o{ shipments : destination_address_id
     logistics_profiles ||--|{ shipments : logistics_profile_id
     logistics_profiles ||--o{ shipping_settlements : logistics_profile_id
+    shipping_settlements ||--o{ shipping_settlement_allocations : shipping_settlement_id
     logistics_payout_accounts o|--o{ shipping_settlements : logistics_payout_account_id
     addresses ||--o{ shipments : origin_address_id
     seller_orders ||--|{ shipments : seller_order_id

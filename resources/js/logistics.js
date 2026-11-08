@@ -1,6 +1,9 @@
+import L from 'leaflet';
 import { isValidPhilippineMobile } from './registration-phone.js';
 import { restoreRegistrationDraft, setupRegistrationDraft } from './registration-draft.js';
+import { createAddressMapPicker } from './address-map-picker';
 import './notification-center.js';
+import './logistics-attendance-qr.js';
 import { setupLogisticsPickupMaps } from './logistics-pickup-map.js';
 import {
     acknowledgeConversation,
@@ -14,6 +17,11 @@ import {
 const normalize = (value) => String(value || '').trim().toLowerCase().replaceAll('_', ' ');
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[character]);
 const refreshIcons = () => window.lucide?.createIcons();
+const shippingPolicyScrollKey = 'bearly:logistics-shipping-policies:scroll-y';
+const logisticsLocationPreferencePrefix = 'bearly:logistics-location-sharing';
+const logisticsLocationSendIntervalMs = 5_000;
+const logisticsLocationHeartbeatIntervalMs = 15_000;
+const logisticsLocationFreshnessMs = 180_000;
 const riderAccountStatusLabels = {
     active: 'Enabled',
     suspended: 'Suspended',
@@ -33,6 +41,46 @@ function toast(message) {
     stack.append(item);
     refreshIcons();
     setTimeout(() => item.remove(), 3200);
+}
+
+function setupShippingPolicyScrollRestoration() {
+    const page = document.querySelector('[data-shipping-policies-page]');
+    let savedScrollY = null;
+
+    try {
+        savedScrollY = window.sessionStorage.getItem(shippingPolicyScrollKey);
+        window.sessionStorage.removeItem(shippingPolicyScrollKey);
+    } catch {
+        // Scroll restoration is an enhancement; forms still work if storage is unavailable.
+    }
+
+    if (!page) return;
+
+    const feedback = document.querySelector('[data-shipping-policy-feedback]');
+    const scrollY = Number(savedScrollY);
+
+    if (feedback?.dataset.shippingPolicyFeedback === 'success'
+        && savedScrollY !== null
+        && Number.isFinite(scrollY)
+        && scrollY >= 0) {
+        const root = document.documentElement;
+        const previousScrollBehavior = root.style.scrollBehavior;
+        root.style.scrollBehavior = 'auto';
+        window.scrollTo(0, scrollY);
+        window.requestAnimationFrame(() => {
+            root.style.scrollBehavior = previousScrollBehavior;
+        });
+    }
+
+    page.querySelectorAll('form').forEach((form) => {
+        form.addEventListener('submit', () => {
+            try {
+                window.sessionStorage.setItem(shippingPolicyScrollKey, String(window.scrollY));
+            } catch {
+                // The normal post/redirect flow remains the fallback.
+            }
+        });
+    });
 }
 
 function setupShell() {
@@ -96,6 +144,9 @@ function setupModals() {
         const visibleControl = [...modal.querySelectorAll('button:not(:disabled), input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled)')]
             .find((control) => !control.closest('[hidden]'));
         (initialFocus || visibleControl)?.focus();
+        if (button.hasAttribute('data-pickup-reject-open')) {
+            modal.querySelector('[data-pickup-reject-toggle]')?.click();
+        }
     }));
     document.querySelectorAll('[data-modal-close]').forEach((button) => button.addEventListener('click', closeAll));
     backdrop?.addEventListener('click', closeAll);
@@ -242,6 +293,520 @@ function setupTabs() {
                 initialButton.dataset.tab
             );
         }
+    });
+}
+
+function setupLogisticsLocationSharing() {
+    const control = document.querySelector('[data-logistics-location-control]');
+    const toggle = control?.querySelector('[data-logistics-location-toggle]');
+    const dot = control?.querySelector('[data-logistics-location-dot]');
+    const label = control?.querySelector('[data-logistics-location-label]');
+    const help = control?.querySelector('[data-logistics-location-help]');
+
+    if (!control || !toggle) return;
+
+    const body = document.body;
+    const logisticsLocationPreferenceKey = `${logisticsLocationPreferencePrefix}:${body.dataset.realtimeUserId || 'unknown'}`;
+    const statusEndpoint = body.dataset.logisticsLocationStatusEndpoint || '';
+    const endpoint = body.dataset.logisticsLocationEndpoint || '';
+    const clearEndpoint = body.dataset.logisticsLocationClearEndpoint || '';
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    let watchId = null;
+    let heartbeatId = null;
+    let firstFixTimeoutId = null;
+    let sharingSession = 0;
+    let requestInFlight = false;
+    let clearInFlight = false;
+    let locationRequestSettled = Promise.resolve();
+    let clearRequestSettled = Promise.resolve();
+    let lastSentAt = 0;
+    let hasSharedLocation = false;
+    let remoteLocationShared = false;
+    let sharingEnabled = false;
+
+    const sharingPreference = () => {
+        if (sharingEnabled) return true;
+
+        try {
+            return window.localStorage.getItem(logisticsLocationPreferenceKey) === 'enabled';
+        } catch {
+            return false;
+        }
+    };
+
+    const setSharingPreference = (enabled) => {
+        sharingEnabled = enabled;
+
+        try {
+            window.localStorage.setItem(logisticsLocationPreferenceKey, enabled ? 'enabled' : 'disabled');
+        } catch {
+            // The current page can still share when local storage is unavailable.
+        }
+    };
+
+    const emitLocation = (location, sharing, state) => {
+        window.dispatchEvent(new CustomEvent('bearly:logistics-location-updated', {
+            detail: { location, sharing, state },
+        }));
+    };
+
+    const setUi = (state, title, description, buttonText, accuracyMeters = null) => {
+        control.dataset.state = state;
+        control.classList.toggle('is-sharing', state === 'sharing');
+        control.classList.toggle('is-error', state === 'error');
+        dot?.classList.toggle('is-sharing', state === 'sharing');
+        dot?.classList.toggle('is-pending', state === 'pending');
+        dot?.classList.toggle('is-error', state === 'error');
+        dot?.classList.toggle('is-off', !['sharing', 'pending', 'error'].includes(state));
+        if (label) label.textContent = title;
+        if (help) help.textContent = description;
+        toggle.disabled = state === 'pending' && buttonText !== 'Stop sharing';
+        toggle.textContent = buttonText;
+
+        if (Number.isFinite(accuracyMeters) || accuracyMeters === null) {
+            control.dataset.accuracyMeters = accuracyMeters === null ? '' : String(accuracyMeters);
+        }
+    };
+
+    const formatUpdatedAt = (value = new Date()) => {
+        const date = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(date.getTime())) return 'time unavailable';
+
+        return new Intl.DateTimeFormat(undefined, {
+            hour: 'numeric',
+            minute: '2-digit',
+        }).format(date);
+    };
+
+    const stopWatcher = () => {
+        sharingSession += 1;
+        if (watchId !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchId);
+        if (heartbeatId !== null) window.clearInterval(heartbeatId);
+        if (firstFixTimeoutId !== null) window.clearTimeout(firstFixTimeoutId);
+        watchId = null;
+        heartbeatId = null;
+        firstFixTimeoutId = null;
+    };
+
+    const clearRemoteLocation = async () => {
+        if (!clearEndpoint) return false;
+        if (clearInFlight) {
+            await clearRequestSettled;
+            return true;
+        }
+
+        clearInFlight = true;
+        let cleared = false;
+        let resolveClearRequest;
+        clearRequestSettled = new Promise((resolve) => {
+            resolveClearRequest = resolve;
+        });
+
+        try {
+            if (requestInFlight) await locationRequestSettled;
+
+            const response = await fetch(clearEndpoint, {
+                method: 'DELETE',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            cleared = response.ok;
+        } catch {
+            // Server-side freshness remains the fallback if explicit clearing fails.
+        } finally {
+            clearInFlight = false;
+            resolveClearRequest?.();
+            remoteLocationShared = false;
+            emitLocation(null, false, 'off');
+        }
+
+        return cleared;
+    };
+
+    const stopSharing = async () => {
+        stopWatcher();
+        setSharingPreference(false);
+        hasSharedLocation = false;
+        remoteLocationShared = false;
+        emitLocation(null, false, 'off');
+        setUi('pending', 'Stopping location sharing', 'Removing the latest shared device location.', 'Stopping…');
+        const cleared = await clearRemoteLocation();
+        setUi(
+            cleared ? 'off' : 'error',
+            cleared ? 'Location sharing is off' : 'Sharing stopped on this device',
+            cleared
+                ? 'Your live device location is no longer shared with Logistics maps.'
+                : 'The last server location could not be cleared and will expire from maps within 3 minutes.',
+            'Share location',
+        );
+    };
+
+    const sendPosition = async (position, session) => {
+        if (session !== sharingSession || !endpoint || watchId === null || !sharingPreference()) return;
+
+        if (clearInFlight) await clearRequestSettled;
+
+        if (session !== sharingSession || requestInFlight || watchId === null || !sharingPreference()) return;
+
+        const now = Date.now();
+        if (now - lastSentAt < logisticsLocationSendIntervalMs) return;
+
+        const latitude = Number(position?.coords?.latitude);
+        const longitude = Number(position?.coords?.longitude);
+        const reportedAccuracy = position?.coords?.accuracy;
+        const accuracy = typeof reportedAccuracy === 'number' && Number.isFinite(reportedAccuracy) && reportedAccuracy >= 0
+            ? reportedAccuracy
+            : null;
+
+        if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
+            || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) return;
+
+        requestInFlight = true;
+        let resolveLocationRequest;
+        locationRequestSettled = new Promise((resolve) => {
+            resolveLocationRequest = resolve;
+        });
+
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    latitude,
+                    longitude,
+                    accuracy_meters: accuracy,
+                }),
+            });
+            const payload = await response.json().catch(() => ({}));
+
+            if (session !== sharingSession || watchId === null || !sharingPreference()) return;
+            if (!response.ok) throw new Error(payload.message || 'Location update failed.');
+
+            const location = payload?.data?.location || {
+                latitude,
+                longitude,
+                accuracy_meters: accuracy,
+                last_seen_at: new Date().toISOString(),
+            };
+            lastSentAt = Date.now();
+            hasSharedLocation = true;
+            remoteLocationShared = true;
+            const accuracyCopy = accuracy === null
+                ? 'Accuracy was not reported; map viewers should treat this as approximate.'
+                : `Reported GPS accuracy is ±${Math.round(accuracy)} m; coarse readings remain marked approximate.`;
+            const title = accuracy === null
+                ? 'Location shared · accuracy unknown'
+                : accuracy > 100
+                    ? 'Location shared · approximate'
+                    : 'Location sharing is active';
+
+            setUi(
+                'sharing',
+                title,
+                `Last update ${formatUpdatedAt(location.last_seen_at)}. ${accuracyCopy} Visible only to your Logistics team; separate from the saved facility pin.`,
+                'Stop sharing',
+                accuracy,
+            );
+            emitLocation(location, true, 'sharing');
+        } catch (error) {
+            if (session !== sharingSession || watchId === null || !sharingPreference()) return;
+
+            setUi(
+                'error',
+                hasSharedLocation ? 'Location update delayed' : 'Could not share location',
+                error instanceof Error
+                    ? `${error.message} We will retry on the next GPS fix; keep this page open and check your connection.`
+                    : 'The latest position could not be saved. We will retry on the next GPS fix.',
+                'Stop sharing',
+            );
+        } finally {
+            requestInFlight = false;
+            resolveLocationRequest?.();
+        }
+    };
+
+    const handlePositionError = (error, session) => {
+        if (session !== sharingSession) return;
+
+        if (error?.code === 1) {
+            stopWatcher();
+            setSharingPreference(false);
+            hasSharedLocation = false;
+            void clearRemoteLocation();
+            setUi('error', 'Location permission denied', 'Allow this site to use location in your browser and device settings, then try again.', 'Try again');
+            return;
+        }
+
+        setUi(
+            'error',
+            error?.code === 3 ? 'Still waiting for GPS' : 'GPS temporarily unavailable',
+            'Check device location and browser permission. We will keep trying while sharing remains on.',
+            'Stop sharing',
+        );
+    };
+
+    const handlePosition = (position, session) => {
+        if (session !== sharingSession) return;
+
+        const latitude = Number(position?.coords?.latitude);
+        const longitude = Number(position?.coords?.longitude);
+        if (Number.isFinite(latitude) && Number.isFinite(longitude) && firstFixTimeoutId !== null) {
+            window.clearTimeout(firstFixTimeoutId);
+            firstFixTimeoutId = null;
+        }
+
+        void sendPosition(position, session);
+    };
+
+    const startWatcher = () => {
+        if (!navigator.geolocation || typeof navigator.geolocation.watchPosition !== 'function') {
+            setSharingPreference(false);
+            setUi('error', 'Location is unavailable', 'This browser does not provide device location.', 'Try again');
+            return;
+        }
+        if (watchId !== null) return;
+
+        const session = ++sharingSession;
+        lastSentAt = 0;
+        hasSharedLocation = false;
+        setSharingPreference(true);
+        setUi('pending', 'Requesting device location', 'Allow this site to use location. Sharing runs only while this page/browser is active.', 'Starting…');
+        firstFixTimeoutId = window.setTimeout(() => {
+            if (session !== sharingSession || watchId === null || hasSharedLocation) return;
+            setUi('error', 'Still waiting for GPS', 'No fix yet. Check browser/device location settings; coarse fixes can still be shared as approximate.', 'Stop sharing');
+        }, 15_000);
+        watchId = navigator.geolocation.watchPosition(
+            (position) => handlePosition(position, session),
+            (error) => handlePositionError(error, session),
+            { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
+        );
+        heartbeatId = window.setInterval(() => {
+            if (session !== sharingSession || watchId === null) return;
+            navigator.geolocation.getCurrentPosition(
+                (position) => handlePosition(position, session),
+                (error) => handlePositionError(error, session),
+                { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
+            );
+        }, logisticsLocationHeartbeatIntervalMs);
+    };
+
+    const loadRemoteStatus = async () => {
+        if (!statusEndpoint || sharingPreference()) return;
+
+        try {
+            const response = await fetch(statusEndpoint, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            const payload = await response.json().catch(() => ({}));
+            const location = payload?.data?.location;
+            if (!response.ok || !payload?.data?.shared || !location) return;
+
+            const lastSeenAt = Date.parse(location.last_seen_at);
+            if (!Number.isFinite(lastSeenAt) || Date.now() - lastSeenAt > logisticsLocationFreshnessMs) return;
+
+            const accuracy = location.accuracy_meters !== null
+                && location.accuracy_meters !== undefined
+                && Number.isFinite(Number(location.accuracy_meters))
+                ? Number(location.accuracy_meters)
+                : null;
+            setUi(
+                'sharing',
+                accuracy !== null && accuracy > 100 ? 'Location shared · approximate' : 'Location shared',
+                'A fresh location is shared by this Logistics provider. It is separate from the saved facility pin.',
+                'Stop sharing',
+                accuracy,
+            );
+            remoteLocationShared = true;
+            emitLocation(location, true, 'sharing');
+        } catch {
+            // Sharing can still be started manually if the status check fails.
+        }
+    };
+
+    toggle.addEventListener('click', () => {
+        if (watchId !== null || sharingPreference() || remoteLocationShared) {
+            void stopSharing();
+            return;
+        }
+        startWatcher();
+    });
+
+    window.addEventListener('storage', (event) => {
+        if (event.key !== logisticsLocationPreferenceKey) return;
+
+        if (event.newValue === 'enabled') {
+            if (watchId === null) startWatcher();
+            return;
+        }
+
+        const hadSharedLocation = watchId !== null || remoteLocationShared;
+        if (watchId !== null) stopWatcher();
+
+        if (hadSharedLocation) {
+            hasSharedLocation = false;
+            remoteLocationShared = false;
+            void clearRemoteLocation();
+            setUi('off', 'Location sharing is off', 'Sharing was stopped in another Bearly tab.', 'Share location');
+        }
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden || watchId === null || !navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition(
+            (position) => handlePosition(position, sharingSession),
+            (error) => handlePositionError(error, sharingSession),
+            { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
+        );
+    });
+
+    if (sharingPreference()) startWatcher();
+    else void loadRemoteStatus();
+}
+
+function setupLogisticsFacilityMap() {
+    const element = document.querySelector('[data-logistics-facility-map]');
+    const form = element?.closest('[data-logistics-facility-form]');
+
+    if (!element || !form) return;
+
+    let picker = null;
+    let liveLayer = null;
+    let liveMarker = null;
+    let accuracyCircle = null;
+    let freshnessTimer = null;
+    let refreshTimer = null;
+    let latestLiveLocation = null;
+
+    const clearLiveMarker = () => {
+        if (freshnessTimer !== null) window.clearTimeout(freshnessTimer);
+        freshnessTimer = null;
+        liveLayer?.clearLayers();
+        liveMarker = null;
+        accuracyCircle = null;
+    };
+
+    const renderLiveLocation = (location) => {
+        latestLiveLocation = location || null;
+        if (!liveLayer) return;
+
+        clearLiveMarker();
+        if (!location) return;
+
+        const latitude = Number(location.latitude);
+        const longitude = Number(location.longitude);
+        const lastSeenAt = Date.parse(location.last_seen_at || '');
+        if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
+            || !Number.isFinite(longitude) || longitude < -180 || longitude > 180
+            || !Number.isFinite(lastSeenAt) || lastSeenAt > Date.now()
+            || Date.now() - lastSeenAt > logisticsLocationFreshnessMs) return;
+
+        const accuracy = location.accuracy_meters !== null
+            && location.accuracy_meters !== undefined
+            && Number.isFinite(Number(location.accuracy_meters))
+            ? Number(location.accuracy_meters)
+            : null;
+        const updatedAt = new Date(lastSeenAt);
+        const updatedLabel = updatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        const coordinates = [latitude, longitude];
+        liveMarker = L.marker(coordinates, {
+            icon: L.divIcon({
+                className: 'logistics-live-location-marker',
+                html: '<span aria-hidden="true"></span>',
+                iconSize: [22, 22],
+                iconAnchor: [11, 11],
+            }),
+            title: 'Live Logistics device location · approximate',
+        }).addTo(liveLayer);
+        liveMarker.bindPopup(`Live Logistics device location · approximate<br>${accuracy === null ? 'GPS accuracy unavailable' : `Reported accuracy ±${Math.round(accuracy)} m`}<br>Updated ${escapeHtml(updatedLabel)}`);
+
+        if (accuracy !== null && accuracy > 0) {
+            accuracyCircle = L.circle(coordinates, {
+                radius: accuracy,
+                color: '#17738a',
+                weight: 2,
+                dashArray: '5 5',
+                fillColor: '#55b4c8',
+                fillOpacity: 0.12,
+            }).addTo(liveLayer);
+        }
+
+        freshnessTimer = window.setTimeout(() => {
+            clearLiveMarker();
+            latestLiveLocation = null;
+        }, Math.max(0, lastSeenAt + logisticsLocationFreshnessMs - Date.now() + 1));
+    };
+
+    const refreshLiveLocation = async () => {
+        if (!picker || element.closest('[data-tab-panel]')?.hidden) return;
+
+        const endpoint = document.body.dataset.logisticsLocationStatusEndpoint || '';
+        if (!endpoint) return;
+
+        try {
+            const response = await fetch(endpoint, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) return;
+            renderLiveLocation(payload?.data?.shared ? payload.data.location : null);
+        } catch {
+            // The latest marker will expire locally if the status request fails.
+        }
+    };
+
+    const initialize = () => {
+        if (picker || element.closest('[data-tab-panel]')?.hidden) return;
+
+        picker = createAddressMapPicker({
+            element,
+            latitudeInput: form.querySelector('[name="latitude"]'),
+            longitudeInput: form.querySelector('[name="longitude"]'),
+            clearButton: form.querySelector('[data-clear-facility-pin]'),
+            locationButton: form.querySelector('[data-detect-facility-location]'),
+            manualPlacementButton: form.querySelector('[data-place-facility-pin-manually]'),
+            stopLocationButton: form.querySelector('[data-stop-facility-location]'),
+            locationControl: form.querySelector('[data-facility-location-status]'),
+            reverseGeocodeUrl: element.dataset.reverseGeocodeUrl,
+            stableLocation: false,
+            continuousLocation: true,
+            maximumLocationAccuracyMeters: 100,
+            saveLabel: 'Save facility settings',
+            status: form.querySelector('[data-logistics-facility-map-status]'),
+            latitude: element.dataset.latitude || null,
+            longitude: element.dataset.longitude || null,
+        });
+
+        if (picker) {
+            liveLayer = L.layerGroup().addTo(picker.map);
+            renderLiveLocation(latestLiveLocation);
+            window.requestAnimationFrame(() => picker.map.invalidateSize());
+            void refreshLiveLocation();
+            if (refreshTimer === null) refreshTimer = window.setInterval(() => { void refreshLiveLocation(); }, 10_000);
+        }
+    };
+
+    window.addEventListener('bearly:logistics-location-updated', (event) => {
+        renderLiveLocation(event.detail?.sharing ? event.detail.location : null);
+    });
+
+    initialize();
+    document.querySelector('[data-tab="facility"]')?.addEventListener('click', () => {
+        window.requestAnimationFrame(initialize);
+        window.requestAnimationFrame(() => { void refreshLiveLocation(); });
     });
 }
 
@@ -3688,10 +4253,13 @@ function setupRefundCashRealtime() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    setupShippingPolicyScrollRestoration();
     setupShell();
     setupModals();
     setupPickupRejection();
     setupTabs();
+    setupLogisticsLocationSharing();
+    setupLogisticsFacilityMap();
     setupTables();
     setupRiderAccountRealtime();
     setupChat();

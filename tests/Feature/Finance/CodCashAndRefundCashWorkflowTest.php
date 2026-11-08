@@ -80,8 +80,8 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             ->json('data.version');
 
         $this->assertSame('collected', $collection->status);
-        $this->assertSame('paid', $scenario['payment']->fresh()->status);
-        $this->assertSame('paid', $scenario['order']->fresh()->payment_status);
+        $this->assertSame('pending', $scenario['payment']->fresh()->status);
+        $this->assertSame('unpaid', $scenario['order']->fresh()->payment_status);
         $this->assertCount(0, app(SellerPayoutService::class)->eligibleBySeller());
         $this->actingAs($this->admin)->get(route('admin.payments'))->assertOk();
         $this->actingAs($scenario['provider_user'])
@@ -193,6 +193,8 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             ->assertRedirect();
         $collection->refresh();
         $this->assertSame('reconciled', $collection->status);
+        $this->assertSame('paid', $scenario['payment']->fresh()->status);
+        $this->assertSame('paid', $scenario['order']->fresh()->payment_status);
         $this->assertSame($remittanceReference, $collection->finance_remittance_reference);
         $financeReceiptReference = $collection->finance_reference;
         $this->assertMatchesRegularExpression('/^BFR-\d{4}-\d{8,}$/', $financeReceiptReference);
@@ -273,9 +275,9 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             20000,
         );
 
-        $wallet = $scenario['seller_profile']->wallet()->firstOrFail();
-        $this->assertSame(18000, (int) $wallet->pending_balance_minor);
-        $this->assertSame(0, (int) $wallet->available_balance_minor);
+        $this->assertDatabaseMissing('seller_wallets', [
+            'seller_profile_id' => $scenario['seller_profile']->id,
+        ]);
 
         $this->actingAs($scenario['provider_user'])
             ->post(route('logistics.cash.cod.receive', $collection), ['actual_amount' => '200.00'])
@@ -290,7 +292,7 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             ])
             ->assertRedirect();
 
-        $wallet->refresh();
+        $wallet = $scenario['seller_profile']->wallet()->firstOrFail();
         $this->assertSame(0, (int) $wallet->pending_balance_minor);
         $this->assertSame(18000, (int) $wallet->available_balance_minor);
         $this->assertDatabaseHas('seller_wallet_transactions', [
@@ -374,6 +376,9 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
     {
         $scenario = $this->scenario('formattedremittance');
         $scenario['shipment']->update(['cod_amount_minor' => 5_005_000]);
+        $scenario['seller_order']->update(['total_minor' => 5_005_000]);
+        $scenario['order']->update(['total_minor' => 5_005_000]);
+        $scenario['payment']->update(['amount_minor' => 5_005_000]);
         $rider = $this->rider($scenario['provider'], 'formatted remittance rider');
         $collection = app(CodCashCollectionService::class)->recordRiderCollection(
             $scenario['shipment'],
@@ -529,7 +534,7 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
         $this->assertArrayNotHasKey('account_number', $audit->new_values);
     }
 
-    public function test_multi_seller_cod_payment_is_not_captured_until_each_active_shipment_is_collected(): void
+    public function test_multi_seller_cod_payment_is_not_captured_until_finance_reconciles_each_exact_allocation(): void
     {
         $scenario = $this->scenario('multi seller');
         $scenario['seller_order']->update([
@@ -576,11 +581,21 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
         ]);
         $rider = $this->rider($scenario['provider'], 'multi seller rider');
 
-        app(CodCashCollectionService::class)->recordRiderCollection($scenario['shipment'], $rider, 10000);
+        $codCash = app(CodCashCollectionService::class);
+        $firstCollection = $codCash->recordRiderCollection($scenario['shipment'], $rider, 10000);
         $this->assertSame('pending', $scenario['payment']->fresh()->status);
         $this->assertSame('unpaid', $scenario['order']->fresh()->payment_status);
 
-        app(CodCashCollectionService::class)->recordRiderCollection($secondShipment, $rider, 10000);
+        $secondCollection = $codCash->recordRiderCollection($secondShipment, $rider, 10000);
+        $this->assertSame('pending', $scenario['payment']->fresh()->status);
+        $this->assertSame('unpaid', $scenario['order']->fresh()->payment_status);
+
+        foreach ([$firstCollection, $secondCollection] as $collection) {
+            $codCash->receiveAtLogistics($scenario['provider_user'], (int) $collection->id, 10000);
+            $codCash->remitToFinance($scenario['provider_user'], (int) $collection->id, 10000);
+            $codCash->reconcileAtFinance($this->admin, (int) $collection->id, 10000);
+        }
+
         $this->assertSame('paid', $scenario['payment']->fresh()->status);
         $this->assertSame('paid', $scenario['order']->fresh()->payment_status);
         $this->assertDatabaseCount('platform_commissions', 2);
@@ -685,6 +700,19 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             $this->rider($scenario['provider'], 'cod collection rider'),
             20000,
         );
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.cod.receive', $collection), ['actual_amount' => '200.00'])
+            ->assertRedirect();
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.cod.remit', $collection), ['actual_amount' => '200.00'])
+            ->assertRedirect();
+        $this->actingAs($this->admin)
+            ->post(route('admin.payments.cod.reconcile', $collection), [
+                'received_amount' => '200.00',
+                'cash_received_confirmed' => '1',
+            ])
+            ->assertRedirect();
+
         $refund = $this->refund($scenario, 5000);
         $payout = null;
 

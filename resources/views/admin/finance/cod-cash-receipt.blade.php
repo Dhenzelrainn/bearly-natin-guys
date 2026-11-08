@@ -84,8 +84,16 @@
             <div><dt>Finance confirmed on</dt><dd>{{ $collection->reconciled_at?->format('M d, Y h:i A') ?? 'Not recorded' }}</dd></div>
             <div><dt>Confirmed by</dt><dd>{{ $collection->financeReconciler?->name ?? 'Admin Finance' }}</dd></div>
             <div><dt>Collection number</dt><dd><code>{{ $collection->collection_no }}</code></dd></div>
-            <div><dt>Marketplace order</dt><dd>{{ $collection->order?->order_no ?? 'Not available' }}</dd></div>
-            <div><dt>Seller order / Store</dt><dd>{{ $collection->sellerOrder?->seller_order_no ?? 'Not available' }} · {{ $collection->sellerOrder?->store?->name ?? 'Store unavailable' }}</dd></div>
+            <div>
+                <dt>Marketplace orders / COD allocations</dt>
+                <dd>
+                    @forelse($collection->allocations as $allocation)
+                        <span>{{ $allocation->order?->order_no ?? 'Order unavailable' }} · {{ $allocation->sellerOrder?->seller_order_no ?? 'Seller Order unavailable' }} · {{ $allocation->payment?->payment_no ?? 'Payment unavailable' }}</span><br>
+                    @empty
+                        {{ $collection->order?->order_no ?? 'Not available' }} · {{ $collection->sellerOrder?->seller_order_no ?? 'Seller Order unavailable' }} · {{ $collection->sellerOrder?->store?->name ?? 'Store unavailable' }}
+                    @endforelse
+                </dd>
+            </div>
             <div><dt>Logistics provider</dt><dd>{{ $collection->logisticsProfile?->display_name ?? 'Not available' }}</dd></div>
             <div><dt>Delivery Rider</dt><dd>{{ $collection->riderProfile?->user?->name ?? 'Not available' }}</dd></div>
         </dl>
@@ -108,6 +116,9 @@
                 <tr><th scope="row">Cash acknowledged by Logistics</th><td>₱{{ number_format((int) $collection->amount_received_by_logistics_minor / 100, 2) }}</td></tr>
                 <tr><th scope="row">Cash remitted by Logistics</th><td>₱{{ number_format((int) $collection->amount_remitted_to_finance_minor / 100, 2) }}</td></tr>
                 <tr><th scope="row">Cash physically received by Finance</th><td>₱{{ number_format((int) $collection->amount_reconciled_minor / 100, 2) }}</td></tr>
+                @foreach($collection->allocations as $allocation)
+                    <tr><th scope="row">Allocated to {{ $allocation->sellerOrder?->seller_order_no ?? 'Seller Order' }} ({{ $allocation->payment?->payment_no ?? 'Payment' }})</th><td>₱{{ number_format((int) $allocation->amount_reconciled_minor / 100, 2) }}</td></tr>
+                @endforeach
             </tbody>
         </table>
     </section>

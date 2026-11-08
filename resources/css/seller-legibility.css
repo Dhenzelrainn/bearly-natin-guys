@@ -1777,6 +1777,78 @@
     color: #efbd71;
 }
 
+/* Orders table cells use fixed light-theme text colors in the legacy Seller styles. */
+:root[data-theme="dark"] body.seller-body .seller-content .orders-workspace .orders-table tbody td {
+    color: #e7ddd3;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .orders-workspace .orders-table :is(
+    .order-customer, .payment-label, tbody td > strong
+) {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .orders-workspace .orders-table .order-product-copy .order-item-mini {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .orders-workspace .orders-table .orders-table-group .shipment-group-cell {
+    border-left-color: #d69b43;
+    background-color: var(--seller-surface-soft);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .orders-workspace .orders-table .orders-table-group.is-expanded .shipment-group-cell {
+    border-bottom-color: #d69b43;
+    background-color: #382e27;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .orders-workspace .orders-table .orders-table-group.is-expanded > tr[data-order-row] {
+    background-color: #30241d;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .orders-workspace .orders-table .orders-table-group.is-expanded > tr[data-order-row] > td {
+    border-top-color: #594737;
+    border-bottom-color: #594737;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .orders-workspace .orders-table .orders-table-group.is-expanded > tr[data-order-row] > td:first-child {
+    box-shadow: inset 4px 0 0 #d69b43;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .orders-workspace .orders-table .orders-table-group.is-expanded > tr[data-order-row]:hover {
+    background-color: #3b3027;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .orders-workspace .orders-table .shipment-group-toggle-label {
+    border-color: #806334;
+    color: #fff3dd;
+    background-color: #3b3027;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .orders-workspace .orders-table .orders-table-group.is-expanded .shipment-group-toggle-label {
+    border-color: #d69b43;
+    color: #2b1d16;
+    background-color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .orders-workspace .orders-table .shipment-group-status {
+    border-color: #72563e;
+    color: #fff3dd;
+    background-color: #211c18;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .orders-workspace .orders-table .orders-table-group.is-expanded .order-product-thumb {
+    border-color: #806334;
+    background-color: #382e27;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .orders-workspace .orders-table :is(
+    .deadline-label.is-urgent, .deadline-label.is-urgent small
+) {
+    color: #ffaaa2;
+}
+
 /* Neutral surfaces nested inside pages, while keeping image stages untouched. */
 :root[data-theme="dark"] body.seller-body .seller-content :is(
     .product-empty-icon, .product-onboarding-checklist svg,
@@ -1812,6 +1884,76 @@
     .feedback-review-photo img
 ) {
     filter: none;
+}
+
+/* Seller Waybills: keep the order/recipient summary readable in both themes. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .waybill-record, .waybill-recipient-card
+) {
+    border-color: var(--seller-border);
+    background-color: var(--seller-surface);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .waybill-overview-heading, .waybill-overview-items,
+    .waybill-record, .waybill-record-details, .waybill-detail-grid,
+    .waybill-actions
+) {
+    border-color: var(--seller-border);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .waybill-record-details {
+    background-color: var(--seller-surface);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .waybill-overview-heading > span {
+    background-color: var(--seller-border);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .waybill-overview-heading h3, .waybill-overview-section-heading h4,
+    .waybill-seller-order-list li, .waybill-recipient-card strong,
+    .waybill-detail-grid dd, .waybill-detail-grid dd > strong,
+    .waybill-empty-card strong
+) {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .waybill-seller-order-list li, .waybill-recipient-card
+) {
+    border-color: var(--seller-border);
+    background-color: var(--seller-surface-soft);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .waybill-linked-order-count, .waybill-product-more
+) {
+    border-color: #806334;
+    background-color: #3b3027;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .waybill-overview-heading > svg, .waybill-overview-section-heading > svg,
+    .waybill-recipient-card > svg, .waybill-cell-with-icon > svg
+) {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .waybill-recipient-card small, .waybill-detail-grid dt, .waybill-detail-heading,
+    .waybill-detail-grid dd > small, .waybill-print-hint,
+    .waybill-select-all, .waybill-empty-card
+) {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .waybill-record-select input,
+:root[data-theme="dark"] body.seller-body .seller-content .waybill-select-all input {
+    accent-color: #efbd71;
 }
 
 /* Semantic status and alert colors stay green/amber/blue/red in dark mode. */
@@ -1925,7 +2067,7 @@
 
 :root[data-theme="dark"] body.seller-body .seller-content :is(
     .dashboard-ref-reminder, .seller-wallet-notice, .case-deadline-banner,
-    .pickup-ready-banner, .tracking-attention, .inventory-attention-bar,
+    .pickup-ready-banner, .packing-logistics-provider, .tracking-attention, .inventory-attention-bar,
     .workflow-notice, .commission-rule-banner, .report-commission-note,
     .finance-ledger-note, .promotion-scope-notice, .locked-information-note
 ) {
@@ -1936,7 +2078,7 @@
 
 :root[data-theme="dark"] body.seller-body .seller-content :is(
     .dashboard-ref-reminder, .seller-wallet-notice, .case-deadline-banner,
-    .pickup-ready-banner, .tracking-attention, .inventory-attention-bar,
+    .pickup-ready-banner, .packing-logistics-provider, .tracking-attention, .inventory-attention-bar,
     .workflow-notice, .commission-rule-banner, .report-commission-note,
     .finance-ledger-note, .promotion-scope-notice, .locked-information-note
 ) :is(p, small) {
@@ -2154,7 +2296,7 @@
 }
 
 :root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-table :is(
-    td > strong, .tracking-shipment-copy > strong
+    td > strong, .tracking-shipment-copy > strong, .tracking-rider-cell > span
 ) {
     color: #f1e9e1 !important;
 }
@@ -2215,6 +2357,20 @@
     .fulfillment-tabs button.is-active, .returns-tab.is-active,
     .inventory-tab.is-active
 ) {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .waybill-workspace .fulfillment-tabs a {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .waybill-workspace .fulfillment-tabs a:is(
+    :focus-visible, .is-active
+) {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .waybill-workspace .fulfillment-tabs a:hover {
     color: #efbd71;
 }
 
@@ -3142,6 +3298,10 @@
     color: #f1e9e1;
 }
 
+:root[data-theme="dark"] body.seller-body .seller-content .pickups-page .seller-modal .modal-actions {
+    background-color: transparent !important;
+}
+
 :root[data-theme="dark"] body.seller-body .seller-content :is(
     .bearly-action-item, .order-workflow-item, .order-workflow-summary,
     .order-workflow-guidance, .bearly-action-next, .bearly-action-notice,
@@ -3422,6 +3582,154 @@
 :root[data-theme="dark"] body.seller-body .seller-content .message-heading-actions .message-filter-tabs b {
     background: #efbd71 !important;
     color: #2b1d16 !important;
+}
+
+/* Seller Packing Plan: replace fixed light-theme surfaces and weak text colors. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .packing-plan-note, .packing-plan-confirmation, .packing-plan-policy-note,
+    .packing-logistics-provider,
+    .packing-plan-related-orders
+) {
+    border-color: var(--seller-border);
+    background-color: var(--seller-surface-soft);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .packing-plan-order-card, .packing-plan-editor, .packing-parcel-card
+) {
+    border-color: var(--seller-border);
+    background-color: var(--seller-surface);
+    color: var(--theme-text);
+    box-shadow: none;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .packing-plan-note-icon {
+    background-color: #45331d;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .packing-plan-note strong, .packing-logistics-provider h3,
+    .packing-logistics-provider-field, .packing-plan-policy-heading strong,
+    .packing-plan-related-orders-heading strong, .packing-plan-related-order strong,
+    .packing-plan-policy-item summary, .packing-plan-order-heading h3,
+    .packing-plan-editor-heading h3, .packing-parcel-heading > span
+) {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .packing-plan-note p, .packing-logistics-provider p,
+    .packing-logistics-provider-status, .packing-plan-policy-heading > span,
+    .packing-plan-related-orders-heading p, .packing-plan-related-orders-heading > span,
+    .packing-plan-related-order small, .packing-plan-related-orders-empty,
+    .packing-plan-policy-note > p, .packing-plan-policy-item summary small,
+    .packing-plan-policy-source, .packing-plan-policy-boundary,
+    .packing-plan-item-copy small, .packing-plan-editor-heading p,
+    .packing-parcel-item small, .packing-parcel-quantity-field,
+    .packing-parcel-measurements label
+) {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .packing-logistics-provider-field select {
+    border-color: var(--seller-border);
+    color: var(--theme-text);
+    background-color: var(--seller-surface-raised);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .packing-logistics-provider-status.is-warning,
+:root[data-theme="dark"] body.seller-body .seller-content .pickups-page .pickup-provider-note.is-warning {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .pickups-page .pickup-rejection-note {
+    border-color: #76504a;
+    color: #ffaaa2;
+    background-color: #3b2522;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .packing-plan-policy-body {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .packing-plan-policy-item, .packing-plan-item-list,
+    .packing-plan-related-order-list, .packing-plan-related-order,
+    .packing-plan-order-item, .packing-parcel-heading, .packing-parcel-item
+) {
+    border-color: var(--seller-border);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .packing-plan-related-order input {
+    accent-color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .packing-parcel-heading {
+    background-color: var(--seller-surface-soft);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .packing-plan-policy-boundary {
+    border-top-color: var(--seller-border);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .packing-plan-unit-count {
+    background-color: #3b3027;
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .packing-plan-item-image {
+    border-color: var(--seller-border);
+    background-color: var(--seller-surface-raised);
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .packing-plan-tool:not(.is-primary) {
+    border-color: var(--seller-border);
+    background-color: var(--seller-surface-raised);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .packing-plan-tool:not(.is-primary):hover {
+    border-color: #806334;
+    background-color: #382e27;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .packing-plan-tool.is-primary, .packing-plan-submit
+) {
+    border-color: #806334;
+    background-color: #674832;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .packing-plan-tool.is-primary:hover, .packing-plan-submit:hover
+) {
+    background-color: #775433;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .packing-parcel-remove {
+    color: #ffaaa2;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .packing-parcel-remove:disabled {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .packing-plan-editor-heading p[data-state="error"] {
+    color: #ffaaa2;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .packing-plan-confirmation > svg {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .packing-plan-errors {
+    border-color: #76504a;
+    background-color: #3b2522;
+    color: #ffaaa2;
 }
 
 @media print {

@@ -4,7 +4,7 @@
 @section('content')
 <div class="page-header">
     <div><p class="page-kicker">Operations overview</p><h2>{{ $greeting }}, {{ explode(' ', $operator['name'])[0] }}</h2><p>Monitor rider approvals, parcel movement, sorting progress, and dispatch readiness.</p></div>
-    <div class="page-actions"><a class="button" href="{{ route('logistics.sorting.incoming') }}"><i data-lucide="scan-line"></i>Log incoming parcel</a><a class="button button-primary" href="{{ route('logistics.dispatch.index') }}"><i data-lucide="send"></i>Open dispatch board</a></div>
+    <div class="page-actions"><a class="button" href="{{ route('logistics.rider-attendance.index') }}"><i data-lucide="clipboard-check"></i>Rider attendance</a><a class="button" href="{{ route('logistics.sorting.incoming') }}"><i data-lucide="scan-line"></i>Log incoming parcel</a><a class="button button-primary" href="{{ route('logistics.dispatch.index') }}"><i data-lucide="send"></i>Open dispatch board</a></div>
 </div>
 <section class="panel" style="margin-bottom:20px" aria-labelledby="dashboard-period-title">
     <div class="panel-header">
@@ -51,7 +51,59 @@
     <article class="metric-item"><span class="metric-icon"><i data-lucide="{{ $metric['icon'] }}"></i></span><span class="metric-copy"><small>{{ $metric['label'] }}</small><strong>{{ number_format($metric['value']) }}</strong><span>{{ $metric['trend'] }}</span></span></article>
     @endforeach
 </section>
-<div class="content-grid">
+<div class="dashboard-overview-grid {{ $attendanceQrEnabled ? 'has-attendance-qr' : 'without-attendance-qr' }}">
+@if($attendanceQrEnabled)
+    <section class="dashboard-attendance-qr" aria-label="Rider attendance station">
+        <div class="panel attendance-qr-station" data-logistics-attendance-qr data-challenge-url="{{ route('logistics.rider-attendance.challenge') }}" aria-labelledby="dashboard-attendance-qr-heading">
+            <div class="panel-header">
+                <div>
+                    <p class="page-kicker">Provider-scoped code</p>
+                    <h3 id="dashboard-attendance-qr-heading">Rider attendance QR</h3>
+                    <p>Riders scan this code to check in or out. It rotates every {{ $attendanceQrTtlSeconds }} seconds.</p>
+                </div>
+                <button class="button button-primary button-small" type="button" data-attendance-qr-refresh>Refresh QR</button>
+            </div>
+            <div class="panel-body">
+                <div class="attendance-qr-station-layout">
+                    <div class="attendance-qr-canvas-wrap">
+                        <canvas data-attendance-qr-canvas aria-label="Rotating Rider attendance QR code"></canvas>
+                        <p class="attendance-qr-caption">Display this code at your authorized attendance station.</p>
+                    </div>
+                    <div class="attendance-qr-status">
+                        <strong data-attendance-qr-countdown>Preparing a secure QR…</strong>
+                        <span data-attendance-qr-expiry aria-live="off">A fresh code is generated automatically.</span>
+                        <p data-attendance-qr-message role="status" aria-live="polite">Connecting to the attendance service…</p>
+                        <noscript><p class="alert alert-warning">JavaScript is required to generate and rotate the attendance QR.</p></noscript>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    @push('scripts')
+        @vite('resources/js/logistics-attendance-qr.js')
+    @endpush
+@endif
+    <div class="dashboard-overview-rail">
+        <section class="panel">
+            <div class="panel-header"><div><h3>Needs attention</h3><p>Current queues and exceptions requiring an operator decision.</p></div></div>
+            <div class="panel-body attention-list">
+                <a class="attention-item" href="{{ route('logistics.riders.index') }}"><i data-lucide="user-round-check"></i><span><strong>{{ $pendingRiderCount }} rider {{ $pendingRiderCount === 1 ? 'application' : 'applications' }}</strong><small>Credentials are ready for review</small></span><i data-lucide="chevron-right"></i></a>
+                <a class="attention-item" href="{{ route('logistics.pickups.index') }}"><i data-lucide="package-check"></i><span><strong>{{ $pendingPickupCount }} pickup {{ $pendingPickupCount === 1 ? 'request' : 'requests' }}</strong><small>Seller requests are awaiting verification</small></span><i data-lucide="chevron-right"></i></a>
+                <a class="attention-item" href="{{ route('logistics.sorting.center') }}"><i data-lucide="triangle-alert"></i><span><strong>{{ $sortingExceptionCount }} sorting {{ $sortingExceptionCount === 1 ? 'exception' : 'exceptions' }}</strong><small>Parcels requiring sorting review</small></span><i data-lucide="chevron-right"></i></a>
+            </div>
+        </section>
+        <section class="panel">
+            <div class="panel-header"><div><h3>Quick actions</h3><p>Jump into frequent operations.</p></div></div>
+            <div class="panel-body quick-actions">
+                <a class="quick-action" href="{{ route('logistics.sorting.incoming') }}"><i data-lucide="package-plus"></i><span><strong>Receive parcels</strong><small>Log arrivals at the center</small></span></a>
+                <a class="quick-action" href="{{ route('logistics.sorting.center') }}"><i data-lucide="arrow-down-up"></i><span><strong>Sort queue</strong><small>Group parcels by area</small></span></a>
+                <a class="quick-action" href="{{ route('logistics.riders.index') }}"><i data-lucide="badge-check"></i><span><strong>Review riders</strong><small>Approve new applications</small></span></a>
+                <a class="quick-action" href="{{ route('logistics.reports.index') }}"><i data-lucide="file-chart-column"></i><span><strong>Generate report</strong><small>Preview performance data</small></span></a>
+            </div>
+        </section>
+    </div>
+</div>
+<div class="content-grid dashboard-lower-grid">
     <section class="panel">
         <div class="panel-header"><div><h3>Zone readiness</h3><p>Live current-state view of parcels staged for delivery runs; not limited by the selected dates.</p></div><a class="text-button" href="{{ route('logistics.dispatch.index') }}">Manage assignments</a></div>
         <div class="table-wrap"><table class="data-table"><thead><tr><th>Delivery area</th><th>Parcels</th><th>Sorted & ready</th><th>Available riders</th><th>Readiness</th></tr></thead><tbody>
@@ -111,37 +163,6 @@
         @endforelse
         </tbody></table></div>
     </section>
-    <section class="panel">
-        <div class="panel-header"><div><h3>Needs attention</h3><p>Current queues and exceptions requiring an operator decision.</p></div></div>
-        <div class="panel-body attention-list">
-            <a class="attention-item" href="{{ route('logistics.riders.index') }}"><i data-lucide="user-round-check"></i><span><strong>{{ $pendingRiderCount }} rider {{ $pendingRiderCount === 1 ? 'application' : 'applications' }}</strong><small>Credentials are ready for review</small></span><i data-lucide="chevron-right"></i></a>
-            <a class="attention-item" href="{{ route('logistics.pickups.index') }}"><i data-lucide="package-check"></i><span><strong>{{ $pendingPickupCount }} pickup {{ $pendingPickupCount === 1 ? 'request' : 'requests' }}</strong><small>Seller requests are awaiting verification</small></span><i data-lucide="chevron-right"></i></a>
-            <a
-                class="attention-item"
-                href="{{ route('logistics.sorting.center') }}"
-            >
-                <i data-lucide="triangle-alert"></i>
-
-                <span>
-                    <strong>
-                        {{ $sortingExceptionCount }}
-                        sorting
-                        {{ $sortingExceptionCount === 1
-                            ? 'exception'
-                            : 'exceptions' }}
-                    </strong>
-
-                    <small>
-                        Parcels requiring sorting review
-                    </small>
-                </span>
-
-                <i data-lucide="chevron-right"></i>
-            </a>
-        </div>
-    </section>
-</div>
-<div class="content-grid equal" style="margin-top:20px">
     <section class="panel"><div class="panel-header"><div><h3>Recent activity</h3><p>Fulfillment and rider activity recorded within the selected period.</p></div></div><div class="panel-body activity-list">
         @forelse($activity as $item)
             <div class="activity-item">
@@ -170,12 +191,6 @@
                 </p>
             </div>
         @endforelse
-    </div></section>
-    <section class="panel"><div class="panel-header"><div><h3>Quick actions</h3><p>Jump into frequent operations.</p></div></div><div class="panel-body quick-actions">
-        <a class="quick-action" href="{{ route('logistics.sorting.incoming') }}"><i data-lucide="package-plus"></i><span><strong>Receive parcels</strong><small>Log arrivals at the center</small></span></a>
-        <a class="quick-action" href="{{ route('logistics.sorting.center') }}"><i data-lucide="arrow-down-up"></i><span><strong>Sort queue</strong><small>Group parcels by area</small></span></a>
-        <a class="quick-action" href="{{ route('logistics.riders.index') }}"><i data-lucide="badge-check"></i><span><strong>Review riders</strong><small>Approve new applications</small></span></a>
-        <a class="quick-action" href="{{ route('logistics.reports.index') }}"><i data-lucide="file-chart-column"></i><span><strong>Generate report</strong><small>Preview performance data</small></span></a>
     </div></section>
 </div>
 @endsection

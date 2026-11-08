@@ -59,7 +59,7 @@ class BuyerOrderConfirmationService
 
                 $shipmentStatuses = $sellerOrder->shipments()
                     ->where('purpose', 'outbound')
-                    ->orderBy('id')
+                    ->orderBy('shipments.id')
                     ->lockForUpdate()
                     ->pluck('status');
 

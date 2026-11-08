@@ -11758,3 +11758,76 @@ table {
     .admin-body .returns-refunds-page .return-review-decision-panel .return-evidence-request-bottom { grid-template-columns: minmax(0, 1fr); }
     .admin-body .returns-refunds-page .return-review-footer .button { width: 100%; }
 }
+
+/* Bearly Logistics shared-policy Admin review queue */
+.admin-shipping-policy-errors { margin-bottom: 16px; color: #842f24; }
+.admin-shipping-policy-errors ul { margin: 8px 0 0; padding-left: 20px; }
+.admin-shipping-policy-review { margin-bottom: 18px; }
+.admin-shipping-policy-review-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.admin-shipping-policy-review-heading h2 { margin: 5px 0 4px; color: var(--ink, #2b1d16); font-size: 20px; }
+.admin-shipping-policy-review-heading p,
+.admin-shipping-policy-summary { margin: 0; color: var(--muted, #76685f); font-size: 12px; line-height: 1.6; }
+.admin-shipping-policy-summary { margin-bottom: 12px; color: var(--ink, #2b1d16); font-weight: 600; }
+.admin-shipping-policy-content { padding: 14px; border: 1px solid var(--line-soft, #e7dfd6); border-radius: 9px; background: var(--surface, #fff); }
+.admin-shipping-policy-content h3,
+.admin-shipping-policy-decision-form h3 { margin: 0 0 7px; color: var(--ink, #2b1d16); font-size: 15px; }
+.admin-shipping-policy-content > div { color: var(--ink, #2b1d16); font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.admin-shipping-policy-source { display: grid; grid-template-columns: minmax(150px, .3fr) minmax(0, 1fr); gap: 6px 14px; margin: 14px 0 0; padding: 12px 0; border-bottom: 1px solid var(--line-soft, #e7dfd6); }
+.admin-shipping-policy-source dt { color: var(--muted, #76685f); font-size: 12px; font-weight: 700; }
+.admin-shipping-policy-source dd { margin: 0; color: var(--ink, #2b1d16); font-size: 12px; overflow-wrap: anywhere; }
+.admin-shipping-policy-decisions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 15px; }
+.admin-shipping-policy-decision-form { display: grid; align-content: start; gap: 10px; min-width: 0; padding: 14px; border: 1px solid var(--line-soft, #e7dfd6); border-radius: 9px; background: var(--surface, #fff); }
+.admin-shipping-policy-decision-form > p { margin: -5px 0 0; color: var(--muted, #76685f); font-size: 12px; line-height: 1.5; }
+.admin-shipping-policy-confirm,
+.admin-shipping-policy-field { display: grid; gap: 6px; color: var(--ink, #2b1d16); font-size: 12px; font-weight: 600; }
+.admin-shipping-policy-confirm { grid-template-columns: 18px minmax(0, 1fr); align-items: start; font-weight: 500; line-height: 1.5; }
+.admin-shipping-policy-confirm input { margin: 2px 0 0; accent-color: var(--brown-700, #6f4a31); }
+.admin-shipping-policy-field textarea { width: 100%; min-width: 0; min-height: 82px; padding: 9px 10px; border: 1px solid var(--line-soft, #e7dfd6); border-radius: 7px; color: var(--ink, #2b1d16); background: var(--surface, #fff); font: inherit; font-size: 12px; line-height: 1.5; resize: vertical; }
+.admin-shipping-policy-field textarea:focus-visible { outline: 2px solid rgba(216, 139, 18, .35); outline-offset: 1px; border-color: #c99a52; }
+.admin-shipping-policy-decision-form .button { justify-self: start; min-height: 40px; }
+.admin-shipping-policy-decision-form.is-return { border-color: #ead6bd; background: #fffaf3; }
+.admin-shipping-policy-empty { display: flex; align-items: flex-start; gap: 13px; }
+.admin-shipping-policy-empty > svg { flex: 0 0 auto; margin-top: 3px; color: #39704b; }
+.admin-shipping-policy-empty h2 { margin: 0; color: var(--ink, #2b1d16); font-size: 17px; }
+.admin-shipping-policy-empty p { max-width: 760px; margin: 5px 0 0; color: var(--muted, #76685f); font-size: 12px; line-height: 1.6; }
+@media (max-width: 760px) {
+    .admin-shipping-policy-decisions { grid-template-columns: minmax(0, 1fr); }
+    .admin-shipping-policy-source { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+    .admin-shipping-policy-source dd + dt { margin-top: 8px; }
+}
+@media (max-width: 520px) {
+    .admin-shipping-policy-review-heading { flex-direction: column; }
+    .admin-shipping-policy-decision-form { padding: 12px; }
+    .admin-shipping-policy-decision-form .button { width: 100%; justify-content: center; }
+}
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-review-heading h2,
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-summary,
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-content h3,
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-content > div,
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-source dd,
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-decision-form h3,
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-confirm,
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-field,
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-empty h2 { color: #f1e9e1; }
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-content,
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-decision-form { border-color: #4a3d34; background: #211b17; }
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-decision-form.is-return { background: #2a241a; }
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-field textarea { border-color: #4a3d34; color: #f1e9e1; background: #1b1714; }
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-review-heading p,
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-decision-form > p,
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-source dt,
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-empty p { color: #c8bdb5; }
+
+.admin-shipping-policy-history { margin-top: 24px; }
+.admin-shipping-policy-history > .panel-heading { align-items: flex-start; }
+.admin-shipping-policy-history > .panel-heading p { margin: 6px 0 0; color: var(--muted, #76685f); font-size: 12px; line-height: 1.5; }
+.admin-shipping-policy-history .admin-table td { vertical-align: top; }
+.admin-shipping-policy-history .admin-table td strong { display: block; color: var(--ink, #2b1d16); }
+.admin-shipping-policy-history-details { margin-top: 8px; }
+.admin-shipping-policy-history-details summary { color: var(--brown-700, #6f4a31); cursor: pointer; font-size: 12px; font-weight: 600; }
+.admin-shipping-policy-history-details summary:focus-visible { outline: 2px solid rgba(216, 139, 18, .45); outline-offset: 2px; }
+.admin-shipping-policy-history-details > div { max-width: 520px; margin-top: 7px; color: var(--muted, #76685f); font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-history > .panel-heading p,
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-history-details > div { color: #c8bdb5; }
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-history .admin-table td strong { color: #f1e9e1; }
+:root[data-theme="dark"] body.admin-body .admin-shipping-policy-history-details summary { color: #efbd71; }

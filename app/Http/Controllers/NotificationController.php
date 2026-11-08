@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\UserRole;
 use App\Services\NotificationCategoryService;
 use App\Services\NotificationPreferenceService;
 use Illuminate\Http\JsonResponse;
@@ -148,6 +149,14 @@ class NotificationController extends Controller
         $data = is_array($notification->data) ? $notification->data : [];
 
         $event = isset($data['event']) ? (string) $data['event'] : null;
+        $url = isset($data['url']) && $data['url'] !== '' ? (string) $data['url'] : null;
+
+        // Older shipment notifications point at #tracking, which can be the
+        // already-open panel and therefore does not take the Buyer anywhere.
+        // Keep every Buyer shipment alert actionable at the purchases list.
+        if ($role === UserRole::Buyer->value && $event === 'buyer_shipment_updates') {
+            $url = route('buyer.profile').'#purchases';
+        }
 
         return [
             'id' => (string) $notification->id,
@@ -155,7 +164,7 @@ class NotificationController extends Controller
             'category' => $this->categories->categoryForEvent($role, $event),
             'title' => (string) ($data['title'] ?? $data['message'] ?? 'Bearly notification'),
             'body' => (string) ($data['body'] ?? $data['message'] ?? ''),
-            'url' => isset($data['url']) && $data['url'] !== '' ? (string) $data['url'] : null,
+            'url' => $url,
             'type' => (string) ($data['type'] ?? $this->displayTypeFromStatus($data['status'] ?? null) ?? 'info'),
             'read' => $notification->read_at !== null,
             'created_at' => $notification->created_at?->toIso8601String(),

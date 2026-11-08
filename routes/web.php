@@ -20,6 +20,7 @@ use App\Http\Controllers\AdminRegistrationController;
 use App\Http\Controllers\AdminReturnRefundController;
 use App\Http\Controllers\AdminRoleApplicationController;
 use App\Http\Controllers\AdminSellerPayoutController;
+use App\Http\Controllers\AdminShippingPolicyApprovalController;
 use App\Http\Controllers\AdminSupportTicketController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\AnnouncementController;
@@ -40,7 +41,10 @@ use App\Http\Controllers\DisputeParticipantController;
 use App\Http\Controllers\DeliveryProofController;
 use App\Http\Controllers\LogisticsCashController;
 use App\Http\Controllers\LogisticsController;
+use App\Http\Controllers\LogisticsLocationController;
 use App\Http\Controllers\LogisticsPayoutAccountController;
+use App\Http\Controllers\LogisticsRiderAttendanceController;
+use App\Http\Controllers\LogisticsShippingPolicyController;
 use App\Http\Controllers\MapLocationController;
 use App\Http\Controllers\MessageReceiptController;
 use App\Http\Controllers\NotificationController;
@@ -282,6 +286,16 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
     Route::get('/profile/purchases/data', [BuyerController::class, 'purchaseData'])
         ->name('buyer.purchases.data');
 
+    Route::get('/profile/orders/{orderNo}/route-map', [BuyerController::class, 'orderRouteMap'])
+        ->where('orderNo', '[A-Za-z0-9-]+')
+        ->middleware('throttle:30,1')
+        ->name('buyer.orders.route-map');
+
+    Route::get('/profile/shipments/{shipmentNo}/live-location', [BuyerController::class, 'shipmentLiveLocation'])
+        ->where('shipmentNo', '[A-Za-z0-9-]+')
+        ->middleware('throttle:60,1')
+        ->name('buyer.shipments.live-location');
+
     Route::get('/profile/seller-orders/{sellerOrder}/dispute', [BuyerDisputeController::class, 'create'])
         ->whereNumber('sellerOrder')
         ->name('buyer.disputes.create');
@@ -522,6 +536,9 @@ Route::prefix('admin')
 
         Route::get('/users/logistics', [AdminUserController::class, 'logistics'])
             ->name('users.logistics');
+
+        Route::post('/users/logistics/shipping-policy-manager', [AdminUserController::class, 'updateShippingPolicyManager'])
+            ->name('users.logistics.shipping-policy-manager');
 
         Route::get('/users/riders', [AdminUserController::class, 'riders'])
             ->name('users.riders');
@@ -980,6 +997,22 @@ Route::prefix('admin')
         Route::get('/policies', [AdminPolicyController::class, 'index'])
             ->name('policies');
 
+        Route::get('/shipping-policy-approvals', [AdminShippingPolicyApprovalController::class, 'index'])
+            ->name('shipping-policy-approvals.index');
+
+        Route::get('/shipping-policy-approvals/updates', [AdminShippingPolicyApprovalController::class, 'updates'])
+            ->name('shipping-policy-approvals.updates');
+
+        Route::post('/shipping-policy-approvals/{policy}/versions/{version}/approve', [AdminShippingPolicyApprovalController::class, 'approve'])
+            ->whereNumber('policy')
+            ->whereNumber('version')
+            ->name('shipping-policy-approvals.approve');
+
+        Route::post('/shipping-policy-approvals/{policy}/versions/{version}/request-changes', [AdminShippingPolicyApprovalController::class, 'requestChanges'])
+            ->whereNumber('policy')
+            ->whereNumber('version')
+            ->name('shipping-policy-approvals.request-changes');
+
         Route::post('/policies', [AdminPolicyController::class, 'store'])
             ->name('policies.store');
 
@@ -1062,6 +1095,14 @@ Route::prefix('seller')
         Route::get('/orders/{sellerOrder}/tracking', [SellerWorkflowController::class, 'orderTracking'])
             ->whereNumber('sellerOrder')
             ->name('orders.tracking');
+
+        Route::get('/orders/{sellerOrder}/packing', [SellerWorkflowController::class, 'packingPlan'])
+            ->whereNumber('sellerOrder')
+            ->name('orders.packing');
+
+        Route::post('/orders/{sellerOrder}/packing', [SellerWorkflowController::class, 'storePackingPlan'])
+            ->whereNumber('sellerOrder')
+            ->name('orders.packing.store');
 
         Route::patch('/orders/{sellerOrder}/status', [SellerWorkflowController::class, 'updateOrderStatus'])
             ->whereNumber('sellerOrder')
@@ -1411,8 +1452,46 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
 
     // Authenticated active Logistics accounts only.
     Route::middleware(['auth', 'role:logistics'])->group(function () {
+        Route::get('/account/location', [LogisticsLocationController::class, 'show'])
+            ->middleware('throttle:60,1')
+            ->name('location.show');
+        Route::post('/account/location', [LogisticsLocationController::class, 'update'])
+            ->middleware('throttle:60,1')
+            ->name('location.update');
+        Route::delete('/account/location', [LogisticsLocationController::class, 'destroy'])
+            ->middleware('throttle:12,1')
+            ->name('location.destroy');
+
         Route::get('/dashboard', [LogisticsController::class, 'dashboard'])
             ->name('dashboard');
+
+        Route::get('/rider-attendance', [LogisticsRiderAttendanceController::class, 'index'])
+            ->name('rider-attendance.index');
+        Route::post('/rider-attendance/challenge', [LogisticsRiderAttendanceController::class, 'issueChallenge'])
+            ->middleware('throttle:30,1')
+            ->name('rider-attendance.challenge');
+        Route::post('/rider-attendance/{rider}/absent', [LogisticsRiderAttendanceController::class, 'markAbsent'])
+            ->whereNumber('rider')
+            ->middleware('throttle:12,1')
+            ->name('rider-attendance.absent');
+
+        Route::get('/shipping-policies', [LogisticsShippingPolicyController::class, 'index'])
+            ->name('shipping-policies.index');
+        Route::post('/shipping-policies', [LogisticsShippingPolicyController::class, 'store'])
+            ->name('shipping-policies.store');
+        Route::patch('/shipping-policies/{policy}', [LogisticsShippingPolicyController::class, 'update'])
+            ->whereNumber('policy')
+            ->name('shipping-policies.update');
+        Route::patch('/shipping-policies/{policy}/versions/{version}', [LogisticsShippingPolicyController::class, 'updateDraftVersion'])
+            ->whereNumber('policy')
+            ->whereNumber('version')
+            ->name('shipping-policies.versions.update');
+        Route::post('/shipping-policies/{policy}/submit-for-approval', [LogisticsShippingPolicyController::class, 'submitForApproval'])
+            ->whereNumber('policy')
+            ->name('shipping-policies.submit-for-approval');
+        Route::post('/shipping-policies/{policy}/archive', [LogisticsShippingPolicyController::class, 'archive'])
+            ->whereNumber('policy')
+            ->name('shipping-policies.archive');
 
         Route::get('/riders', [LogisticsController::class, 'riders'])
             ->name('riders.index');
@@ -1537,6 +1616,10 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
 
         Route::post('/pickups/{pickupRequest}/assign', [LogisticsController::class, 'assignPickup'])
             ->name('pickups.assign');
+
+        Route::patch('/pickups/{pickupRequest}/replace-rider', [LogisticsController::class, 'replacePickupRider'])
+            ->whereNumber('pickupRequest')
+            ->name('pickups.replace-rider');
 
         Route::get('/incoming', [LogisticsController::class, 'incoming'])
             ->name('sorting.incoming');
@@ -1745,11 +1828,9 @@ Route::prefix('rider')->name('rider.')->group(function () {
         Route::delete('/account/location', [RiderController::class, 'clearLocation'])
             ->name('location.destroy');
 
-        Route::post('/account/attendance/check-in', [RiderController::class, 'attendanceCheckIn'])
-            ->name('attendance.check-in');
-
-        Route::post('/account/attendance/check-out', [RiderController::class, 'attendanceCheckOut'])
-            ->name('attendance.check-out');
+        Route::post('/account/attendance/scan', [RiderController::class, 'scanAttendance'])
+            ->middleware('throttle:12,1')
+            ->name('attendance.scan');
 
         Route::middleware('local-rider')->group(function () {
             Route::get('/dashboard/pickups', [RiderController::class, 'pickupsDashboard'])

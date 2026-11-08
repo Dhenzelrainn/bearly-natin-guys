@@ -85,13 +85,17 @@ class RiderPickupWorkflowTest extends TestCase
             ])
             ->assertOk();
 
+        $this->travel(45)->seconds();
+
         $this->actingAs($rider->user)
             ->getJson(route('rider.orders.pickup.route', $record['pickup']->pickup_no))
             ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
             ->assertJsonPath('message', 'Pickup road route loaded.')
             ->assertJsonPath('data.route.geometry.type', 'LineString')
             ->assertJsonPath('data.route.geometry.coordinates.0.0', 120.9842)
             ->assertJsonPath('data.rider.latitude', 14.5995)
+            ->assertJsonPath('data.rider.location_age_seconds', 45)
             ->assertJsonPath('data.pickup.longitude', 120.99)
             ->assertJsonPath('data.max_usable_accuracy_meters', 100)
             ->assertDontSee($apiKey);
@@ -121,7 +125,9 @@ class RiderPickupWorkflowTest extends TestCase
             ->get(route('rider.orders.pickup', $record['pickup']->pickup_no))
             ->assertOk()
             ->assertSee('data-pickup-route-enabled="false"', false)
-            ->assertDontSee('class="pickup-route-legend"', false);
+            ->assertSee('data-pickup-status="assigned"', false)
+            ->assertSee('class="pickup-route-legend"', false)
+            ->assertSee('Your shared Rider location');
 
         $this->actingAs($rider->user)
             ->getJson(route('rider.orders.pickup.route', $record['pickup']->pickup_no))
@@ -628,10 +634,7 @@ class RiderPickupWorkflowTest extends TestCase
         $this->assertSame(1, RiderEarning::query()->count());
 
         $this->travelTo(Carbon::parse('2026-11-04 06:45:00', 'UTC'));
-        $this->actingAs($rider->user)
-            ->post(route('rider.attendance.check-in'))
-            ->assertRedirect()
-            ->assertSessionHasNoErrors();
+        $this->scanAttendanceQr($rider->user, $provider['user'])->assertOk();
         $shift = $rider->shifts()->whereNull('checked_out_at')->sole();
 
         $bulky = $this->makePickupAssignment($provider, $seller, $rider, 'COMPENSATION-BULKY');
@@ -645,10 +648,7 @@ class RiderPickupWorkflowTest extends TestCase
                 'scan_method' => 'barcode',
             ])
             ->assertRedirect();
-        $this->actingAs($rider->user)
-            ->post(route('rider.attendance.check-out'))
-            ->assertRedirect()
-            ->assertSessionHasNoErrors();
+        $this->scanAttendanceQr($rider->user, $provider['user'])->assertOk();
 
         $bulkyEarning = RiderEarning::query()->where('parcel_id', $bulky['parcel']->id)->sole();
         $this->assertSame('posted', $bulkyEarning->status);
@@ -718,9 +718,7 @@ class RiderPickupWorkflowTest extends TestCase
         foreach (['MULTI-SHIFT-FIRST', 'MULTI-SHIFT-SECOND'] as $suffix) {
             $record = $this->makePickupAssignment($provider, $seller, $rider, $suffix);
 
-            $this->actingAs($rider->user)
-                ->post(route('rider.attendance.check-in'))
-                ->assertRedirect();
+            $this->scanAttendanceQr($rider->user, $provider['user'])->assertOk();
             $shift = $rider->shifts()->whereNull('checked_out_at')->sole();
 
             $this->actingAs($rider->user)
@@ -732,9 +730,7 @@ class RiderPickupWorkflowTest extends TestCase
                     'scan_method' => 'barcode',
                 ])
                 ->assertRedirect();
-            $this->actingAs($rider->user)
-                ->post(route('rider.attendance.check-out'))
-                ->assertRedirect();
+            $this->scanAttendanceQr($rider->user, $provider['user'])->assertOk();
 
             $earning = RiderEarning::query()->where('parcel_id', $record['parcel']->id)->sole();
             $this->assertSame((int) $shift->id, (int) $earning->rider_shift_id);
@@ -1676,11 +1672,7 @@ class RiderPickupWorkflowTest extends TestCase
 
         $this->assertSame(0, $rider->shifts()->count(), 'Becoming available must not check the Rider in.');
 
-        $this->from($dashboard)
-            ->actingAs($rider->user)
-            ->post(route('rider.attendance.check-in'))
-            ->assertRedirect($dashboard)
-            ->assertSessionHasNoErrors();
+        $this->scanAttendanceQr($rider->user, $provider['user'])->assertOk();
 
         $this->assertDatabaseHas('rider_profiles', [
             'id' => $rider->id,
@@ -1701,11 +1693,7 @@ class RiderPickupWorkflowTest extends TestCase
             'checked_out_at' => null,
         ]);
 
-        $this->from($dashboard)
-            ->actingAs($rider->user)
-            ->post(route('rider.attendance.check-out'))
-            ->assertRedirect($dashboard)
-            ->assertSessionHasNoErrors();
+        $this->scanAttendanceQr($rider->user, $provider['user'])->assertOk();
 
         $this->assertDatabaseHas('rider_profiles', [
             'id' => $rider->id,
@@ -1780,9 +1768,9 @@ class RiderPickupWorkflowTest extends TestCase
             ->assertOk()
             ->assertSee('href="'.route('rider.courier.dashboard').'" class="ops-brand"', false)
             ->assertSee('Courier runs')
-            ->assertSee('₱650 per qualifying workday')
+            ->assertSee('₱81.25 per hour · max ₱650.00 per workday')
             ->assertSee('Earnings & payouts', false)
-            ->assertSee('Check in')
+            ->assertSee('Open camera to scan QR')
             ->assertSee('Messages')
             ->assertSee('Notifications')
             ->assertSee('Account')
@@ -1844,7 +1832,7 @@ class RiderPickupWorkflowTest extends TestCase
             ->get(route('rider.earnings.index'))
             ->assertOk()
             ->assertSee('Courier ledger')
-            ->assertSee('Courier daily pay');
+            ->assertSee('Courier hourly pay');
 
         $this->actingAs($riderProfile->user)
             ->get(route('rider.earnings.status-version'))
@@ -1854,24 +1842,18 @@ class RiderPickupWorkflowTest extends TestCase
             ->get(route('rider.earnings.export'))
             ->assertOk();
 
-        $this->from($courierDashboard)
-            ->actingAs($riderProfile->user)
-            ->post(route('rider.attendance.check-in'))
-            ->assertRedirect($courierDashboard);
+        $this->scanAttendanceQr($riderProfile->user, $provider['user'])->assertOk();
 
         $this->assertDatabaseHas('rider_shifts', [
             'rider_profile_id' => $riderProfile->id,
             'checked_out_at' => null,
         ]);
 
-        $this->from($courierDashboard)
-            ->actingAs($riderProfile->user)
-            ->post(route('rider.attendance.check-out'))
-            ->assertRedirect($courierDashboard);
+        $this->scanAttendanceQr($riderProfile->user, $provider['user'])->assertOk();
 
         $this->assertDatabaseHas('rider_shifts', [
             'rider_profile_id' => $riderProfile->id,
-            'check_out_source' => 'rider',
+            'check_out_source' => 'qr',
         ]);
         $this->assertDatabaseMissing('rider_earnings', [
             'rider_profile_id' => $riderProfile->id,
@@ -2058,6 +2040,17 @@ class RiderPickupWorkflowTest extends TestCase
             'user',
             'profile'
         );
+    }
+
+    private function scanAttendanceQr(User $rider, User $logistics): \Illuminate\Testing\TestResponse
+    {
+        $challengeResponse = $this->actingAs($logistics)
+            ->postJson(route('logistics.rider-attendance.challenge'));
+        $challengeResponse->assertOk();
+
+        return $this->actingAs($rider)->postJson(route('rider.attendance.scan'), [
+            'qr_payload' => $challengeResponse->json('data.challenge'),
+        ]);
     }
 
     private function makeRider(

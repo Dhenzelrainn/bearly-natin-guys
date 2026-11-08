@@ -8,7 +8,7 @@
     <div>
         <p class="page-kicker">Local Rider records</p>
         <h2>Your attendance shifts</h2>
-        <p>Review your check-in and check-out records. Times are shown in Philippine Time (PHT / UTC+8). Attendance is a report only and does not control assignments or Local Rider earnings.</p>
+        <p>Review your QR check-in and check-out records. Times are shown in Philippine Time (PHT / UTC+8). Attendance does not control assignments or Local Rider per-job earnings.</p>
     </div>
     <div class="page-actions">
         <a class="button" href="{{ route('rider.dashboard.pickups') }}">

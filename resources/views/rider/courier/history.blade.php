@@ -25,7 +25,7 @@
 <section class="panel" aria-label="Courier line-haul run history">
     <div class="panel-body">
         <p class="zone-routing-note" style="margin:0 0 16px">
-            A run does not create pay by itself. Courier daily pay requires a closed attendance shift and at least one run assigned during that shift that destination Logistics has accepted in full.
+            A run does not create pay by itself. Courier pay uses closed QR-recorded hours, up to ₱650 per PHT work date, and requires at least one run assigned during a shift that destination Logistics has accepted in full.
         </p>
 
         <div class="table-wrap">

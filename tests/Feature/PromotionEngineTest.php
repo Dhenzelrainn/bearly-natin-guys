@@ -1204,11 +1204,14 @@ class PromotionEngineTest extends TestCase
             'status' => 'active',
         ]);
 
-        $shipment = app(SellerFulfillmentService::class)->createShipmentFor(
+        $fulfillment = app(SellerFulfillmentService::class);
+        $sellerOrder = $sellerOrder->fresh(['order', 'items']);
+        $shipment = $fulfillment->createShipmentFor(
             $sellerOrder->fresh('order'),
             $seller,
             $provider,
             $pickup,
+            $fulfillment->defaultPackingPlan($sellerOrder)['parcels'],
         );
 
         $this->assertSame(9500, (int) $shipment->cod_amount_minor);

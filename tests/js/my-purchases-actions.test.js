@@ -35,6 +35,28 @@ test('accepted Seller orders show the cancellation explanation without a cancel 
     assert.doesNotMatch(actions, /Cancel Order/);
 });
 
+test('Buyer tracking is available from To Ship but not before payment or after completion', () => {
+    const toShip = actionButtons({
+        server: true,
+        status: 'to-ship',
+        details_url: '/orders/receipt',
+    });
+    const toPay = actionButtons({
+        server: true,
+        status: 'to-pay',
+        details_url: '/orders/receipt',
+    });
+    const completed = actionButtons({
+        server: true,
+        status: 'completed',
+        details_url: '/orders/receipt',
+    });
+
+    assert.match(toShip, /Track Order/);
+    assert.doesNotMatch(toPay, /Track Order/);
+    assert.doesNotMatch(completed, /Track Order/);
+});
+
 test('purchase cards use the saved quantity line total rather than the per-unit price', () => {
     assert.equal(purchaseItemLineTotalMinor({
         price: 69990,

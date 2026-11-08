@@ -40,4 +40,9 @@ class RiderShift extends Model
     {
         return $this->hasMany(RiderEarning::class);
     }
+
+    public function attendanceScans()
+    {
+        return $this->hasMany(RiderAttendanceScan::class);
+    }
 }

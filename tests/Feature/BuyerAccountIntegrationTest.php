@@ -6,9 +6,11 @@ use App\Models\Address;
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Category;
+use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\ProductVariant;
+use App\Models\SellerOrder;
 use App\Models\SellerProfile;
 use App\Models\Store;
 use App\Models\User;
@@ -17,6 +19,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class BuyerAccountIntegrationTest extends TestCase
@@ -48,6 +51,7 @@ class BuyerAccountIntegrationTest extends TestCase
             ->assertSee('images/vouchers/Bearly-voucher-icon.png', false)
             ->assertSee('data-notification-trigger', false)
             ->assertSee('id="buyer-notification-popover"', false)
+            ->assertDontSee('data-active-orders-count', false)
             ->assertSee('View all notifications')
             ->assertSee('Edit Profile')
             ->assertSee('Save Changes')
@@ -91,6 +95,53 @@ class BuyerAccountIntegrationTest extends TestCase
             ->assertSee('data-chat-filter', false)
             ->assertSee('data-chat-attachment-button', false)
             ->assertSee('data-chat-emoji', false);
+    }
+
+    public function test_buyer_header_badge_counts_only_the_authenticated_buyers_active_marketplace_orders(): void
+    {
+        $buyer = $this->makeBuyer('orders-owner@example.test', 'Orders Owner');
+        $otherBuyer = $this->makeBuyer('orders-other@example.test', 'Other Buyer');
+        $product = $this->makeProduct()['product'];
+        $store = Store::query()->findOrFail($product->store_id);
+
+        $makeOrder = function (User $owner, string $orderStatus, string $sellerOrderStatus) use ($store): void {
+            $order = Order::query()->create([
+                'order_no' => 'BRY-'.Str::upper(Str::random(12)),
+                'buyer_id' => $owner->id,
+                'recipient_name' => $owner->name,
+                'recipient_phone' => '09171234567',
+                'address_line' => '20 Buyer Street',
+                'barangay' => 'Balibago',
+                'city_municipality' => 'Santa Rosa',
+                'province' => 'Laguna',
+                'subtotal_minor' => 10000,
+                'total_minor' => 10000,
+                'status' => $orderStatus,
+                'payment_status' => 'unpaid',
+            ]);
+
+            SellerOrder::query()->create([
+                'seller_order_no' => 'SO-'.Str::upper(Str::random(12)),
+                'order_id' => $order->id,
+                'store_id' => $store->id,
+                'status' => $sellerOrderStatus,
+                'subtotal_minor' => 10000,
+                'total_minor' => 10000,
+            ]);
+        };
+
+        $makeOrder($buyer, 'pending_payment', 'pending');
+        $makeOrder($buyer, 'processing', 'accepted');
+        $makeOrder($buyer, 'fulfilled', 'completed');
+        $makeOrder($buyer, 'cancelled', 'cancelled');
+        $makeOrder($otherBuyer, 'processing', 'accepted');
+
+        $this->actingAs($buyer)
+            ->get('/profile')
+            ->assertOk()
+            ->assertSee('aria-label="Orders, 2 active orders"', false)
+            ->assertSee('data-active-orders-count', false)
+            ->assertSee('>2</span>', false);
     }
 
     public function test_ranking_and_flash_deal_pages_do_not_render_sample_product_cards(): void

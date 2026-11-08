@@ -18,6 +18,18 @@ class Parcel extends Model
         return $this->belongsTo(Waybill::class);
     }
 
+    public function contents()
+    {
+        return $this->hasMany(ParcelItem::class);
+    }
+
+    public function orderItems()
+    {
+        return $this->belongsToMany(OrderItem::class, 'parcel_items')
+            ->withPivot('quantity')
+            ->withTimestamps();
+    }
+
     public function currentSortingCenter()
     {
         return $this->belongsTo(

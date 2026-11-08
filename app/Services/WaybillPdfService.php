@@ -21,7 +21,7 @@ class WaybillPdfService
             : null;
         $labels = $waybills
             ->flatMap(function (Waybill $waybill) use ($logoDataUri): array {
-                $waybill->loadMissing('parcels');
+                $waybill->loadMissing('parcels.contents.orderItem');
 
                 return $this->labelsForWaybill($waybill, $logoDataUri);
             })
@@ -81,19 +81,45 @@ class WaybillPdfService
     ): array
     {
         $shipment = $waybill->shipment;
+        $shipment->loadMissing('sellerOrders.order');
         $sellerOrder = $shipment->sellerOrder;
         $order = $sellerOrder->order;
         $store = $sellerOrder->store;
+        $orderReferences = $shipment->sellerOrders
+            ->map(fn ($included): array => [
+                (string) $included->seller_order_no,
+                (string) ($included->order?->order_no ?? 'Order'),
+            ])
+            ->values()
+            ->all();
         $origin = $shipment->originAddress;
-        $barcodeValue = trim((string) ($waybill->barcode_value ?: $waybill->waybill_no));
+        $barcodeValue = trim((string) $parcel->parcel_no);
         $barcode = (new TypeCode128)->getBarcode($barcodeValue);
         $barcodeHtml = (new HtmlRenderer)->render($barcode, 310, 48);
+        $contents = $parcel->contents
+            ->map(function ($content): ?string {
+                $item = $content->orderItem;
+
+                if (! $item) {
+                    return null;
+                }
+
+                $name = trim($item->product_name.' · '.$item->variant_name, ' ·');
+
+                return $name.' × '.(int) $content->quantity;
+            })
+            ->filter()
+            ->values()
+            ->all();
 
         return [
             'waybill_no' => (string) $waybill->waybill_no,
             'seller_order_no' => (string) $sellerOrder->seller_order_no,
             'order_no' => (string) $order->order_no,
+            'order_references' => $orderReferences,
             'store_name' => (string) $store->name,
+            'parcel_no' => (string) $parcel->parcel_no,
+            'contents' => $contents,
             'logo_data_uri' => $logoDataUri,
             'sender_address' => $this->address($origin) ?: 'Seller pickup address on file',
             'sender_phone' => (string) ($origin?->phone ?: $store->contact_phone ?: '—'),

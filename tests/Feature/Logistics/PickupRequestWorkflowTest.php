@@ -6,6 +6,8 @@ use App\Enums\AccountStatus;
 use App\Enums\ShipmentStatus;
 use App\Enums\UserRole;
 use App\Models\Address;
+use App\Models\AuditLog;
+use App\Models\LogisticsLocation;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
 use App\Models\Parcel;
@@ -17,6 +19,7 @@ use App\Models\Role;
 use App\Models\SellerOrder;
 use App\Models\SellerProfile;
 use App\Models\Shipment;
+use App\Models\ShipmentEvent;
 use App\Models\SortingCenter;
 use App\Models\SortingZone;
 use App\Models\Store;
@@ -103,7 +106,11 @@ class PickupRequestWorkflowTest extends TestCase
             ->assertSee('Seller operating hours')
             ->assertSee('Parcel and references')
             ->assertSee('pickup-products-cell', false)
-            ->assertSee('Products in this Seller Order')
+            ->assertSee('pickup-manifest-products-panel', false)
+            ->assertSee('pickup-manifest-reference-panel', false)
+            ->assertSee('Shipment products')
+            ->assertSee('References')
+            ->assertDontSee('pickup-manifest-products-row', false)
             ->assertSee('Pickup Preview Product')
             ->assertSee('Pickup Product Without Image')
             ->assertSee('No image')
@@ -287,6 +294,12 @@ class PickupRequestWorkflowTest extends TestCase
             'REJECT'
         )['pickup'];
 
+        $this->actingAs($provider['user'])
+            ->get(route('logistics.pickups.index'))
+            ->assertOk()
+            ->assertSee('data-pickup-reject-open', false)
+            ->assertSee('>Reject</button>', false);
+
         $this
             ->actingAs($provider['user'])
             ->patch(route('logistics.pickups.cancel', $pickup))
@@ -308,6 +321,12 @@ class PickupRequestWorkflowTest extends TestCase
             $pickup->cancellation_reason
         );
         $this->assertNotNull($pickup->cancelled_at);
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_user_id' => $provider['user']->id,
+            'action' => 'pickup_request.rejected',
+            'module' => 'Logistics',
+            'auditable_id' => $pickup->id,
+        ]);
 
         $this->actingAs($provider['user'])
             ->get(route('logistics.pickups.index'))
@@ -384,6 +403,178 @@ class PickupRequestWorkflowTest extends TestCase
             ->assertSee('Rider assigned')
             ->assertSee($rider->user->name)
             ->assertSee('Use the seller loading bay.');
+    }
+
+    public function test_logistics_can_replace_an_accepted_unpicked_rider_with_an_audited_same_provider_rider(): void
+    {
+        $provider = $this->makeProvider('REPLACE');
+        $seller = $this->makeSeller('REPLACE');
+        $fulfillment = $this->makePickup($provider, $seller, 'REPLACE', 'verified');
+        $oldRider = $this->makeRider($provider, 'REPLACE-OLD');
+        $replacementRider = $this->makeRider($provider, 'REPLACE-NEW');
+
+        Notification::fake();
+
+        $this->actingAs($provider['user'])
+            ->post(route('logistics.pickups.assign', $fulfillment['pickup']), [
+                'rider_profile_id' => $oldRider->id,
+            ])
+            ->assertRedirect();
+
+        $oldAssignment = PickupAssignment::query()
+            ->where('pickup_request_id', $fulfillment['pickup']->id)
+            ->firstOrFail();
+        $oldAssignment->update([
+            'status' => 'accepted',
+            'accepted_at' => now(),
+        ]);
+
+        $this->actingAs($provider['user'])
+            ->patch(route('logistics.pickups.replace-rider', $fulfillment['pickup']), [
+                'rider_profile_id' => $replacementRider->id,
+                'reason' => 'The assigned Rider cannot reach this pickup area.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $oldAssignment->refresh();
+        $replacementAssignment = PickupAssignment::query()
+            ->where('pickup_request_id', $fulfillment['pickup']->id)
+            ->where('rider_profile_id', $replacementRider->id)
+            ->firstOrFail();
+
+        $this->assertSame('cancelled', $oldAssignment->status);
+        $this->assertNotNull($oldAssignment->cancelled_at);
+        $this->assertStringContainsString('The assigned Rider cannot reach this pickup area.', $oldAssignment->notes);
+        $this->assertSame('assigned', $replacementAssignment->status);
+        $this->assertSame($provider['user']->id, $replacementAssignment->assigned_by);
+        $this->assertSame('scheduled', $fulfillment['pickup']->fresh()->status);
+        $this->assertSame(
+            ShipmentStatus::PickupAssigned->value,
+            $fulfillment['shipment']->fresh()->status,
+        );
+        $this->assertSame(
+            $replacementAssignment->id,
+            $fulfillment['pickup']->fresh()->activeAssignment?->id,
+        );
+
+        $event = ShipmentEvent::query()
+            ->where('shipment_id', $fulfillment['shipment']->id)
+            ->where('event_type', 'pickup_rider_reassigned')
+            ->firstOrFail();
+        $this->assertSame($provider['user']->id, $event->actor_user_id);
+        $this->assertSame(ShipmentStatus::PickupAssigned->value, $event->from_status);
+        $this->assertSame(ShipmentStatus::PickupAssigned->value, $event->to_status);
+        $this->assertSame($oldAssignment->id, $event->metadata['previous_pickup_assignment_id']);
+        $this->assertSame($replacementAssignment->id, $event->metadata['pickup_assignment_id']);
+        $this->assertSame('The assigned Rider cannot reach this pickup area.', $event->metadata['reason']);
+
+        $audit = AuditLog::query()
+            ->where('action', 'pickup_assignment.replaced')
+            ->where('auditable_id', $fulfillment['pickup']->id)
+            ->firstOrFail();
+        $this->assertSame($provider['user']->id, $audit->actor_user_id);
+        $this->assertSame($oldRider->id, $audit->old_values['rider_profile_id']);
+        $this->assertSame($replacementRider->id, $audit->new_values['rider_profile_id']);
+        $this->assertSame('The assigned Rider cannot reach this pickup area.', $audit->new_values['reason']);
+
+        Notification::assertSentTo(
+            $oldRider->user,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'rider_pickup_assignment_cancelled'
+                && $notification->meta()['pickup_assignment_id'] === $oldAssignment->id,
+        );
+        Notification::assertSentTo(
+            $replacementRider->user,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'rider_pickup_assigned'
+                && $notification->meta()['pickup_assignment_id'] === $replacementAssignment->id,
+        );
+        Notification::assertSentTo(
+            $seller['user'],
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'seller_pickup_updates'
+                && str_contains($notification->body(), $replacementRider->user->name),
+        );
+
+        $this->actingAs($provider['user'])
+            ->get(route('logistics.pickups.index'))
+            ->assertOk()
+            ->assertSee('Replace Rider')
+            ->assertSee(route('logistics.pickups.replace-rider', $fulfillment['pickup']), false)
+            ->assertSee('Reason for replacement');
+    }
+
+    public function test_pickup_replacement_rejects_foreign_unavailable_and_already_picked_up_work(): void
+    {
+        $provider = $this->makeProvider('REPLACE-GUARD');
+        $foreignProvider = $this->makeProvider('REPLACE-FOREIGN');
+        $seller = $this->makeSeller('REPLACE-GUARD');
+        $fulfillment = $this->makePickup($provider, $seller, 'REPLACE-GUARD', 'verified');
+        $oldRider = $this->makeRider($provider, 'REPLACE-GUARD-OLD');
+        $offlineRider = $this->makeRider($provider, 'REPLACE-GUARD-OFFLINE', 'offline');
+        $foreignRider = $this->makeRider($foreignProvider, 'REPLACE-GUARD-FOREIGN');
+
+        $this->actingAs($provider['user'])
+            ->post(route('logistics.pickups.assign', $fulfillment['pickup']), [
+                'rider_profile_id' => $oldRider->id,
+            ])
+            ->assertRedirect();
+
+        $replacementRoute = route('logistics.pickups.replace-rider', $fulfillment['pickup']);
+        $this->actingAs($provider['user'])
+            ->from(route('logistics.pickups.index'))
+            ->patch($replacementRoute, [
+                'rider_profile_id' => $offlineRider->id,
+                'reason' => ['not', 'a', 'string'],
+            ])
+            ->assertRedirect(route('logistics.pickups.index'))
+            ->assertSessionHasErrors('reason');
+
+        $this->actingAs($provider['user'])
+            ->from(route('logistics.pickups.index'))
+            ->patch($replacementRoute, [
+                'rider_profile_id' => $offlineRider->id,
+                'reason' => '     ',
+            ])
+            ->assertRedirect(route('logistics.pickups.index'))
+            ->assertSessionHasErrors('reason');
+
+        $this->actingAs($provider['user'])
+            ->patch($replacementRoute, [
+                'rider_profile_id' => $foreignRider->id,
+                'reason' => 'Coverage change requested.',
+            ])
+            ->assertNotFound();
+
+        $this->actingAs($provider['user'])
+            ->patch($replacementRoute, [
+                'rider_profile_id' => $offlineRider->id,
+                'reason' => 'Coverage change requested.',
+            ])
+            ->assertStatus(409);
+
+        $this->assertSame('assigned', $fulfillment['pickup']->fresh()->activeAssignment?->status);
+        $this->assertDatabaseCount('pickup_assignments', 1);
+
+        $fulfillment['pickup']->activeAssignment()->firstOrFail()->update([
+            'status' => 'picked_up',
+            'picked_up_at' => now(),
+        ]);
+
+        $this->actingAs($provider['user'])
+            ->patch($replacementRoute, [
+                'rider_profile_id' => $offlineRider->id,
+                'reason' => 'Coverage change requested.',
+            ])
+            ->assertStatus(409);
+
+        $this->assertSame('picked_up', $fulfillment['pickup']->activeAssignment()->firstOrFail()->status);
+        $this->assertDatabaseCount('pickup_assignments', 1);
+        $this->assertDatabaseMissing('audit_logs', [
+            'action' => 'pickup_assignment.replaced',
+            'auditable_id' => $fulfillment['pickup']->id,
+        ]);
     }
 
     public function test_pickup_cannot_be_assigned_to_foreign_or_unavailable_rider(): void
@@ -593,8 +784,8 @@ class PickupRequestWorkflowTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertSee('Suggested Rider: '.$near->user->name)
-            ->assertSee('fresh Rider location update')
+            ->assertSee('Based on fresh accurate GPS and straight-line distance')
+            ->assertSee('Fallback Rider suggestion: '.$near->user->name)
             ->assertViewHas(
                 'pickups',
                 function (array $pickups) use ($pickup, $near, $far): bool {
@@ -605,12 +796,107 @@ class PickupRequestWorkflowTest extends TestCase
                     $recommendations = collect($row['rider_recommendations'] ?? []);
 
                     return $recommendations->first()['id'] === $near->id
+                        && str_starts_with(
+                            $recommendations->first()['recommendation_reason'],
+                            'Fallback · nearest available Rider',
+                        )
                         && $recommendations->first()['distance_km']
                             < $recommendations->last()['distance_km']
                         && $recommendations->pluck('id')->all() === [
                             $near->id,
                             $far->id,
                         ];
+                },
+            );
+
+        $this->assertDatabaseCount('pickup_assignments', 0);
+    }
+
+    public function test_available_service_area_rider_remains_the_primary_recommendation_ahead_of_a_closer_out_of_zone_rider(): void
+    {
+        $provider = $this->makeProvider('ZONE-FIRST');
+        $seller = $this->makeSeller('ZONE-FIRST');
+        $seller['address']->update([
+            'latitude' => 14.5995,
+            'longitude' => 120.9842,
+        ]);
+        $pickup = $this->makePickup(
+            $provider,
+            $seller,
+            'ZONE-FIRST',
+            'verified',
+        )['pickup'];
+        $serviceAreaRider = $this->makeRider($provider, 'ZONE-FIRST-MATCH');
+        $closerOutsideRider = $this->makeRider($provider, 'ZONE-FIRST-NEAR');
+
+        $centerAddress = Address::query()->create([
+            'user_id' => $provider['user']->id,
+            'label' => 'Sorting Center',
+            'recipient_name' => $provider['user']->name,
+            'phone' => '09173333333',
+            'house_number' => '1',
+            'street' => 'Service Area Road',
+            'barangay' => 'San Rafael',
+            'city_municipality' => 'San Pablo City',
+            'province' => 'Laguna',
+            'postal_code' => '4000',
+        ]);
+        $center = SortingCenter::query()->create([
+            'logistics_profile_id' => $provider['profile']->id,
+            'address_id' => $centerAddress->id,
+            'name' => 'Zone-first Recommendation Center',
+            'code' => 'ZFRC-'.strtoupper(substr(sha1((string) $provider['profile']->id), 0, 10)),
+            'contact_phone' => '09173333333',
+            'operating_hours' => '08:00-18:00',
+            'daily_capacity' => 500,
+            'status' => 'active',
+        ]);
+        $zone = SortingZone::query()->create([
+            'sorting_center_id' => $center->id,
+            'code' => 'ZFR-'.strtoupper(substr(sha1((string) $center->id), 0, 8)),
+            'name' => 'San Rafael Pickup Zone',
+            'destination_rules' => [
+                'province' => 'Laguna',
+                'city_municipality' => 'San Pablo City',
+                'barangays' => ['San Rafael'],
+            ],
+            'status' => 'active',
+        ]);
+        $serviceAreaRider->update([
+            'home_sorting_center_id' => $center->id,
+            'current_zone_id' => $zone->id,
+        ]);
+
+        RiderLocation::query()->create([
+            'rider_profile_id' => $serviceAreaRider->id,
+            'latitude' => 14.7000,
+            'longitude' => 120.9842,
+            'accuracy_meters' => 10,
+            'last_seen_at' => now(),
+        ]);
+        RiderLocation::query()->create([
+            'rider_profile_id' => $closerOutsideRider->id,
+            'latitude' => 14.5996,
+            'longitude' => 120.9842,
+            'accuracy_meters' => 10,
+            'last_seen_at' => now(),
+        ]);
+
+        $this->actingAs($provider['user'])
+            ->get(route('logistics.pickups.index'))
+            ->assertOk()
+            ->assertSee('Service-area recommendation: '.$serviceAreaRider->user->name)
+            ->assertViewHas(
+                'pickups',
+                function (array $pickups) use ($pickup, $serviceAreaRider, $closerOutsideRider): bool {
+                    $row = collect($pickups)->firstWhere('database_id', $pickup->id);
+                    $recommendations = collect($row['rider_recommendations'] ?? []);
+
+                    return $recommendations->first()['id'] === $serviceAreaRider->id
+                        && $recommendations->first()['area_match'] === true
+                        && $recommendations->first()['distance_km']
+                            > $recommendations->last()['distance_km']
+                        && $recommendations->last()['id'] === $closerOutsideRider->id;
                 },
             );
 
@@ -632,6 +918,44 @@ class PickupRequestWorkflowTest extends TestCase
             'MAP',
             'verified',
         )['pickup'];
+        $legacyServiceAddress = Address::query()->create([
+            'user_id' => $provider['user']->id,
+            'label' => 'Sorting Center',
+            'recipient_name' => $provider['user']->name,
+            'phone' => '09173333333',
+            'house_number' => '1',
+            'street' => 'Logistics Facility Road',
+            'barangay' => 'San Rafael',
+            'city_municipality' => 'San Pablo City',
+            'province' => 'Laguna',
+            'postal_code' => '4000',
+            'latitude' => 14.6100,
+            'longitude' => 120.9900,
+        ]);
+        $centerAddress = Address::query()->create([
+            'user_id' => null,
+            'label' => 'Sorting Center',
+            'recipient_name' => $provider['user']->name,
+            'phone' => '09173333333',
+            'house_number' => '2',
+            'street' => 'Active Sorting Center Road',
+            'barangay' => 'San Rafael',
+            'city_municipality' => 'San Pablo City',
+            'province' => 'Laguna',
+            'postal_code' => '4000',
+            'latitude' => 14.6200,
+            'longitude' => 120.9800,
+        ]);
+        SortingCenter::query()->create([
+            'logistics_profile_id' => $provider['profile']->id,
+            'address_id' => $centerAddress->id,
+            'name' => 'Active Pickup Map Center',
+            'code' => 'SC-MAP-'.strtoupper(substr(sha1((string) $provider['profile']->id), 0, 10)),
+            'contact_phone' => '09173333333',
+            'operating_hours' => '08:00-18:00',
+            'daily_capacity' => 500,
+            'status' => 'active',
+        ]);
         $freshRider = $this->makeRider($provider, 'MAP-FRESH');
         $lowAccuracyRider = $this->makeRider($provider, 'MAP-LOW-ACCURACY');
         $staleRider = $this->makeRider($provider, 'MAP-STALE');
@@ -676,6 +1000,20 @@ class PickupRequestWorkflowTest extends TestCase
             'accuracy_meters' => 10,
             'last_seen_at' => now(),
         ]);
+        $liveLogisticsLocation = LogisticsLocation::query()->create([
+            'logistics_profile_id' => $provider['profile']->id,
+            'latitude' => 14.6250,
+            'longitude' => 120.9750,
+            'accuracy_meters' => 10000,
+            'last_seen_at' => now(),
+        ]);
+        LogisticsLocation::query()->create([
+            'logistics_profile_id' => $foreignProvider['profile']->id,
+            'latitude' => 15.6250,
+            'longitude' => 121.9750,
+            'accuracy_meters' => 10,
+            'last_seen_at' => now(),
+        ]);
 
         $response = $this
             ->actingAs($provider['user'])
@@ -685,6 +1023,10 @@ class PickupRequestWorkflowTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.pickup.latitude', 14.5995)
             ->assertJsonPath('data.pickup.longitude', 120.9842)
+            ->assertJsonPath('data.facility.latitude', 14.62)
+            ->assertJsonPath('data.facility.longitude', 120.98)
+            ->assertJsonPath('data.logistics_location.latitude', 14.625)
+            ->assertJsonPath('data.logistics_location.accuracy_meters', 10000)
             ->assertJsonPath('data.stale_after_seconds', 180)
             ->assertJsonPath('data.max_usable_accuracy_meters', 100)
             ->assertJsonCount(4, 'data.riders');
@@ -727,6 +1069,20 @@ class PickupRequestWorkflowTest extends TestCase
             ->actingAs($foreignProvider['user'])
             ->get(route('logistics.pickups.locations', $pickup))
             ->assertNotFound();
+
+        $liveLogisticsLocation->update(['last_seen_at' => now()->subSeconds(181)]);
+        $this->actingAs($provider['user'])
+            ->getJson(route('logistics.pickups.locations', $pickup))
+            ->assertOk()
+            ->assertJsonPath('data.logistics_location', null)
+            ->assertJsonPath('data.facility.latitude', 14.62);
+
+        $centerAddress->update(['latitude' => 91]);
+        $this->actingAs($provider['user'])
+            ->get(route('logistics.pickups.locations', $pickup))
+            ->assertOk()
+            ->assertJsonPath('data.facility.latitude', null)
+            ->assertJsonPath('data.facility.longitude', null);
     }
 
     public function test_pickup_recommendation_falls_back_to_the_riders_assigned_sorting_zone(): void

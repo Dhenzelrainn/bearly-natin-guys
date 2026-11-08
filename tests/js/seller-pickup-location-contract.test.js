@@ -5,6 +5,7 @@ import {
     bestGpsReading,
     gpsReadingFromPosition,
     isStableGpsFix,
+    isWithinGpsAccuracyLimit,
 } from '../../resources/js/geolocation-fix.js';
 
 const read = (path) => readFile(new URL(`../../${path}`, import.meta.url), 'utf8');
@@ -83,5 +84,9 @@ test('GPS fixes require three accurate, nearby readings and fallback chooses the
         position(14.599610, 120.984260, 31),
     ]), false);
     assert.equal(bestGpsReading([stableReadings[0], stableReadings[2]]), stableReadings[2]);
+    assert.equal(isWithinGpsAccuracyLimit(stableReadings[0], 100), true);
+    assert.equal(isWithinGpsAccuracyLimit(position(14.599610, 120.984260, 10000), 100), false);
+    assert.equal(isWithinGpsAccuracyLimit(position(14.599610, 120.984260, null), 100), false);
+    assert.equal(isWithinGpsAccuracyLimit(position(14.599610, 120.984260, undefined), 100), false);
     assert.equal(position(91, 120, 5), null);
 });

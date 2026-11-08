@@ -140,8 +140,103 @@ import {
         });
     };
 
+    const initShippingPolicyApprovalQueue = () => {
+        const queue = document.querySelector('[data-shipping-policy-approval-queue]');
+        if (!queue) return;
+
+        const count = document.querySelector('[data-shipping-policy-pending-count]');
+        const pollInterval = Math.max(5000, Number(queue.dataset.pollInterval) || 15000);
+        let requestInFlight = false;
+        let refreshQueued = false;
+
+        const refresh = async (force = false) => {
+            if (document.hidden && !force) return;
+            if (requestInFlight) {
+                refreshQueued = true;
+                return;
+            }
+
+            requestInFlight = true;
+
+            try {
+                const url = new URL(queue.dataset.updatesUrl, window.location.href);
+                queue.querySelectorAll('[data-policy-submission]').forEach((submission) => {
+                    url.searchParams.append('known_ids[]', submission.dataset.policySubmission);
+                });
+
+                const response = await fetch(url, {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: {
+                        Accept: 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                });
+
+                if (response.status === 204 || !response.ok) return;
+
+                const update = await response.json();
+                if (!Array.isArray(update.pending_ids)) return;
+
+                const pendingIds = new Set(update.pending_ids.map((id) => String(id)));
+                queue.querySelectorAll('[data-policy-submission]').forEach((submission) => {
+                    if (!pendingIds.has(submission.dataset.policySubmission)) submission.remove();
+                });
+
+                const addedMarkup = document.createElement('template');
+                addedMarkup.innerHTML = typeof update.added_html === 'string' ? update.added_html : '';
+                const renderedSubmissionIds = new Set(
+                    [...queue.querySelectorAll('[data-policy-submission]')]
+                        .map((submission) => submission.dataset.policySubmission),
+                );
+                addedMarkup.content.querySelectorAll('[data-policy-submission]').forEach((submission) => {
+                    const id = submission.dataset.policySubmission;
+                    if (pendingIds.has(id) && !renderedSubmissionIds.has(id)) {
+                        queue.append(submission);
+                        renderedSubmissionIds.add(id);
+                    }
+                });
+
+                const emptyState = queue.querySelector('[data-shipping-policy-queue-empty]');
+                if (pendingIds.size > 0) {
+                    emptyState?.remove();
+                } else if (!emptyState) {
+                    const emptyMarkup = document.createElement('template');
+                    emptyMarkup.innerHTML = typeof update.empty_html === 'string' ? update.empty_html : '';
+                    const emptyStateMarkup = emptyMarkup.content.querySelector('[data-shipping-policy-queue-empty]');
+                    if (emptyStateMarkup) queue.append(emptyStateMarkup);
+                }
+
+                if (count && Number.isFinite(Number(update.pending_count))) {
+                    count.textContent = String(Number(update.pending_count));
+                }
+
+                if (window.lucide?.createIcons) window.lucide.createIcons();
+            } catch {
+                // Reverb-triggered refresh and polling retry transient failures.
+            } finally {
+                requestInFlight = false;
+                if (refreshQueued) {
+                    refreshQueued = false;
+                    refresh(true);
+                }
+            }
+        };
+
+        window.addEventListener('bearly:shipping-policy-submitted', () => refresh(true));
+        window.addEventListener('focus', () => refresh(true));
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) refresh(true);
+        });
+        window.setInterval(() => refresh(), pollInterval);
+        refresh(true);
+    };
+
     ready(() => {
         const body = document.body;
+
+        initShippingPolicyApprovalQueue();
 
         const refreshIcons = () => {
             if (window.lucide?.createIcons) window.lucide.createIcons();

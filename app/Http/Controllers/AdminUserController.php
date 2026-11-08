@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Models\AuditLog;
+use App\Models\LogisticsProfile;
 use App\Models\User;
+use App\Services\ShippingPolicyService;
 use App\Services\UserAccountStatusService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -32,9 +34,39 @@ class AdminUserController extends Controller
         return $this->directory($request, UserRole::Seller->value);
     }
 
-    public function logistics(Request $request): View
+    public function logistics(Request $request, ShippingPolicyService $shippingPolicies): View
     {
-        return $this->directory($request, UserRole::Logistics->value);
+        return $this->directory($request, UserRole::Logistics->value, $shippingPolicies);
+    }
+
+    public function updateShippingPolicyManager(
+        Request $request,
+        ShippingPolicyService $shippingPolicies,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'action' => ['required', Rule::in(['assign', 'remove'])],
+            'logistics_profile_id' => ['nullable', 'required_if:action,assign', 'integer', 'exists:logistics_profiles,id'],
+            'reason' => ['required', 'string', 'min:5', 'max:1000'],
+        ]);
+
+        $profileId = $validated['action'] === 'assign'
+            ? (int) $validated['logistics_profile_id']
+            : null;
+
+        $shippingPolicies->assignManager(
+            $request->user(),
+            $profileId,
+            $validated['reason'],
+            $request->ip(),
+            $request->userAgent(),
+        );
+
+        return back()->with(
+            'success',
+            $validated['action'] === 'remove'
+                ? 'The Bearly Logistics policy manager assignment was removed.'
+                : 'The Bearly Logistics policy manager was updated.'
+        );
     }
 
     public function riders(Request $request): View
@@ -109,8 +141,11 @@ class AdminUserController extends Controller
         return back()->with('success', 'Account status was updated.');
     }
 
-    private function directory(Request $request, ?string $fixedRole = null): View
-    {
+    private function directory(
+        Request $request,
+        ?string $fixedRole = null,
+        ?ShippingPolicyService $shippingPolicies = null,
+    ): View {
         $managedRoles = [
             UserRole::Buyer->value,
             UserRole::Seller->value,
@@ -173,6 +208,24 @@ class AdminUserController extends Controller
             ? $this->sellerCategoryOptions($baseQuery)
             : collect();
 
+        $policyManagerProfile = null;
+        $hasPolicyManagerAssignment = false;
+        $eligiblePolicyManagers = collect();
+
+        if ($fixedRole === UserRole::Logistics->value && $shippingPolicies !== null) {
+            $assignment = $shippingPolicies->managerAssignment();
+            $policyManagerProfile = $assignment?->managerLogisticsProfile;
+            $hasPolicyManagerAssignment = $assignment?->manager_logistics_profile_id !== null;
+            $eligiblePolicyManagers = LogisticsProfile::query()
+                ->where('status', 'active')
+                ->whereHas('user', fn (Builder $query) => $query
+                    ->where('role', UserRole::Logistics->value)
+                    ->where('status', AccountStatus::Active->value))
+                ->with('user')
+                ->orderBy('display_name')
+                ->get();
+        }
+
         return view('admin.users.'.$view, [
             'admin' => $this->adminSummary($request),
             'topNotifications' => [],
@@ -188,6 +241,9 @@ class AdminUserController extends Controller
                 'deactivated' => (int) ($stats[AccountStatus::Deactivated->value] ?? 0),
             ],
             'directoryRoute' => $fixedRole ? 'admin.users.'.$view : 'admin.users',
+            'policyManagerProfile' => $policyManagerProfile,
+            'hasPolicyManagerAssignment' => $hasPolicyManagerAssignment,
+            'eligiblePolicyManagers' => $eligiblePolicyManagers,
         ]);
     }
 

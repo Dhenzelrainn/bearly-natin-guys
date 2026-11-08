@@ -28,6 +28,82 @@
     </div>
 </section>
 
+<section class="panel" aria-labelledby="shipping-policy-owner-title">
+    <div class="panel-heading">
+        <div>
+            <span class="eyebrow">Bearly Logistics policy governance</span>
+            <h2 id="shipping-policy-owner-title">Appointed policy manager</h2>
+        </div>
+    </div>
+
+    <p class="detail-note">
+        One active Logistics account manages shared Bearly Logistics shipping and Rider policies. Other Logistics accounts may view published policies. Changes are audit-logged with the reason provided.
+    </p>
+
+    @if ($hasPolicyManagerAssignment)
+        <p class="detail-note">
+            Current assignment: <strong>{{ $policyManagerProfile?->display_name ?? 'Unresolved Logistics profile' }}</strong>
+            @if ($policyManagerProfile?->user)
+                · {{ $policyManagerProfile->user->name }} ({{ $policyManagerProfile->user->status }})
+            @endif
+            @if ($policyManagerProfile?->trashed() || $policyManagerProfile?->user?->trashed())
+                · This account/profile has been deleted and must be replaced or explicitly removed.
+            @elseif ($policyManagerProfile && ($policyManagerProfile->status !== 'active' || $policyManagerProfile->user?->status !== 'active'))
+                · This manager is inactive and cannot edit policies.
+            @endif
+        </p>
+    @else
+        <p class="detail-note">No Logistics policy manager is currently assigned.</p>
+    @endif
+
+    <form method="POST" action="{{ route('admin.users.logistics.shipping-policy-manager') }}" class="announcement-form">
+        @csrf
+
+        <div class="form-grid two-column-form">
+            <label class="form-field" for="shipping-policy-manager-profile">
+                <span>Active Logistics account</span>
+                <select class="select-field" id="shipping-policy-manager-profile" name="logistics_profile_id" required>
+                    <option value="">Choose an active account</option>
+                    @foreach ($eligiblePolicyManagers as $profile)
+                        <option value="{{ $profile->id }}" @selected((string) old('logistics_profile_id', $policyManagerProfile?->id) === (string) $profile->id)>
+                            {{ $profile->display_name }} — {{ $profile->user?->name }}
+                        </option>
+                    @endforeach
+                </select>
+                @error('logistics_profile_id')<small class="field-error">{{ $message }}</small>@enderror
+            </label>
+
+            <label class="form-field" for="shipping-policy-manager-reason">
+                <span>Reason for this manager change</span>
+                <input
+                    class="text-field"
+                    id="shipping-policy-manager-reason"
+                    name="reason"
+                    type="text"
+                    value="{{ old('reason') }}"
+                    minlength="5"
+                    maxlength="1000"
+                    required
+                >
+                @error('reason')<small class="field-error">{{ $message }}</small>@enderror
+            </label>
+        </div>
+
+        <div class="modal-footer decision-footer">
+            <button type="submit" name="action" value="assign" class="button button-primary">
+                <i data-lucide="shield-check" aria-hidden="true"></i>
+                Assign / replace manager
+            </button>
+            @if ($hasPolicyManagerAssignment)
+                <button type="submit" name="action" value="remove" class="button button-danger-soft" formnovalidate>
+                    <i data-lucide="shield-off" aria-hidden="true"></i>
+                    Remove manager
+                </button>
+            @endif
+        </div>
+    </form>
+</section>
+
 <section class="panel">
     <div class="panel-heading panel-heading-wrap">
         <div>

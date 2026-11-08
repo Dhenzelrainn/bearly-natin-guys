@@ -436,10 +436,24 @@ class BuyerOrderConfirmationTest extends TestCase
             'verification_status' => 'approved',
         ]);
 
-        app(CodCashCollectionService::class)->recordRiderCollection(
+        $codCash = app(CodCashCollectionService::class);
+        $collection = $codCash->recordRiderCollection(
             $shipment,
             $rider,
             (int) $shipment->cod_amount_minor,
         );
+        $codCash->receiveAtLogistics($provider['user'], (int) $collection->id, (int) $shipment->cod_amount_minor);
+        $codCash->remitToFinance($provider['user'], (int) $collection->id, (int) $shipment->cod_amount_minor);
+
+        $finance = User::factory()->create([
+            'name' => 'Finance '.$suffix,
+            'email' => 'confirm-finance-'.Str::slug($suffix).'-'.(++$this->sequence).'@example.test',
+            'role' => UserRole::Admin->value,
+            'status' => 'active',
+        ]);
+        $finance->roles()->syncWithoutDetaching([
+            Role::query()->where('name', UserRole::Admin->value)->value('id'),
+        ]);
+        $codCash->reconcileAtFinance($finance, (int) $collection->id, (int) $shipment->cod_amount_minor);
     }
 }

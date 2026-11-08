@@ -295,6 +295,69 @@ return [
             'defaults' => ['in_app' => true, 'email' => true],
         ],
 
+        'logistics_linehaul_assigned' => [
+            'label' => 'Courier run assignments',
+            'description' => 'Courier assignments created for your Logistics facility.',
+            'group' => 'shipments',
+            'audience' => ['logistics'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => false],
+        ],
+
+        'logistics_linehaul_loading_started' => [
+            'label' => 'Courier loading started',
+            'description' => 'Courier loading activity for runs leaving your Logistics facility.',
+            'group' => 'shipments',
+            'audience' => ['logistics'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => false],
+        ],
+
+        'logistics_linehaul_cargo_loaded' => [
+            'label' => 'Courier cargo loaded',
+            'description' => 'Courier confirmation that a run from your facility is fully loaded and ready to depart.',
+            'group' => 'shipments',
+            'audience' => ['logistics'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => false],
+        ],
+
+        'logistics_linehaul_departed' => [
+            'label' => 'Courier departures',
+            'description' => 'One run-level confirmation when your assigned Courier departs with the transfer.',
+            'group' => 'shipments',
+            'audience' => ['logistics'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => false],
+        ],
+
+        'logistics_linehaul_arrived' => [
+            'label' => 'Courier arrivals',
+            'description' => 'Courier runs that have arrived and need shipment acceptance at your facility.',
+            'group' => 'shipments',
+            'audience' => ['logistics'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => true],
+        ],
+
+        'logistics_linehaul_exception_reported' => [
+            'label' => 'Courier run exceptions',
+            'description' => 'Courier run exceptions that need Logistics attention.',
+            'group' => 'shipments',
+            'audience' => ['logistics'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => true],
+        ],
+
+        'logistics_linehaul_exception_resolved' => [
+            'label' => 'Courier exception resolutions',
+            'description' => 'Courier-reported exceptions resolved during a line-haul run.',
+            'group' => 'shipments',
+            'audience' => ['logistics'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => true],
+        ],
+
         'logistics_cod_collected' => [
             'label' => 'COD custody',
             'description' => 'COD cash collected by your Riders that needs receiving and remittance.',
@@ -337,9 +400,45 @@ return [
             'defaults' => ['in_app' => true, 'email' => true],
         ],
 
+        'rider_pickup_assignment_cancelled' => [
+            'label' => 'Pickup assignment changes',
+            'description' => 'Pickup assignments removed or reassigned by your Logistics provider.',
+            'group' => 'assignments',
+            'audience' => ['rider'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => true],
+        ],
+
         'rider_dispatch_assigned' => [
             'label' => 'Delivery assignments',
             'description' => 'New delivery batches dispatched to you.',
+            'group' => 'assignments',
+            'audience' => ['rider'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => true],
+        ],
+
+        'rider_linehaul_assigned' => [
+            'label' => 'Courier run assignments',
+            'description' => 'New city line-haul runs assigned to your Courier account.',
+            'group' => 'assignments',
+            'audience' => ['rider'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => true],
+        ],
+
+        'rider_linehaul_completed' => [
+            'label' => 'Courier run completions',
+            'description' => 'Courier runs completed after destination Logistics accepted every shipment.',
+            'group' => 'assignments',
+            'audience' => ['rider'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => false],
+        ],
+
+        'rider_linehaul_exception_resolved' => [
+            'label' => 'Courier exception resolutions',
+            'description' => 'Run exceptions resolved by your sponsoring Logistics provider.',
             'group' => 'assignments',
             'audience' => ['rider'],
             'mandatory' => false,

@@ -41,7 +41,14 @@
         }
     </style>
 </head>
-<body class="ops-body" data-module="logistics" data-realtime-user-id="{{ auth()->id() }}">
+<body
+    class="ops-body"
+    data-module="logistics"
+    data-realtime-user-id="{{ auth()->id() }}"
+    data-logistics-location-status-endpoint="{{ route('logistics.location.show') }}"
+    data-logistics-location-endpoint="{{ route('logistics.location.update') }}"
+    data-logistics-location-clear-endpoint="{{ route('logistics.location.destroy') }}"
+>
 @include('partials.realtime-identity')
 <div class="ops-shell">
     <aside class="ops-sidebar" aria-label="Logistics navigation">
@@ -54,6 +61,7 @@
             <a href="{{ route('logistics.dashboard') }}" class="ops-nav-link {{ request()->routeIs('logistics.dashboard') ? 'is-active' : '' }}"><i data-lucide="house"></i><span>Dashboard</span></a>
             <p class="ops-nav-label">Operations</p>
             <a href="{{ route('logistics.riders.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.riders.*') && !request()->routeIs('logistics.riders.vehicle-changes*') ? 'is-active' : '' }}"><i data-lucide="users-round"></i><span>Rider Management</span>@if(($pendingRiderCount ?? 0) > 0)<span class="nav-count">{{ $pendingRiderCount }}</span>@endif</a>
+            <a href="{{ route('logistics.rider-attendance.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.rider-attendance.index') ? 'is-active' : '' }}"><i data-lucide="scan-line"></i><span>Rider Attendance</span></a>
             <a href="{{ route('logistics.riders.vehicle-changes') }}" class="ops-nav-link {{ request()->routeIs('logistics.riders.vehicle-changes*') ? 'is-active' : '' }}"><i data-lucide="file-check-2"></i><span>Vehicle / Courier reviews</span></a>
             <a href="{{ route('logistics.pickups.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.pickups.*') ? 'is-active' : '' }}"><i data-lucide="package-check"></i><span>Pickup Requests</span></a>
             <a href="{{ route('logistics.cash.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.cash.*') ? 'is-active' : '' }}"><i data-lucide="banknote"></i><span>Cash custody</span></a>
@@ -63,6 +71,7 @@
             <a href="{{ route('logistics.sorting.center') }}" class="ops-nav-link {{ request()->routeIs('logistics.sorting.center') ? 'is-active' : '' }}"><i data-lucide="warehouse"></i><span>Sorting Center</span></a>
             <a href="{{ route('logistics.dispatch.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.dispatch.index') ? 'is-active' : '' }}"><i data-lucide="route"></i><span>Delivery Assignment</span></a>
             <a href="{{ route('logistics.dispatch.monitoring') }}" class="ops-nav-link {{ request()->routeIs('logistics.dispatch.monitoring') ? 'is-active' : '' }}"><i data-lucide="map-pinned"></i><span>Delivery Monitoring</span></a>
+            <a href="{{ route('logistics.shipping-policies.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.shipping-policies.*') ? 'is-active' : '' }}"><i data-lucide="file-check-2"></i><span>Shipping Policies</span></a>
             <p class="ops-nav-label">Insights & support</p>
             <a href="{{ route('logistics.reports.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.reports.*') ? 'is-active' : '' }}"><i data-lucide="chart-column"></i><span>Reports</span></a>
             <a href="{{ route('logistics.messages.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.messages.*') ? 'is-active' : '' }}"><i data-lucide="message-circle"></i><span>Messages</span></a>
@@ -81,6 +90,14 @@
             <div class="ops-topbar-left"><button class="icon-button mobile-menu" type="button" data-mobile-menu aria-label="Open navigation"><i data-lucide="menu"></i></button><h1>@yield('page-title', 'Logistics Center')</h1></div>
             <div class="ops-topbar-actions">
                 @include('partials.theme-toggle')
+                <div class="logistics-location-control" data-logistics-location-control>
+                    <span class="logistics-location-dot is-off" data-logistics-location-dot aria-hidden="true"></span>
+                    <span class="logistics-location-copy" role="status" aria-live="polite">
+                        <strong data-logistics-location-label>Location sharing is off</strong>
+                        <small data-logistics-location-help>Share your device location with your Logistics team only.</small>
+                    </span>
+                    <button class="button button-small" type="button" data-logistics-location-toggle>Share location</button>
+                </div>
                 <div class="popover-wrap" data-notification-center data-notification-skin="logistics">
                     <button class="icon-button notification-trigger" type="button" data-popover-toggle="notifications" aria-label="Open notifications"><i data-lucide="bell"></i><span class="notification-dot" data-notification-badge="dot" hidden></span></button>
                     <div class="topbar-popover notification-popover" data-popover="notifications" hidden>
@@ -100,8 +117,8 @@
             </div>
         </header>
         <main class="ops-content">
-            @if(session('success'))<div class="flash-banner is-success" data-auto-dismiss="5000" role="status"><i data-lucide="circle-check"></i><span>{{ session('success') }}</span><button type="button" data-dismiss><i data-lucide="x"></i></button></div>@endif
-            @if($errors->any())<div class="flash-banner is-danger" role="alert"><i data-lucide="circle-alert"></i><span>Please check the highlighted information and try again.</span><button type="button" data-dismiss><i data-lucide="x"></i></button></div>@endif
+            @if(session('success'))<div class="flash-banner is-success" data-auto-dismiss="5000" role="status" @if(request()->routeIs('logistics.shipping-policies.*')) data-shipping-policy-feedback="success" @endif><i data-lucide="circle-check"></i><span>{{ session('success') }}</span><button type="button" data-dismiss><i data-lucide="x"></i></button></div>@endif
+            @if($errors->any())<div class="flash-banner is-danger" role="alert" @if(request()->routeIs('logistics.shipping-policies.*')) data-shipping-policy-feedback="error" @endif><i data-lucide="circle-alert"></i><span>Please check the highlighted information and try again.</span><button type="button" data-dismiss><i data-lucide="x"></i></button></div>@endif
             @yield('content')
         </main>
         <footer class="ops-footer"><span>© {{ date('Y') }} Bearly Marketplace</span><span>Logistics operations</span></footer>

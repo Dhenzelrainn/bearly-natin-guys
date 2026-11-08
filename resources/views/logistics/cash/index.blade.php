@@ -50,14 +50,49 @@
                         </div>
                         <div class="cash-custody-reference-item">
                             <dt>Orders / Seller Orders</dt>
-                            <dd>
+                            <dd class="cash-custody-order-list">
                                 @forelse($collection->allocations as $allocation)
-                                    <span>{{ $allocation->order?->order_no ?? 'Order' }} · {{ $allocation->sellerOrder?->seller_order_no ?? 'Seller Order' }} · Due ₱{{ number_format((int) $allocation->amount_due_minor / 100, 2) }}@if($allocation->payment?->payment_no) · {{ $allocation->payment->payment_no }}@endif</span>
-                                    @if($allocation->order?->order_no)
-                                        <button class="cash-custody-copy" type="button" data-copy-cash-reference data-copy-value="{{ $allocation->order->order_no }}" aria-label="Copy order ID"><i data-lucide="copy" aria-hidden="true"></i></button>
-                                    @endif
+                                    <div class="cash-custody-order-entry">
+                                        <div class="cash-custody-order-reference">
+                                            <span class="cash-custody-order-label">Order</span>
+                                            <div class="cash-custody-order-value">
+                                                <code>{{ $allocation->order?->order_no ?? 'Order' }}</code>
+                                                @if($allocation->order?->order_no)
+                                                    <button class="cash-custody-copy" type="button" data-copy-cash-reference data-copy-value="{{ $allocation->order->order_no }}" aria-label="Copy order ID {{ $allocation->order->order_no }}"><i data-lucide="copy" aria-hidden="true"></i></button>
+                                                @endif
+                                            </div>
+                                        </div>
+                                        <div class="cash-custody-order-reference">
+                                            <span class="cash-custody-order-label">Seller order</span>
+                                            <div class="cash-custody-order-value">
+                                                <code>{{ $allocation->sellerOrder?->seller_order_no ?? 'Seller Order' }}</code>
+                                            </div>
+                                        </div>
+                                        <div class="cash-custody-order-meta">
+                                            <span>Due <strong>₱{{ number_format((int) $allocation->amount_due_minor / 100, 2) }}</strong></span>
+                                            @if($allocation->payment?->payment_no)
+                                                <span>Payment <code>{{ $allocation->payment->payment_no }}</code></span>
+                                            @endif
+                                        </div>
+                                    </div>
                                 @empty
-                                    <span>{{ $collection->order?->order_no ?? 'Order' }} · {{ $collection->sellerOrder?->store?->name ?? 'Seller' }}</span>
+                                    <div class="cash-custody-order-entry">
+                                        <div class="cash-custody-order-reference">
+                                            <span class="cash-custody-order-label">Order</span>
+                                            <div class="cash-custody-order-value">
+                                                <code>{{ $collection->order?->order_no ?? 'Order' }}</code>
+                                                @if($collection->order?->order_no)
+                                                    <button class="cash-custody-copy" type="button" data-copy-cash-reference data-copy-value="{{ $collection->order->order_no }}" aria-label="Copy order ID {{ $collection->order->order_no }}"><i data-lucide="copy" aria-hidden="true"></i></button>
+                                                @endif
+                                            </div>
+                                        </div>
+                                        <div class="cash-custody-order-reference">
+                                            <span class="cash-custody-order-label">Seller</span>
+                                            <div class="cash-custody-order-value">
+                                                <span>{{ $collection->sellerOrder?->store?->name ?? 'Seller' }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
                                 @endforelse
                             </dd>
                         </div>

@@ -64,6 +64,12 @@
 .zone-routing-note.is-unmatched{color:var(--amber);font-weight:600}
 .zone-routing-note.is-handoff{color:var(--brown-800);font-weight:600}
 .zone-routing-note.is-handoff small{display:block;max-width:340px;margin-top:2px;color:var(--muted);font-size:10px;font-weight:400;line-height:1.45;white-space:normal}
+.zone-routing-note.is-handoff[data-state=error]{color:var(--red)}
+.zone-routing-note.is-handoff[data-state=success]{color:var(--green)}
+.zone-routing-note.is-handoff[data-state=loading]{color:var(--amber)}
+:root[data-theme="dark"] body[data-module="logistics"] .zone-routing-note.is-handoff[data-state=error]{color:var(--theme-danger)}
+:root[data-theme="dark"] body[data-module="logistics"] .zone-routing-note.is-handoff[data-state=success]{color:var(--theme-success)}
+:root[data-theme="dark"] body[data-module="logistics"] .zone-routing-note.is-handoff[data-state=loading]{color:var(--theme-accent)}
 #ready-to-send,#needs-destination{scroll-margin-top:96px}
 .sorting-zone-select{min-width:210px}
 .status-badge.is-warning{border-color:#eedaa8;background:var(--amber-soft);color:var(--amber)}
@@ -3227,6 +3233,95 @@ body[data-module="logistics"] .cash-custody-reference-item code {
     white-space: normal;
 }
 
+body[data-module="logistics"] .cash-custody-reference-item dd.cash-custody-order-list {
+    display: grid;
+    align-items: stretch;
+    justify-content: stretch;
+    gap: 0;
+}
+
+body[data-module="logistics"] .cash-custody-order-entry {
+    display: grid;
+    min-width: 0;
+    gap: 6px;
+    padding: 8px 0;
+}
+
+body[data-module="logistics"] .cash-custody-order-entry + .cash-custody-order-entry {
+    border-top: 1px solid var(--theme-border);
+}
+
+body[data-module="logistics"] .cash-custody-order-entry:first-child {
+    padding-top: 0;
+}
+
+body[data-module="logistics"] .cash-custody-order-entry:last-child {
+    padding-bottom: 0;
+}
+
+body[data-module="logistics"] .cash-custody-order-reference {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+}
+
+body[data-module="logistics"] .cash-custody-order-label {
+    color: var(--theme-muted);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+body[data-module="logistics"] .cash-custody-order-value {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-width: 0;
+    align-items: center;
+    gap: 4px;
+}
+
+body[data-module="logistics"] .cash-custody-order-value > code,
+body[data-module="logistics"] .cash-custody-order-value > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+body[data-module="logistics"] .cash-custody-order-meta {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 12px;
+    color: var(--theme-muted);
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+body[data-module="logistics"] .cash-custody-order-meta > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+body[data-module="logistics"] .cash-custody-order-meta strong {
+    color: var(--theme-text);
+    font-size: inherit;
+}
+
+body[data-module="logistics"] .cash-custody-order-meta code {
+    font-size: inherit;
+}
+
+:root[data-theme="dark"] body[data-module="logistics"] .cash-custody-order-entry + .cash-custody-order-entry {
+    border-color: var(--theme-border);
+}
+
+:root[data-theme="dark"] body[data-module="logistics"] .cash-custody-order-value .cash-custody-copy:hover,
+:root[data-theme="dark"] body[data-module="logistics"] .cash-custody-order-value .cash-custody-copy:focus-visible {
+    background: var(--theme-border);
+    color: var(--theme-text);
+}
+
 body[data-module="logistics"] .cash-custody-copy {
     display: grid;
     width: 30px;
@@ -4268,6 +4363,8 @@ body[data-module="logistics"] .cash-remittance-select[aria-current="page"] {
 .attendance-roster-summary strong{color:var(--brown-900);font-size:14px}
 .attendance-roster-table td{vertical-align:top}
 .attendance-roster-table td:first-child strong{overflow-wrap:anywhere}
+.attendance-roster-live-status{margin:0 20px 16px;color:var(--muted);font-size:11px;line-height:1.4}
+.attendance-roster-live-status.is-error{color:var(--red)}
 .attendance-state{display:inline-flex;align-items:center;min-height:22px;padding:3px 7px;border-radius:5px;font-size:11px;font-weight:700;white-space:nowrap}
 .attendance-state.is-present{color:#256043;background:#e9f4ec}
 .attendance-state.is-finished{color:#514c68;background:#efedf6}
@@ -4283,6 +4380,8 @@ body[data-module="logistics"] .cash-remittance-select[aria-current="page"] {
 .rider-attendance-page .button-danger-soft:hover:not(:disabled){border-color:#c97268;background:#ffe2de;color:#70241c}
 .rider-attendance-page .button-danger-soft:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 @media(max-width:700px){.rider-attendance-page{gap:14px}.rider-attendance-page .panel-header{padding:16px}.rider-attendance-page .attendance-qr-station-layout{padding:0 16px 16px}.attendance-roster-summary{gap:8px 14px;padding-inline:16px}.attendance-roster-footnote{margin-inline:16px}}
+:root[data-theme="dark"] body.ops-body .attendance-roster-live-status{color:var(--theme-muted)}
+:root[data-theme="dark"] body.ops-body .attendance-roster-live-status.is-error{color:#ffaaa2}
 :root[data-theme="dark"] body.ops-body .attendance-roster-summary strong{color:var(--theme-text)}
 :root[data-theme="dark"] body.ops-body .attendance-state.is-present{color:#b8e2c7;background:#1d392a}
 :root[data-theme="dark"] body.ops-body .attendance-state.is-finished{color:#d0c9f0;background:#302c42}
@@ -4292,3 +4391,395 @@ body[data-module="logistics"] .cash-remittance-select[aria-current="page"] {
 :root[data-theme="dark"] body.ops-body .attendance-state-detail,:root[data-theme="dark"] body.ops-body .attendance-action-hint,:root[data-theme="dark"] body.ops-body .attendance-muted,:root[data-theme="dark"] body.ops-body .attendance-roster-footnote{color:var(--theme-muted)}
 :root[data-theme="dark"] body.ops-body .rider-attendance-page .button-danger-soft{border-color:#8f5149;background:#3a211e;color:#ffb8ae}
 :root[data-theme="dark"] body.ops-body .rider-attendance-page .button-danger-soft:hover:not(:disabled){border-color:#bd7066;background:#4b2823;color:#ffe4df}
+
+/* Dispatch monitoring: roomy, readable timeline modal inspired by the Rider's
+   scan history, while following the active Bearly color theme. */
+body[data-module="logistics"] .delivery-timeline-modal {
+    width: min(1200px, calc(100vw - 40px));
+    height: min(820px, calc(100vh - 48px));
+    height: min(820px, calc(100dvh - 48px));
+    min-height: min(520px, calc(100dvh - 48px));
+    max-height: calc(100dvh - 48px);
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    overflow: hidden;
+    border: 1px solid var(--theme-border);
+    border-radius: 14px;
+    background: var(--theme-surface);
+    color: var(--theme-text);
+    box-shadow: 0 24px 72px rgba(38, 25, 19, .26);
+}
+
+body[data-module="logistics"] .delivery-timeline-modal[hidden] {
+    display: none;
+}
+
+body[data-module="logistics"] .delivery-timeline-header {
+    align-items: center;
+    gap: 18px;
+    padding: 24px 28px;
+    border-color: var(--theme-border);
+}
+
+.delivery-timeline-heading {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    min-width: 0;
+}
+
+.delivery-timeline-icon {
+    display: grid;
+    width: 68px;
+    height: 68px;
+    flex: 0 0 68px;
+    place-items: center;
+    border: 1px solid var(--theme-border);
+    border-radius: 12px;
+    background: var(--theme-surface-soft);
+    color: var(--theme-accent);
+}
+
+.delivery-timeline-icon svg {
+    width: 32px;
+    height: 32px;
+    stroke-width: 1.8;
+}
+
+.delivery-timeline-heading-copy {
+    min-width: 0;
+}
+
+.delivery-timeline-eyebrow {
+    margin: 0 0 3px !important;
+    color: var(--theme-accent) !important;
+    font-size: 10px !important;
+    font-weight: 700;
+    letter-spacing: .1em;
+    line-height: 1.4;
+    text-transform: uppercase;
+}
+
+body[data-module="logistics"] .delivery-timeline-header h3 {
+    margin: 0;
+    color: var(--theme-text);
+    font-size: clamp(20px, 2.2vw, 28px);
+    font-weight: 700;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+body[data-module="logistics"] .delivery-timeline-header .delivery-timeline-heading-copy > p:last-child {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 8px;
+    margin: 5px 0 0;
+    color: var(--theme-muted);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+body[data-module="logistics"] .delivery-timeline-dismiss {
+    display: grid;
+    width: 48px;
+    height: 48px;
+    flex: 0 0 48px;
+    place-items: center;
+    border: 1px solid var(--theme-border);
+    border-radius: 10px;
+    background: var(--theme-surface);
+    color: var(--theme-text);
+}
+
+body[data-module="logistics"] .delivery-timeline-dismiss:hover {
+    border-color: var(--theme-accent);
+    background: var(--theme-surface-soft);
+    color: var(--theme-text);
+}
+
+body[data-module="logistics"] .delivery-timeline-dismiss:focus-visible,
+body[data-module="logistics"] .delivery-timeline-close:focus-visible {
+    outline: 3px solid var(--theme-accent);
+    outline-offset: 3px;
+}
+
+body[data-module="logistics"] .delivery-timeline-body {
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 20px 28px 26px;
+    scrollbar-color: var(--theme-border) transparent;
+    scrollbar-gutter: stable;
+}
+
+.delivery-timeline-list {
+    --delivery-timeline-time-width: 190px;
+    --delivery-timeline-gap: 18px;
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--delivery-timeline-time-width) 14px minmax(0, 1fr);
+    column-gap: var(--delivery-timeline-gap);
+}
+
+.delivery-timeline-list.has-events::before {
+    position: absolute;
+    top: 34px;
+    bottom: 34px;
+    left: calc(var(--delivery-timeline-time-width) + var(--delivery-timeline-gap) + 6px);
+    width: 2px;
+    border-radius: 2px;
+    background: rgba(170, 126, 72, .38);
+    content: "";
+}
+
+.delivery-timeline-event {
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--delivery-timeline-time-width) 14px minmax(0, 1fr);
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
+    align-items: start;
+    column-gap: var(--delivery-timeline-gap);
+    padding: 20px 0;
+    border: 0;
+}
+
+.delivery-timeline-time {
+    display: inline-flex;
+    min-height: 42px;
+    align-items: center;
+    justify-self: start;
+    padding: 7px 12px;
+    border: 1px solid var(--theme-border);
+    border-radius: 8px;
+    background: var(--theme-surface-soft);
+    color: var(--theme-text);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.delivery-timeline-marker {
+    z-index: 1;
+    width: 12px;
+    height: 12px;
+    justify-self: center;
+    margin-top: 15px;
+    border: 2px solid var(--theme-surface);
+    border-radius: 50%;
+    background: var(--theme-accent);
+    box-shadow: 0 0 0 1px rgba(170, 126, 72, .42);
+}
+
+.delivery-timeline-copy {
+    min-width: 0;
+    align-content: start;
+    gap: 4px;
+    padding: 2px 0 0;
+}
+
+.delivery-timeline-copy > strong {
+    color: var(--theme-text);
+    font-size: clamp(16px, 1.5vw, 19px);
+    font-weight: 700;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.delivery-timeline-copy > small {
+    margin: 0;
+    color: var(--theme-muted);
+    font-size: 14px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+
+.delivery-timeline-copy > .activity-verification {
+    color: var(--theme-accent);
+}
+
+.delivery-timeline-event.is-verification .delivery-timeline-marker {
+    box-shadow: 0 0 0 4px var(--theme-accent-soft);
+}
+
+body[data-module="logistics"] .delivery-timeline-footer {
+    min-height: 82px;
+    align-items: center;
+    padding: 16px 28px;
+    border-color: var(--theme-border);
+    background: var(--theme-surface-soft);
+}
+
+body[data-module="logistics"] .delivery-timeline-close {
+    min-width: 126px;
+    min-height: 46px;
+    justify-content: center;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+body[data-module="logistics"] .delivery-timeline-list.is-empty .empty-state {
+    grid-column: 1 / -1;
+    padding: 28px 0;
+    color: var(--theme-muted);
+    font-size: 14px;
+}
+
+.delivery-timeline-list.is-empty .empty-state svg {
+    width: 18px;
+    height: 18px;
+    margin-right: 6px;
+    vertical-align: -4px;
+}
+
+:root[data-theme="dark"] body[data-module="logistics"] .delivery-timeline-modal {
+    border-color: #75583f;
+    background: #2a201a;
+    box-shadow: 0 28px 80px rgba(0, 0, 0, .52);
+}
+
+:root[data-theme="dark"] body[data-module="logistics"] .delivery-timeline-header,
+:root[data-theme="dark"] body[data-module="logistics"] .delivery-timeline-footer {
+    border-color: #584333;
+}
+
+:root[data-theme="dark"] body[data-module="logistics"] .delivery-timeline-icon {
+    border-color: #604834;
+    background: #38291f;
+}
+
+:root[data-theme="dark"] body[data-module="logistics"] .delivery-timeline-time {
+    border-color: #604834;
+    background: #33261e;
+}
+
+:root[data-theme="dark"] body[data-module="logistics"] .delivery-timeline-marker {
+    border-color: #2a201a;
+    box-shadow: 0 0 0 1px rgba(240, 184, 77, .45);
+}
+
+:root[data-theme="dark"] body[data-module="logistics"] .delivery-timeline-list.has-events::before {
+    background: rgba(240, 184, 77, .4);
+}
+
+:root[data-theme="dark"] body[data-module="logistics"] .delivery-timeline-footer {
+    background: #241b16;
+}
+
+:root[data-theme="dark"] body[data-module="logistics"] .delivery-timeline-close {
+    border-color: #b8833e;
+    background: #493323;
+    color: #fff3e1;
+}
+
+:root[data-theme="dark"] body[data-module="logistics"] .delivery-timeline-close:hover {
+    border-color: var(--theme-accent);
+    background: #59402b;
+}
+
+@media (max-width: 680px) {
+    body[data-module="logistics"] .delivery-timeline-modal {
+        width: calc(100vw - 20px);
+        height: calc(100vh - 20px);
+        height: calc(100dvh - 20px);
+        min-height: 0;
+        max-height: calc(100dvh - 20px);
+        border-radius: 12px;
+    }
+
+    body[data-module="logistics"] .delivery-timeline-header {
+        gap: 10px;
+        padding: 16px;
+    }
+
+    .delivery-timeline-heading {
+        gap: 12px;
+    }
+
+    .delivery-timeline-icon {
+        width: 46px;
+        height: 46px;
+        flex-basis: 46px;
+        border-radius: 9px;
+    }
+
+    .delivery-timeline-icon svg {
+        width: 24px;
+        height: 24px;
+    }
+
+    body[data-module="logistics"] .delivery-timeline-header h3 {
+        font-size: 19px;
+    }
+
+    body[data-module="logistics"] .delivery-timeline-header .delivery-timeline-heading-copy > p:last-child {
+        font-size: 12px;
+    }
+
+    body[data-module="logistics"] .delivery-timeline-dismiss {
+        width: 42px;
+        height: 42px;
+        flex-basis: 42px;
+    }
+
+    body[data-module="logistics"] .delivery-timeline-body {
+        padding: 8px 18px 18px;
+    }
+
+    .delivery-timeline-list {
+        grid-template-columns: 12px minmax(0, 1fr);
+        column-gap: 14px;
+    }
+
+    .delivery-timeline-list.has-events::before {
+        top: 24px;
+        bottom: 24px;
+        left: 5px;
+    }
+
+    .delivery-timeline-event {
+        grid-template-columns: 12px minmax(0, 1fr);
+        grid-template-areas:
+            "marker time"
+            "marker copy";
+        padding: 16px 0;
+    }
+
+    .delivery-timeline-time {
+        grid-area: time;
+        min-height: 34px;
+        margin-bottom: 7px;
+        padding: 5px 9px;
+        font-size: 12px;
+    }
+
+    .delivery-timeline-marker {
+        grid-area: marker;
+        grid-row: 1 / span 2;
+        margin-top: 11px;
+    }
+
+    .delivery-timeline-copy {
+        grid-area: copy;
+    }
+
+    .delivery-timeline-copy > strong {
+        font-size: 16px;
+    }
+
+    .delivery-timeline-copy > small {
+        font-size: 13px;
+    }
+
+    body[data-module="logistics"] .delivery-timeline-footer {
+        min-height: 70px;
+        padding: 12px 16px;
+    }
+
+    body[data-module="logistics"] .delivery-timeline-close {
+        min-width: 104px;
+        min-height: 44px;
+    }
+}

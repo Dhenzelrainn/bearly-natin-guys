@@ -63,6 +63,8 @@
 
     data-email-check="{{ route('register.email.check') }}"
 
+    data-email-status="{{ route('register.email.status') }}"
+
     data-postal-url="{{ route('postal.lookup') }}"
 
     data-draft-save-url="{{ route('register.draft.save', 'buyer-seller') }}"
@@ -217,8 +219,6 @@
 
                 <label>First name<input name="first_name" value="{{ old('first_name', $googleRegistration['first_name'] ?? '') }}" minlength="2" maxlength="50" pattern="[A-Za-zÀ-ÿ.' -]+" placeholder="e.g. Juan" required></label>
 
-                <label>Last name<input name="last_name" value="{{ old('last_name', $googleRegistration['last_name'] ?? '') }}" minlength="2" maxlength="50" pattern="[A-Za-zÀ-ÿ.' -]+" placeholder="e.g. Dela Cruz" required></label>
-
                 <label>
 
                     Middle initial <em>(Optional)</em>
@@ -242,6 +242,8 @@
                     >
 
                 </label>
+
+                <label>Last name<input name="last_name" value="{{ old('last_name', $googleRegistration['last_name'] ?? '') }}" minlength="2" maxlength="50" pattern="[A-Za-zÀ-ÿ.' -]+" placeholder="e.g. Dela Cruz" required></label>
 
             </div>
 
@@ -534,7 +536,7 @@
 
             <div class="upload-grid" data-upload-grid>
 
-                <article class="document-upload" data-upload-card data-seller-document @if($registrationRole !== 'seller') hidden @endif>
+                <article class="document-upload" data-upload-card data-valid-id-document>
 
                     <div class="document-upload__header">
 
@@ -546,11 +548,11 @@
 
                         <div>
 
-                            <span class="required-badge">Required</span>
+                            <span class="required-badge" data-valid-id-required>{{ $registrationRole === 'seller' ? 'Required' : 'Optional' }}</span>
 
                             <h3 data-valid-id-label>Valid government ID</h3>
 
-                            <p data-valid-id-help>Passport, driver’s license, national ID, or another government-issued ID.</p>
+                            <p data-valid-id-help>{{ $registrationRole === 'seller' ? 'Passport, driver’s license, national ID, or another government-issued ID.' : 'Admins can view your ID. It does not affect email-based Buyer activation.' }}</p>
 
                             <small>PNG, JPG, or PDF · Max 5 MB</small>
 
@@ -560,11 +562,65 @@
 
                     <label class="upload-dropzone" data-drop-zone>
 
-                        <input name="valid_id" type="file" accept=".png,.jpg,.jpeg,.pdf" data-file-preview>
+                        <input name="valid_id" type="file" accept=".png,.jpg,.jpeg,.pdf" data-file-preview @required($registrationRole === 'seller')>
 
                         <img src="{{ asset('images/cloud.png') }}" alt="" class="upload-icon" aria-hidden="true">
 
                         <span><strong>Choose file</strong> or drag and drop</span>
+
+                    </label>
+
+                    <div class="file-status" data-file-status hidden>
+
+                        <span class="file-status__icon" aria-hidden="true">✓</span>
+
+                        <span class="file-status__details"><strong data-file-name></strong><small data-file-meta></small></span>
+
+                        <div class="file-status__actions">
+
+                            <button type="button" data-file-action="preview">Preview</button>
+
+                            <button type="button" data-file-action="replace">Replace</button>
+
+                            <button type="button" data-file-action="remove">Remove</button>
+
+                        </div>
+
+                    </div>
+
+                </article>
+
+                <article class="document-upload" data-upload-card>
+
+                    <div class="document-upload__header">
+
+                        <span class="document-icon" aria-hidden="true">
+
+                            <i data-lucide="user-round"></i>
+
+                        </span>
+
+                        <div>
+
+                            <span class="required-badge">Optional</span>
+
+                            <h3>Profile picture</h3>
+
+                            <p>Add a photo to personalize your Bearly account.</p>
+
+                            <small>JPEG, PNG, or WebP · Max 10 MB. If upload fails on your phone, choose a copy saved on the device.</small>
+
+                        </div>
+
+                    </div>
+
+                    <label class="upload-dropzone" data-drop-zone>
+
+                        <input name="profile_photo" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" data-file-preview>
+
+                        <img src="{{ asset('images/cloud.png') }}" alt="" class="upload-icon" aria-hidden="true">
+
+                        <span><strong>Choose profile picture</strong> or drag and drop</span>
 
                     </label>
 
@@ -681,9 +737,9 @@
 
         <p class="info-box registration-draft-notice" role="status" aria-live="polite">
             @if ($registrationDraft['has_draft'] ?? false)
-                Your saved registration was restored. Fields save on this browser for 7 days; passwords, codes, documents, and consent are not saved.
+                Your saved registration was restored. Fields save on this browser for 7 days; passwords, codes, uploads, and consent are not saved.
             @else
-                Fields save on this browser for 7 days. Passwords, codes, documents, and consent are not saved.
+                Fields save on this browser for 7 days. Passwords, codes, uploads, and consent are not saved.
             @endif
             <span data-registration-draft-status></span>
         </p>

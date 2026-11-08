@@ -1309,7 +1309,7 @@ class WaybillIntakeTest extends TestCase
         Notification::fake();
 
         $record = $this->makeShipmentFor($this->profileA, 'CITY-HANDOFF');
-        $record['shipment']->sellerOrder()->firstOrFail()->items()->create([
+        $orderItem = $record['shipment']->sellerOrder()->firstOrFail()->items()->create([
             'product_name' => 'Recently Accepted Handoff Product',
             'variant_name' => 'Silver / 13-inch',
             'sku' => 'RECENT-HANDOFF-PREVIEW-001',
@@ -1319,6 +1319,10 @@ class WaybillIntakeTest extends TestCase
             'subtotal_minor' => 99000,
             'product_image_disk' => 'public',
             'product_image_path' => 'seller-products/recent-handoff-preview.png',
+        ]);
+        $record['parcel']->contents()->create([
+            'order_item_id' => $orderItem->id,
+            'quantity' => 1,
         ]);
         $record['shipment']->update([
             'status' => ShipmentStatus::AtSortingCenter->value,
@@ -1389,6 +1393,9 @@ class WaybillIntakeTest extends TestCase
             ->assertSee('courier-run-card', false)
             ->assertSee('courier-run-actions', false)
             ->assertSee('courier-run-exception-controls', false)
+            ->assertSee('<th scope="col">Products</th>', false)
+            ->assertSee('Recently Accepted Handoff Product')
+            ->assertSee('seller-products/recent-handoff-preview.png', false)
             ->assertSee('Start loading');
 
         $this->actingAs($courierUser)
@@ -1499,7 +1506,8 @@ class WaybillIntakeTest extends TestCase
             ->assertOk()
             ->assertSee($record['waybill']->waybill_no)
             ->assertSee('Accept an incoming Waybill')
-            ->assertSee('Waybill number / barcode')
+            ->assertSee('Waybill number or Parcel barcode')
+            ->assertSee('Review Waybill')
             ->assertSee('not the Courier Run ID')
             ->assertSee('Select a Waybill to load it into the form above.')
             ->assertSee('Select Waybill')
@@ -1760,6 +1768,90 @@ class WaybillIntakeTest extends TestCase
         $service->accept($record['waybill']->waybill_no, $this->logisticsB);
     }
 
+    public function test_destination_can_preview_a_parcel_barcode_after_courier_arrival_and_accepts_the_full_waybill(): void
+    {
+        Notification::fake();
+
+        $record = $this->makeCrossCityShipment('HANDOFF-PARCEL-SCAN');
+        $secondParcel = Parcel::query()->create([
+            'shipment_id' => $record['shipment']->id,
+            'waybill_id' => $record['waybill']->id,
+            'parcel_no' => 'PARCEL-HANDOFF-PARCEL-SCAN-SECOND',
+            'piece_sequence' => 2,
+            'weight_kg' => 2.500,
+            'status' => ParcelStatus::Received->value,
+            'current_sorting_center_id' => $this->centerA->id,
+        ]);
+        $record['waybill']->update(['piece_count' => 2]);
+
+        [$courierUser, $courier] = $this->makeCourier('HANDOFF-PARCEL-SCAN');
+        $runs = app(LinehaulRunService::class);
+        $run = $runs->assign([$record['shipment']->id], $courier->id, $this->logisticsA);
+        $runs->startLoading($run, $courierUser);
+        $runs->markLoaded($run, $courierUser);
+        $runs->depart($run, $courierUser);
+
+        $this->actingAs($this->logisticsB)
+            ->getJson(route('logistics.transfers.lookup', [
+                'identifier' => $record['parcel']->parcel_no,
+            ]))
+            ->assertStatus(409);
+
+        $this->actingAs($this->logisticsA)
+            ->getJson(route('logistics.transfers.lookup', [
+                'identifier' => $record['parcel']->parcel_no,
+            ]))
+            ->assertNotFound();
+
+        $runs->arrive($run, $courierUser);
+
+        $this->actingAs($this->logisticsB)
+            ->getJson(route('logistics.transfers.lookup', [
+                'identifier' => $record['parcel']->parcel_no,
+            ]))
+            ->assertOk()
+            ->assertJsonPath('data.waybill_no', $record['waybill']->waybill_no)
+            ->assertJsonPath('data.shipment_no', $record['shipment']->shipment_no)
+            ->assertJsonPath('data.parcel_count', 2)
+            ->assertJsonPath('data.matched_by', 'parcel_barcode')
+            ->assertHeader('Cache-Control', 'no-store, private');
+
+        $this->actingAs($this->logisticsB)
+            ->getJson(route('logistics.transfers.lookup', [
+                'identifier' => $record['waybill']->waybill_no,
+            ]))
+            ->assertOk()
+            ->assertJsonPath('data.matched_by', 'waybill');
+
+        $this->actingAs($this->logisticsB)
+            ->getJson(route('logistics.transfers.lookup', [
+                'identifier' => $record['parcel']->parcel_no.'-TYPO',
+            ]))
+            ->assertNotFound();
+
+        $this->actingAs($this->logisticsB)
+            ->post(route('logistics.transfers.accept'), [
+                'identifier' => $record['parcel']->parcel_no,
+                'scan_method' => 'barcode',
+            ])
+            ->assertRedirect(route('logistics.transfers.index'))
+            ->assertSessionHasNoErrors();
+
+        foreach ([$record['parcel'], $secondParcel] as $parcel) {
+            $this->assertSame(ParcelStatus::Received->value, $parcel->fresh()->status);
+            $this->assertSame($this->centerB->id, $parcel->fresh()->current_sorting_center_id);
+        }
+
+        $acceptedEvents = $record['shipment']->events()
+            ->where('event_type', 'logistics_handoff_accepted')
+            ->get();
+        $this->assertCount(2, $acceptedEvents);
+        foreach ($acceptedEvents as $event) {
+            $this->assertSame('barcode', $event->scan_method);
+            $this->assertSame('parcel_barcode', $event->metadata['scanned_identifier_type']);
+        }
+    }
+
     public function test_courier_linehaul_history_is_scoped_to_verified_courier_and_denies_local_rider(): void
     {
         $ownRecord = $this->makeCrossCityShipment('COURIER-HISTORY-OWN');
@@ -1822,7 +1914,9 @@ class WaybillIntakeTest extends TestCase
         $this->actingAs($courierUser)
             ->get(route('rider.courier.dashboard'))
             ->assertOk()
-            ->assertSee('Checked in Nov 4, 2026 · 2:45 PM PHT');
+            ->assertSee('data-rider-attendance-state', false)
+            ->assertSee('Checked in')
+            ->assertSee('Time in: Nov 4, 2026 · 2:45 PM PHT');
 
         $this->travelTo(Carbon::parse('2026-11-04 07:45:00', 'UTC'));
         $checkOutResponse = $this->scanAttendanceQr($courierUser, $this->logisticsA)

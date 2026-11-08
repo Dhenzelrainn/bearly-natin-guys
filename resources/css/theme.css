@@ -1513,6 +1513,13 @@ html body.registration-body .registration-theme-toggle > button.theme-switch {
     color: var(--theme-text);
 }
 
+:root[data-theme="dark"] body.admin-body .admin-notification-trigger:hover:not(:disabled),
+:root[data-theme="dark"] body.admin-body .admin-notification-trigger:focus-visible:not(:disabled) {
+    border-color: #806334;
+    background: #34271e;
+    color: var(--theme-accent);
+}
+
 :root[data-theme="dark"] body.admin-body .admin-table th,
 :root[data-theme="dark"] body.admin-body .admin-table td {
     border-color: var(--theme-border);
@@ -2176,6 +2183,87 @@ html body.registration-body .registration-theme-toggle > button.theme-switch {
     border-color: var(--theme-border);
     background: var(--theme-surface-soft);
     color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.auth-body .document-upload__header :is(h3, p, small) {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.auth-body .document-upload__header p,
+:root[data-theme="dark"] body.auth-body .document-upload__header small {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.auth-body .document-icon {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+    color: var(--theme-accent);
+}
+
+:root[data-theme="dark"] body.auth-body .document-upload.has-file {
+    border-color: #4f7659;
+}
+
+:root[data-theme="dark"] body.auth-body .document-upload.has-error {
+    border-color: var(--theme-danger);
+}
+
+:root[data-theme="dark"] body.auth-body .document-upload.has-file .file-status__icon {
+    background: var(--success-soft);
+    color: var(--theme-success);
+}
+
+:root[data-theme="dark"] body.auth-body .required-badge {
+    border-color: var(--theme-border);
+    background: var(--theme-accent-soft);
+    color: var(--theme-accent);
+}
+
+:root[data-theme="dark"] body.auth-body .upload-dropzone {
+    border-color: #80664d !important;
+    background: var(--theme-surface);
+    color: var(--theme-muted) !important;
+}
+
+:root[data-theme="dark"] body.auth-body .upload-dropzone:hover,
+:root[data-theme="dark"] body.auth-body .upload-dropzone.is-dragging,
+:root[data-theme="dark"] body.auth-body .upload-dropzone:focus-within {
+    border-color: var(--theme-accent) !important;
+    background: var(--theme-surface-soft);
+    color: var(--theme-text) !important;
+}
+
+:root[data-theme="dark"] body.auth-body .upload-dropzone svg {
+    stroke: var(--theme-accent);
+}
+
+:root[data-theme="dark"] body.auth-body .upload-dropzone strong {
+    color: var(--theme-accent);
+}
+
+:root[data-theme="dark"] body.auth-body .file-status {
+    border-top-color: var(--theme-border);
+}
+
+:root[data-theme="dark"] body.auth-body .file-status__details strong {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.auth-body .file-status__details small {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.auth-body .file-status__actions button {
+    color: var(--theme-accent);
+}
+
+:root[data-theme="dark"] body.auth-body .file-status__actions button:hover {
+    background: var(--theme-accent-soft);
+}
+
+:root[data-theme="dark"] body.auth-body .document-upload.has-error .file-status__icon {
+    background: var(--danger-soft);
+    color: var(--theme-danger);
 }
 
 /* Logistics and Rider registration reuse these light-only password panels. */
@@ -3415,6 +3503,81 @@ html[data-theme-transition] body * {
     border-color: var(--theme-border);
     background: var(--theme-surface-soft);
     color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.auth-body .application-summary {
+    border-color: var(--theme-border);
+    background: var(--theme-surface-soft);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .22);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.auth-body .summary-eyebrow {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.auth-body .application-summary h3,
+:root[data-theme="dark"] body.auth-body .review-group__header h4 {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.auth-body .summary-edit {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+    color: var(--theme-accent);
+}
+
+:root[data-theme="dark"] body.auth-body .summary-edit:hover {
+    border-color: var(--theme-accent);
+    background: var(--theme-surface-soft);
+}
+
+:root[data-theme="dark"] body.auth-body .review-group {
+    border-left-color: var(--theme-border);
+}
+
+:root[data-theme="dark"] body.auth-body .review-group dl > div {
+    border-bottom-color: var(--theme-border);
+}
+
+:root[data-theme="dark"] body.auth-body .review-group dt {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.auth-body .review-group dd,
+:root[data-theme="dark"] body.auth-body .review-group__header button {
+    color: #e1c5a8;
+}
+
+:root[data-theme="dark"] body.auth-body .pending-status-page .approval-callout {
+    border-color: #386146;
+    background: #1e3828;
+    color: #d6ead8;
+    box-shadow: none;
+}
+
+:root[data-theme="dark"] body.auth-body .pending-status-page .pending-status.is-pending {
+    color: #efc16a;
+}
+
+:root[data-theme="dark"] body.auth-body .pending-status-page .pending-status.is-approved {
+    color: #88c99a;
+}
+
+:root[data-theme="dark"] body.auth-body .pending-status-page .pending-status.is-rejected {
+    color: #ff9186;
+}
+
+:root[data-theme="dark"] body.auth-body .pending-status-page .pending-status.is-revision {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.auth-body .pending-status-page .pending-status.is-review {
+    color: #87c4ed;
+}
+
+:root[data-theme="dark"] body.auth-body .pending-status-page .pending-status.is-unavailable {
+    color: var(--theme-muted);
 }
 
 /* Logistics and Rider registration reuse the same form guidance controls. */
@@ -5003,6 +5166,11 @@ html[data-theme-transition] body * {
         color: var(--theme-text);
     }
 
+    :root[data-theme="dark"] body.registration-body .upload-field > :is(i, svg) {
+        color: var(--theme-accent);
+        stroke: var(--theme-accent);
+    }
+
     :root[data-theme="dark"] body.registration-body .upload-field small {
         color: var(--registration-muted);
         font-size: 10px;
@@ -5168,78 +5336,94 @@ html[data-theme-transition] body * {
 }
 
 @media screen {
-    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__panel {
+    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__panel,
+    :root[data-theme="dark"] body.auth-body .register-form .searchable-select__panel {
         border-color: var(--theme-border);
         background: var(--theme-surface);
         color: var(--theme-text);
         box-shadow: 0 14px 34px rgba(0, 0, 0, .42);
     }
 
-    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__search-wrap {
+    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__search-wrap,
+    :root[data-theme="dark"] body.auth-body .register-form .searchable-select__search-wrap {
         border-bottom-color: var(--theme-border);
         background: var(--theme-surface-soft);
     }
 
-    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__search-wrap > svg {
+    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__search-wrap > svg,
+    :root[data-theme="dark"] body.auth-body .register-form .searchable-select__search-wrap > svg {
         stroke: var(--theme-muted);
     }
 
-    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__search {
+    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__search,
+    :root[data-theme="dark"] body.auth-body .register-form .searchable-select__search {
         border-color: var(--theme-border);
         background: var(--theme-input);
         color: var(--theme-text);
         color-scheme: dark;
     }
 
-    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__search::placeholder {
+    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__search::placeholder,
+    :root[data-theme="dark"] body.auth-body .register-form .searchable-select__search::placeholder {
         color: var(--theme-muted);
         opacity: 1;
     }
 
-    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__options {
+    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__options,
+    :root[data-theme="dark"] body.auth-body .register-form .searchable-select__options {
         scrollbar-color: #665343 var(--theme-surface);
     }
 
-    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__options::-webkit-scrollbar {
+    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__options::-webkit-scrollbar,
+    :root[data-theme="dark"] body.auth-body .register-form .searchable-select__options::-webkit-scrollbar {
         width: 10px;
     }
 
-    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__options::-webkit-scrollbar-track {
+    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__options::-webkit-scrollbar-track,
+    :root[data-theme="dark"] body.auth-body .register-form .searchable-select__options::-webkit-scrollbar-track {
         background: var(--theme-surface);
     }
 
-    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__options::-webkit-scrollbar-thumb {
+    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__options::-webkit-scrollbar-thumb,
+    :root[data-theme="dark"] body.auth-body .register-form .searchable-select__options::-webkit-scrollbar-thumb {
         border: 2px solid var(--theme-surface);
         border-radius: 999px;
         background: #665343;
     }
 
-    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__option {
+    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__option,
+    :root[data-theme="dark"] body.auth-body .register-form .searchable-select__option {
         background: transparent;
         color: var(--theme-text);
     }
 
     :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__option:hover,
-    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__option.is-active {
+    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__option.is-active,
+    :root[data-theme="dark"] body.auth-body .register-form .searchable-select__option:hover,
+    :root[data-theme="dark"] body.auth-body .register-form .searchable-select__option.is-active {
         background: #382a21;
         color: #fff8ef;
     }
 
-    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__option:focus-visible {
+    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__option:focus-visible,
+    :root[data-theme="dark"] body.auth-body .register-form .searchable-select__option:focus-visible {
         outline: 2px solid var(--theme-accent);
         outline-offset: -2px;
     }
 
-    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__option[aria-selected="true"] {
+    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__option[aria-selected="true"],
+    :root[data-theme="dark"] body.auth-body .register-form .searchable-select__option[aria-selected="true"] {
         background: var(--theme-accent-soft);
         color: #fff8ef;
     }
 
-    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid :is(.searchable-select__empty, .searchable-select__count) {
+    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid :is(.searchable-select__empty, .searchable-select__count),
+    :root[data-theme="dark"] body.auth-body .register-form :is(.searchable-select__empty, .searchable-select__count) {
         color: var(--theme-muted);
     }
 
-    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__count {
+    :root[data-theme="dark"] body.registration-body[data-module] .registration-main .registration-address-grid .searchable-select__count,
+    :root[data-theme="dark"] body.auth-body .register-form .searchable-select__count {
         border-top-color: var(--theme-border);
         background: var(--theme-surface-soft);
     }

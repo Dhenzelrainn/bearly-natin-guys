@@ -43,9 +43,6 @@ class BuyerOrderConfirmationService
                 ->lockForUpdate()
                 ->get();
             $codPayment = $payments->first(fn (Payment $payment): bool => $payment->method === 'cod');
-            if ($codPayment) {
-                $this->codCash->assertPaymentCaptured($order);
-            }
 
             $sellerOrders = $order->sellerOrders()->orderBy('id')->lockForUpdate()->get();
             $active = $sellerOrders->reject(fn ($sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Cancelled->value);
@@ -95,16 +92,23 @@ class BuyerOrderConfirmationService
                 $completedNow[] = $sellerOrder;
             }
 
-            $order->update([
+            $codPaymentUncaptured = $codPayment !== null && ! $this->codCash->hasPaymentCaptured($order);
+            $orderUpdates = [
                 'status' => 'fulfilled',
-                'payment_status' => 'paid',
                 'completed_at' => $now,
-            ]);
+            ];
+            if (! $codPaymentUncaptured) {
+                $orderUpdates['payment_status'] = 'paid';
+            }
+            $order->update($orderUpdates);
+
             $pendingNonCod = $payments->where('status', 'pending')->where('method', '!=', 'cod');
             foreach ($pendingNonCod as $payment) {
                 $payment->update(['status' => 'paid', 'paid_at' => $now]);
             }
-            $this->promotions->markOrderPaid($order);
+            if (! $codPaymentUncaptured) {
+                $this->promotions->markOrderPaid($order);
+            }
 
             $this->notifySellersOfCompletion($order, $completedNow, $buyer);
 
@@ -148,10 +152,6 @@ class BuyerOrderConfirmationService
             ->reject(fn ($sellerOrder): bool => in_array($sellerOrder->status, [SellerOrderStatus::Cancelled->value, SellerOrderStatus::Completed->value], true));
 
         if ($pending->isEmpty()) {
-            return false;
-        }
-
-        if ($order->payments()->where('method', 'cod')->exists() && ! $this->codCash->hasPaymentCaptured($order)) {
             return false;
         }
 

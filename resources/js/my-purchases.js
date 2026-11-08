@@ -6,6 +6,10 @@ const peso=n=>'₱'+Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:2
 const purchaseEsc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 function getOrders(){return [...serverOrders]}
 let serverOrders=[],serverLoaded=false,serverFetch=null,renderedOrders=[];
+function initialPurchaseFilter(){
+  const requested=document.body?.dataset.initialPurchaseFilter||'all';
+  return ['all','to-pay','to-ship','to-receive','completed','cancelled'].includes(requested)?requested:'all';
+}
 function csrfToken(){const input=document.querySelector('.account-logout-form input[name="_token"]');return input?input.value:''}
 async function ensureServerOrders(){
   if(serverLoaded||serverFetch)return serverFetch;
@@ -160,7 +164,13 @@ function initMyPurchases(){
 
   const filters=document.querySelectorAll('.purchase-filter');
   if(filters.length){
-    filters.forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.purchase-filter').forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-selected',x===b?'true':'false')});purchaseFilter=b.dataset.orderFilter;renderMyPurchases();}));
+    purchaseFilter=initialPurchaseFilter();
+    filters.forEach(b=>{
+      const selected=b.dataset.orderFilter===purchaseFilter;
+      b.classList.toggle('active',selected);
+      b.setAttribute('aria-selected',selected?'true':'false');
+      b.addEventListener('click',()=>{document.querySelectorAll('.purchase-filter').forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-selected',x===b?'true':'false')});purchaseFilter=b.dataset.orderFilter;renderMyPurchases();});
+    });
   }
   const sort=document.querySelector('#purchase-sort');
   const sortLabel=document.querySelector('[data-purchase-sort-label]');

@@ -47,13 +47,13 @@
     <div class="panel-body">
         <div class="attention-item" role="status" aria-live="polite">
             <i data-lucide="clock-4" aria-hidden="true"></i>
-            <span>
+            <span data-rider-attendance-indicator>
                 @if($currentShift)
-                    <strong>Checked in {{ $currentShift->checkedInAtPht()?->format('M j, Y · g:i A') }} {{ \App\Models\RiderShift::TIMEZONE_LABEL }}</strong>
-                    <small>Scan the Logistics QR again when your shift ends. The QR check-out closes this shift using the server time.</small>
+                    <strong class="rider-attendance-status is-checked-in" data-rider-attendance-state>Checked in</strong>
+                    <small data-rider-attendance-detail>Time in: {{ $currentShift->checkedInAtPht()?->format('M j, Y · g:i A') }} {{ \App\Models\RiderShift::TIMEZONE_LABEL }}. Scan a fresh Logistics QR when your shift ends.</small>
                 @else
-                    <strong>You are not checked in</strong>
-                    <small>Scan the QR displayed by your owning Logistics provider to start a shift. Attendance alone does not earn Courier pay.</small>
+                    <strong class="rider-attendance-status is-not-checked-in" data-rider-attendance-state>Not checked in</strong>
+                    <small data-rider-attendance-detail>Scan the QR displayed by your owning Logistics provider to start a shift. Attendance alone does not earn Courier pay.</small>
                 @endif
             </span>
             @include('rider.partials.attendance-qr-scanner')
@@ -112,13 +112,19 @@
         <div class="panel-body">
             <div class="table-wrap">
                 <table class="data-table">
-                    <thead><tr><th>Waybill</th><th>Shipment</th><th>Seller</th><th>Parcels</th></tr></thead>
+                    <thead><tr><th scope="col">Waybill</th><th scope="col">Shipment</th><th scope="col">Seller</th><th scope="col">Products</th><th scope="col">Parcels</th></tr></thead>
                     <tbody>
                         @foreach($run->shipments as $shipment)
                             <tr>
                                 <td>{{ $shipment->waybill?->waybill_no ?? 'Waybill pending' }}</td>
                                 <td>{{ $shipment->shipment_no }}</td>
                                 <td>{{ $shipment->sellerOrder?->store?->name ?? 'Unknown Seller' }}</td>
+                                <td class="courier-products-cell">
+                                    @include('partials.order-item-preview-list', ['items' => array_slice($shipment->product_previews ?? [], 0, 3)])
+                                    @if (count($shipment->product_previews ?? []) > 3)
+                                        <small class="courier-run-products-more">+ {{ count($shipment->product_previews) - 3 }} more product types</small>
+                                    @endif
+                                </td>
                                 <td>{{ $shipment->parcels->count() }}</td>
                             </tr>
                         @endforeach

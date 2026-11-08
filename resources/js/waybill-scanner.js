@@ -1,3 +1,9 @@
+import {
+    createBarcodeReadState,
+    observeBarcodeRead,
+    REQUIRED_STABLE_BARCODE_READS,
+} from './waybill-scanner-utils.js';
+
 (() => {
     const roots = [...document.querySelectorAll('[data-waybill-scan-form]')];
 
@@ -18,6 +24,10 @@
         let detector = null;
         let animation = null;
         let scanning = false;
+        let candidateState = createBarcodeReadState();
+        let lastAttemptedValue = '';
+        let lastInvalidValue = '';
+        let lastDetectionAt = 0;
         let loadedIdentifier = '';
         let lookupSequence = 0;
         let activeLookup = null;
@@ -28,6 +38,18 @@
 
         const lookupUrl = form.dataset.waybillLookupUrl || '';
         const requiresIntakeLookup = Boolean(lookupUrl && sizeList);
+        const handoffLookupUrl = form.dataset.handoffLookupUrl || '';
+        const requiresHandoffLookup = Boolean(handoffLookupUrl && form.hasAttribute('data-handoff-accept-form'));
+        const handoffPreview = form.querySelector('[data-handoff-preview]');
+        const handoffPreviewWaybill = form.querySelector('[data-handoff-preview-waybill]');
+        const handoffPreviewCount = form.querySelector('[data-handoff-preview-count]');
+        const handoffLookupStatus = form.querySelector('[data-handoff-lookup-status]');
+        const handoffAcceptButton = form.querySelector('[data-handoff-accept-button]');
+        const handoffAcceptLabel = handoffAcceptButton?.querySelector('[data-handoff-accept-label]');
+        const canAcceptHandoff = Boolean(handoffAcceptButton && !handoffAcceptButton.disabled);
+        let handoffPreviewIdentifier = '';
+        let handoffPreviewData = null;
+        let handoffLookupSequence = 0;
         const parseJsonNode = (selector, fallback) => {
             try {
                 return JSON.parse(form.querySelector(selector)?.textContent || '');
@@ -48,6 +70,107 @@
             if (!sizeStatus) return;
             sizeStatus.textContent = message;
             sizeStatus.dataset.state = state;
+        };
+
+        const setHandoffStatus = (message, state = '') => {
+            if (!handoffLookupStatus) return;
+            handoffLookupStatus.textContent = message;
+            handoffLookupStatus.dataset.state = state;
+        };
+
+        const setHandoffAcceptLabel = (label) => {
+            if (handoffAcceptLabel) handoffAcceptLabel.textContent = label;
+        };
+
+        const clearHandoffPreview = () => {
+            handoffLookupSequence += 1;
+            handoffPreviewIdentifier = '';
+            handoffPreviewData = null;
+            if (handoffPreview) handoffPreview.hidden = true;
+            if (handoffPreviewWaybill) handoffPreviewWaybill.textContent = '';
+            if (handoffPreviewCount) handoffPreviewCount.textContent = '';
+            if (handoffAcceptButton) handoffAcceptButton.disabled = !canAcceptHandoff;
+            setHandoffAcceptLabel('Review Waybill');
+            setHandoffStatus('Scan a Parcel label or select a Waybill below to review the shipment before acceptance.');
+        };
+
+        const lookupIncomingHandoff = async (rawIdentifier) => {
+            const identifier = String(rawIdentifier || '').trim();
+
+            if (!requiresHandoffLookup || !identifier) {
+                setHandoffStatus('Scan a Parcel barcode or enter/select a Waybill first.', 'error');
+                return null;
+            }
+
+            if (handoffPreviewIdentifier === identifier && handoffPreviewData) {
+                return handoffPreviewData;
+            }
+
+            const sequence = ++handoffLookupSequence;
+            if (handoffPreview) handoffPreview.hidden = true;
+            if (handoffAcceptButton) handoffAcceptButton.disabled = true;
+            setHandoffAcceptLabel('Review Waybill');
+            setHandoffStatus('Checking the Parcel barcode and incoming Waybill…', 'loading');
+
+            try {
+                const url = new URL(handoffLookupUrl, window.location.href);
+                url.searchParams.set('identifier', identifier);
+                const response = await fetch(url, {
+                    headers: { Accept: 'application/json' },
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                });
+                const payload = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                    if (response.status === 409 && payload?.message) {
+                        throw new Error(payload.message);
+                    }
+                    if (response.status === 401) {
+                        throw new Error('Your session expired. Sign in again before accepting a handoff.');
+                    }
+                    if (response.status === 403) {
+                        throw new Error('This Logistics account cannot review this handoff.');
+                    }
+                    if (response.status === 404) {
+                        throw new Error('No eligible incoming Waybill was found for that code at this destination. Check the label or select a Waybill below.');
+                    }
+
+                    throw new Error('Could not check this code. Try again or select a Waybill below.');
+                }
+
+                const data = payload?.data;
+                const parcelCount = Number(data?.parcel_count);
+                if (!data?.waybill_no || !Number.isInteger(parcelCount) || parcelCount < 1) {
+                    throw new Error('The matching Waybill has no parcels to receive.');
+                }
+
+                if (sequence !== handoffLookupSequence) return null;
+
+                handoffPreviewIdentifier = identifier;
+                handoffPreviewData = data;
+                if (handoffPreviewWaybill) handoffPreviewWaybill.textContent = `Waybill ${data.waybill_no}`;
+                if (handoffPreviewCount) {
+                    handoffPreviewCount.textContent = `${parcelCount} parcel${parcelCount === 1 ? '' : 's'} in this shipment${data.matched_by === 'parcel_barcode' ? ' · matched from the scanned Parcel barcode' : ''}.`;
+                }
+                if (handoffPreview) handoffPreview.hidden = false;
+                setHandoffAcceptLabel('Accept all parcels');
+                setHandoffStatus(`Review confirmed. Accepting Waybill ${data.waybill_no} will receive all ${parcelCount} parcel${parcelCount === 1 ? '' : 's'} in this shipment.`, 'success');
+
+                return data;
+            } catch (error) {
+                if (sequence === handoffLookupSequence) {
+                    setHandoffStatus(error?.message || 'Could not find an incoming Waybill for this Parcel barcode.', 'error');
+                    if (handoffPreview) handoffPreview.hidden = true;
+                    setHandoffAcceptLabel('Review Waybill');
+                }
+
+                return null;
+            } finally {
+                if (sequence === handoffLookupSequence && handoffAcceptButton) {
+                    handoffAcceptButton.disabled = !canAcceptHandoff;
+                }
+            }
         };
 
         const clearParcelRows = () => {
@@ -225,40 +348,94 @@
             stream = null;
             video.srcObject = null;
             panel.hidden = true;
+            candidateState = createBarcodeReadState();
+            lastAttemptedValue = '';
+            lastInvalidValue = '';
+            lastDetectionAt = 0;
         };
 
-        const scanFrame = async () => {
+        const scanFrame = async (frameTime = performance.now()) => {
             if (!scanning || !detector) return;
+
+            // Avoid asking the device decoder to process every display frame.
+            if (frameTime - lastDetectionAt < 120) {
+                animation = window.requestAnimationFrame(scanFrame);
+                return;
+            }
+            lastDetectionAt = frameTime;
+
             try {
                 const results = await detector.detect(video);
-                const value = results?.find((result) => result.rawValue)?.rawValue?.trim();
-                if (value) {
-                    input.value = value;
-                    method.value = 'camera';
-                    stop();
+                if (!scanning) return;
 
-                    if (requiresIntakeLookup) {
-                        clearParcelRows();
-                        setStatus(`Scanned ${value}. Loading parcel details…`, 'success');
-                        await loadParcels(value);
-                    } else {
-                        setStatus(`Scanned ${value}. Submit to accept this handoff.`, 'success');
+                const rawValue = results?.find((result) => result.rawValue)?.rawValue || '';
+                const observed = observeBarcodeRead(candidateState, rawValue, performance.now());
+
+                if (observed.invalid) {
+                    lastAttemptedValue = '';
+                    if (lastInvalidValue !== rawValue) {
+                        setStatus('Unclear barcode read. Keep the full barcode in frame, hold steady, and use good lighting.', 'error');
                     }
+                    lastInvalidValue = rawValue;
+                } else if (observed.value && !observed.stable) {
+                    lastInvalidValue = '';
+                    setStatus(`Barcode detected (${observed.reads}/${REQUIRED_STABLE_BARCODE_READS}). Hold still…`);
+                } else if (observed.value && observed.stable) {
+                    const value = observed.value;
+                    lastInvalidValue = '';
 
-                    return;
+                    if (value !== lastAttemptedValue) {
+                        lastAttemptedValue = value;
+                        input.value = value;
+                        method.value = 'camera';
+
+                        if (requiresIntakeLookup) {
+                            clearParcelRows();
+                            setStatus(`Stable scan ${value}. Checking this Parcel…`);
+                            const loaded = await loadParcels(value);
+
+                            if (!scanning) return;
+
+                            if (loaded) {
+                                stop();
+                                return;
+                            }
+
+                            setStatus('Could not confirm that code for this Logistics account. Move the barcode out of view briefly, then scan it again, or close the camera and enter the printed Parcel code.', 'error');
+                        } else if (requiresHandoffLookup) {
+                            setStatus('Stable scan. Finding the incoming Waybill for this Parcel…');
+                            const preview = await lookupIncomingHandoff(value);
+
+                            if (!scanning) return;
+
+                            if (preview) {
+                                stop();
+                                setStatus(`Waybill ${preview.waybill_no} found with ${preview.parcel_count} parcel(s). Review the shipment before accepting.`, 'success');
+                                return;
+                            }
+
+                            setStatus('No eligible incoming Waybill was found. Move the barcode out of view briefly and scan again, or select a Waybill below.', 'error');
+                        } else {
+                            stop();
+                            setStatus(`Stable scan ${value}. Submit to confirm this code.`, 'success');
+                            return;
+                        }
+                    }
+                } else {
+                    if (!candidateState.value) lastAttemptedValue = '';
                 }
             } catch {
+                if (!scanning) return;
                 setStatus(
-                    requiresIntakeLookup
-                        ? 'The camera could not read this code. Try again or enter the Parcel barcode manually.'
-                        : 'The camera could not read this code. Try again or enter the Waybill manually.',
+                    'The camera could not read this code. Keep the barcode centered, or close the camera and enter it manually.',
                     'error',
                 );
             }
-            animation = window.requestAnimationFrame(scanFrame);
+            if (scanning) animation = window.requestAnimationFrame(scanFrame);
         };
 
         const start = async () => {
+            if (scanning) return;
             if (!('BarcodeDetector' in window)) {
                 setStatus('Camera barcode scanning is not supported in this browser. Use manual entry or a keyboard-wedge scanner.', 'error');
                 return;
@@ -268,14 +445,43 @@
                 return;
             }
             try {
+                candidateState = createBarcodeReadState();
+                lastAttemptedValue = '';
+                lastInvalidValue = '';
+                lastDetectionAt = 0;
                 detector = new window.BarcodeDetector({ formats: ['code_128'] });
-                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: { ideal: 'environment' },
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 },
+                    },
+                    audio: false,
+                });
+
+                const track = stream.getVideoTracks()[0];
+                try {
+                    const focusModes = track?.getCapabilities?.()?.focusMode;
+                    if (typeof track?.applyConstraints === 'function'
+                        && Array.isArray(focusModes)
+                        && focusModes.includes('continuous')) {
+                        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+                    }
+                } catch {
+                    // Autofocus is optional; keep the native camera fallback.
+                }
+
+                video.muted = true;
+                video.playsInline = true;
+                video.autoplay = true;
                 video.srcObject = stream;
                 panel.hidden = false;
                 scanning = true;
                 setStatus(requiresIntakeLookup
-                    ? 'Point the camera at the unique Code 128 Parcel barcode.'
-                    : 'Point the camera at the Code 128 waybill barcode.');
+                    ? 'Point the rear camera at the unique Code 128 Parcel barcode and hold still for three matching reads.'
+                    : requiresHandoffLookup
+                        ? 'Scan a Parcel Code 128 label from this arrived shipment. Review its Waybill and parcel count before accepting.'
+                        : 'Point the rear camera at the Code 128 barcode and hold still for three matching reads.');
                 await video.play();
                 animation = window.requestAnimationFrame(scanFrame);
             } catch {
@@ -292,6 +498,7 @@
         input.addEventListener('input', () => {
             if (method.value === 'camera') method.value = 'manual';
             clearParcelRows();
+            if (requiresHandoffLookup) clearHandoffPreview();
         });
         input.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' && input.value.trim() !== '') {
@@ -305,7 +512,19 @@
         });
         loadButton?.addEventListener('click', () => loadParcels(input.value));
         if (requiresIntakeLookup) input.addEventListener('change', () => loadParcels(input.value));
+        if (requiresHandoffLookup) {
+            form.addEventListener('handoff:lookup', (event) => {
+                lookupIncomingHandoff(event.detail?.identifier || input.value);
+            });
+        }
         form.addEventListener('submit', async (event) => {
+            if (requiresHandoffLookup) {
+                if (handoffPreviewIdentifier === input.value.trim() && handoffPreviewData) return;
+                event.preventDefault();
+                await lookupIncomingHandoff(input.value);
+                return;
+            }
+
             if (!requiresIntakeLookup) return;
 
             if (loadedIdentifier !== input.value.trim()) {
@@ -342,6 +561,9 @@
                 handoffInput.value = waybill;
                 handoffMethod.value = 'manual';
                 handoffInput.dispatchEvent(new Event('input', { bubbles: true }));
+                handoffForm.dispatchEvent(new CustomEvent('handoff:lookup', {
+                    detail: { identifier: waybill },
+                }));
                 handoffForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 handoffInput.focus({ preventScroll: true });
             });

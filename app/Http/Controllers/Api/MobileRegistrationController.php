@@ -16,7 +16,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Throwable;
 
 class MobileRegistrationController extends Controller
 {
@@ -271,6 +273,20 @@ class MobileRegistrationController extends Controller
             'terms' => [
                 'accepted',
             ],
+
+            'valid_id' => [
+                'nullable',
+                'file',
+                'mimes:jpg,jpeg,png,pdf',
+                'max:5120',
+            ],
+
+            'profile_photo' => [
+                'nullable',
+                'image',
+                'mimes:jpg,jpeg,png,webp',
+                'max:10240',
+            ],
         ]);
 
         /*
@@ -311,56 +327,80 @@ class MobileRegistrationController extends Controller
                 )
             ) . '.';
 
-        $user = DB::transaction(function () use (
-            $data,
-            $verifiedAt,
-            $lifecycle
-        ): User {
-            $user = User::create([
-                'name' => trim(
-                    $data['first_name'].' '.($data['middle_initial'] ?? '').' '.$data['last_name']
-                ),
-                'first_name' => $data['first_name'],
-                'last_name' => $data['last_name'],
-                'middle_initial' => $data['middle_initial'],
-                'sex' => $data['sex'],
-                'birthday' => $data['birthday'],
-                'email' => $data['email'],
-                'google_id' => null,
-                'phone' => $data['contact_number'],
-                'contact_number' => $data['contact_number'],
-                'phone_country' => $data['phone_country'],
-                'phone_verified_at' => null,
-                'email_verified_at' => $verifiedAt,
-                'terms_accepted_at' => now(),
-                'terms_version' => config('bearly-policies.version'),
-                'privacy_version' => config('bearly-policies.version'),
-                 'role' => UserRole::Buyer->value,
-                 'status' => AccountStatus::Pending->value,
-                 'region' => $data['region'],
-                 'region_code' => $data['region_code'] ?? null,
-                 'province' => $data['province'],
-                'city' => $data['city'],
-                'barangay' => $data['barangay'],
-                'street_address' => trim($data['house_number'].' '.$data['street_name']).', '.$data['postal_code'],
-                'business_name' => null,
-                'business_category' => null,
-                'business_permit_path' => null,
-                'password' => Hash::make($data['password']),
-            ]);
+        $validIdPath = null;
+        $profilePhotoPath = null;
 
-            return $lifecycle->activateBuyer($user, [
-                 'house_number' => $data['house_number'],
-                 'street_name' => $data['street_name'],
-                 'region' => $data['region'],
-                 'region_code' => $data['region_code'] ?? null,
-                 'barangay' => $data['barangay'],
-                'city' => $data['city'],
-                'province' => $data['province'],
-                'postal_code' => $data['postal_code'],
-                'city_code' => $data['city_code'] ?? null,
-            ]);
-        });
+        try {
+            if ($request->hasFile('valid_id')) {
+                $validIdPath = $request->file('valid_id')
+                    ->store('registration-documents/buyer-valid-ids', 'local');
+            }
+
+            if ($request->hasFile('profile_photo')) {
+                $profilePhotoPath = $request->file('profile_photo')
+                    ->store('profile-photos', 'public');
+            }
+
+            $user = DB::transaction(function () use (
+                $data,
+                $verifiedAt,
+                $lifecycle,
+                $validIdPath,
+                $profilePhotoPath
+            ): User {
+                $user = User::create([
+                    'name' => trim(
+                        $data['first_name'].' '.($data['middle_initial'] ?? '').' '.$data['last_name']
+                    ),
+                    'first_name' => $data['first_name'],
+                    'last_name' => $data['last_name'],
+                    'middle_initial' => $data['middle_initial'],
+                    'sex' => $data['sex'],
+                    'birthday' => $data['birthday'],
+                    'email' => $data['email'],
+                    'google_id' => null,
+                    'phone' => $data['contact_number'],
+                    'contact_number' => $data['contact_number'],
+                    'phone_country' => $data['phone_country'],
+                    'phone_verified_at' => null,
+                    'email_verified_at' => $verifiedAt,
+                    'terms_accepted_at' => now(),
+                    'terms_version' => config('bearly-policies.version'),
+                    'privacy_version' => config('bearly-policies.version'),
+                    'role' => UserRole::Buyer->value,
+                    'status' => AccountStatus::Pending->value,
+                    'region' => $data['region'],
+                    'region_code' => $data['region_code'] ?? null,
+                    'province' => $data['province'],
+                    'city' => $data['city'],
+                    'barangay' => $data['barangay'],
+                    'street_address' => trim($data['house_number'].' '.$data['street_name']).', '.$data['postal_code'],
+                    'business_name' => null,
+                    'business_category' => null,
+                    'business_permit_path' => null,
+                    'valid_id_path' => $validIdPath,
+                    'profile_photo_path' => $profilePhotoPath,
+                    'password' => Hash::make($data['password']),
+                ]);
+
+                return $lifecycle->activateBuyer($user, [
+                    'house_number' => $data['house_number'],
+                    'street_name' => $data['street_name'],
+                    'region' => $data['region'],
+                    'region_code' => $data['region_code'] ?? null,
+                    'barangay' => $data['barangay'],
+                    'city' => $data['city'],
+                    'province' => $data['province'],
+                    'postal_code' => $data['postal_code'],
+                    'city_code' => $data['city_code'] ?? null,
+                ]);
+            });
+        } catch (Throwable $exception) {
+            Storage::disk('local')->delete(array_filter([$validIdPath]));
+            Storage::disk('public')->delete(array_filter([$profilePhotoPath]));
+
+            throw $exception;
+        }
 
         /*
         |--------------------------------------------------------------------------
@@ -380,6 +420,9 @@ class MobileRegistrationController extends Controller
                 'email' => $user->email,
                 'role' => $user->role,
                 'status' => $user->status,
+                'profile_photo_url' => $user->profile_photo_path
+                    ? Storage::disk('public')->url($user->profile_photo_path)
+                    : null,
             ],
         ], 201);
     }

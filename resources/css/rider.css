@@ -29,6 +29,11 @@
 .attendance-scan-control [data-attendance-scan-status].is-error{color:var(--red)}
 .attendance-scan-control button:focus-visible{outline:3px solid rgba(223,152,37,.55);outline-offset:2px}
 @media(max-width:600px){.attendance-scan-control{width:100%}.attendance-scan-control .button{width:100%;justify-content:center}.attendance-scan-camera{width:100%}}
+.rider-attendance-status{display:inline-flex;align-items:center;gap:6px;width:fit-content;padding:3px 8px;border:1px solid var(--line);border-radius:6px;background:#f3eee7;color:var(--brown-800);font-size:11px;line-height:1.5}
+.rider-attendance-status:before{width:7px;height:7px;border-radius:50%;background:currentColor;content:""}
+.rider-attendance-status.is-checked-in{border-color:#c8e5d2;background:#e9f4ec;color:#256043}
+:root[data-theme="dark"] body[data-module="rider"] .rider-attendance-status{border-color:var(--theme-border);background:var(--theme-surface-soft);color:var(--theme-muted)}
+:root[data-theme="dark"] body[data-module="rider"] .rider-attendance-status.is-checked-in{border-color:#386146;background:#1e3828;color:#a8d5b0}
 
 /* =========================================================
    RIDER REGISTRATION — ADDRESS STEP HOTFIX
@@ -1829,6 +1834,23 @@ body[data-module="rider"] #pickup-route-status {
     font-size: 11px;
 }
 
+body[data-module="rider"] .courier-products-cell {
+    min-width: 240px;
+    max-width: 380px;
+    vertical-align: top;
+}
+
+body[data-module="rider"] .courier-products-cell .order-item-preview-list {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+body[data-module="rider"] .courier-run-products-more {
+    display: block;
+    margin: 4px 0 0 53px;
+    color: var(--muted);
+    font-size: 10px;
+}
+
 .courier-run-exception-form {
     grid-column: 2;
     width: 100%;
@@ -1911,6 +1933,107 @@ body[data-module="rider"] #pickup-route-status {
 
     .courier-run-exception-controls .button,
     .courier-run-resolution-controls .button {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+.ops-body[data-module="rider"] .rider-delivery-scan {
+    margin-bottom: 2px;
+}
+
+.ops-body[data-module="rider"] .rider-delivery-scan .waybill-scan-tools {
+    flex-wrap: wrap;
+}
+
+.ops-body[data-module="rider"] .rider-delivery-scan .waybill-scan-tools input {
+    flex: 1 1 220px;
+    min-width: 0;
+}
+
+.ops-body[data-module="rider"] .rider-delivery-scan .waybill-scan-tools button {
+    min-height: 42px;
+    white-space: nowrap;
+}
+
+.ops-body[data-module="rider"] .rider-delivery-camera-panel:not([hidden]) {
+    display: grid;
+    justify-items: start;
+    gap: 9px;
+}
+
+.ops-body[data-module="rider"] .rider-delivery-scan-progress {
+    margin: 0;
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.ops-body[data-module="rider"] .rider-delivery-scan-list {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.ops-body[data-module="rider"] .rider-delivery-scan-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: #fff;
+    color: var(--ink);
+    font-size: 11px;
+}
+
+.ops-body[data-module="rider"] .rider-delivery-scan-list li > span:last-child {
+    color: var(--muted);
+    font-size: 10px;
+}
+
+.ops-body[data-module="rider"] .rider-delivery-scan-list li[data-state="verified"] {
+    border-color: #c8e5d2;
+    background: #f2faf4;
+}
+
+.ops-body[data-module="rider"] .rider-delivery-scan-list li[data-state="verified"] > span:last-child {
+    color: var(--green);
+    font-weight: 700;
+}
+
+.ops-body[data-module="rider"] .rider-delivery-scan-status {
+    margin: 0;
+}
+
+:root[data-theme="dark"] .ops-body[data-module="rider"] .rider-delivery-scan-progress,
+:root[data-theme="dark"] .ops-body[data-module="rider"] .rider-delivery-scan-list li {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] .ops-body[data-module="rider"] .rider-delivery-scan-list li {
+    border-color: var(--theme-border);
+    background: var(--theme-surface-soft);
+}
+
+:root[data-theme="dark"] .ops-body[data-module="rider"] .rider-delivery-scan-list li > span:last-child {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] .ops-body[data-module="rider"] .rider-delivery-scan-list li[data-state="verified"] {
+    border-color: #386146;
+    background: #1e3828;
+}
+
+:root[data-theme="dark"] .ops-body[data-module="rider"] .rider-delivery-scan-list li[data-state="verified"] > span:last-child {
+    color: var(--theme-success);
+}
+
+@media (max-width: 600px) {
+    .ops-body[data-module="rider"] .rider-delivery-scan .waybill-scan-tools button {
         width: 100%;
         justify-content: center;
     }

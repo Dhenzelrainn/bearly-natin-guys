@@ -16,7 +16,7 @@
 </div>
 
 <div class="rider-attendance-page">
-    <section class="panel attendance-roster-panel" data-attendance-roster data-work-date="{{ $attendance['date'] }}" data-cutoff-at="{{ $attendance['cutoff_at'] }}" aria-labelledby="attendance-roster-heading">
+    <section class="panel attendance-roster-panel" data-attendance-roster data-work-date="{{ $attendance['date'] }}" data-cutoff-at="{{ $attendance['cutoff_at'] }}" data-can-mark-absent="{{ $attendance['can_mark_absent'] ? 'true' : 'false' }}" data-updates-url="{{ route('logistics.rider-attendance.updates') }}" aria-labelledby="attendance-roster-heading">
         <div class="panel-header">
             <div>
                 <p class="page-kicker">Daily attendance · PHT</p>
@@ -25,9 +25,9 @@
             </div>
         </div>
         <div class="attendance-roster-summary" aria-label="Today’s attendance totals">
-            <span><strong>{{ $attendance['checked_in_count'] }}</strong> checked in</span>
-            <span><strong>{{ count($attendance['riders']) }}</strong> on roster</span>
-            <span><strong>{{ $attendance['absent_count'] }}</strong> marked absent</span>
+            <span><strong data-attendance-checked-in-count>{{ $attendance['checked_in_count'] }}</strong> checked in</span>
+            <span><strong data-attendance-roster-count>{{ count($attendance['riders']) }}</strong> on roster</span>
+            <span><strong data-attendance-absent-count>{{ $attendance['absent_count'] }}</strong> marked absent</span>
         </div>
         <div class="table-wrap">
             <table class="data-table attendance-roster-table" aria-label="Rider and Courier attendance for today">
@@ -42,17 +42,17 @@
                 </thead>
                 <tbody>
                     @forelse($attendance['riders'] as $rider)
-                        <tr>
+                        <tr data-attendance-rider-row="{{ $rider['id'] }}">
                             <td><strong>{{ $rider['name'] }}</strong></td>
                             <td>{{ $rider['work_type'] }}</td>
-                            <td>
+                            <td data-attendance-time-in>
                                 @if($rider['check_in_at'])
                                     <time datetime="{{ $rider['check_in_at']->toIso8601String() }}">{{ $rider['check_in_at']->format('g:i A') }} PHT</time>
                                 @else
                                     <span class="attendance-muted">—</span>
                                 @endif
                             </td>
-                            <td>
+                            <td data-attendance-state>
                                 @if($rider['absence'])
                                     <span class="attendance-state is-absent">Absent</span>
                                     <small class="attendance-state-detail">Marked by {{ $rider['absence']['marked_by'] }} at {{ $rider['absence']['marked_at']?->format('g:i A') }} PHT</small>
@@ -71,7 +71,7 @@
                                     <span class="attendance-state is-pending">Not checked in</span>
                                 @endif
                             </td>
-                            <td>
+                            <td data-attendance-action>
                                 @if(! $rider['check_in_at'] && ! $rider['absence'])
                                     <form method="POST" action="{{ route('logistics.rider-attendance.absent', $rider['id']) }}" class="attendance-absence-form" data-attendance-absence-action @unless($attendance['can_mark_absent']) hidden @endunless onsubmit="return confirm('Mark this Rider absent for today? The action will be audited.')">
                                         @csrf
@@ -99,6 +99,7 @@
             </table>
         </div>
         <p class="attendance-roster-footnote">Manual absence marking opens at {{ $attendance['cutoff_label'] }} only when no check-in is recorded. A later QR check-in remains visible as late; the absence audit is retained.</p>
+        <p class="attendance-roster-live-status" data-attendance-roster-live-status aria-live="off">Attendance refreshes automatically while this page is open.</p>
     </section>
 </div>
 @push('scripts')

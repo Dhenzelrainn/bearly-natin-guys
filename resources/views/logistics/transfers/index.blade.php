@@ -14,17 +14,17 @@
     <div class="panel-header">
         <div>
             <h3>Accept an incoming Waybill</h3>
-            <p>Scan a Waybill from the queue below—not the Courier Run ID. Accept one Waybill per shipment; all parcels in that shipment move to your active Sorting Center.</p>
+            <p>Scan a Parcel barcode or select a Waybill from the queue—not the Courier Run ID. Review the matching Waybill and parcel count before accepting; one acceptance receives the whole shipment.</p>
         </div>
     </div>
-    <form class="panel-body" method="POST" action="{{ route('logistics.transfers.accept') }}" data-waybill-scan-form data-handoff-accept-form>
+    <form class="panel-body" method="POST" action="{{ route('logistics.transfers.accept') }}" data-waybill-scan-form data-handoff-accept-form data-handoff-lookup-url="{{ route('logistics.transfers.lookup') }}">
         @csrf
         <input type="hidden" name="scan_method" value="manual" data-waybill-scan-method>
         <div class="field-grid">
             <div class="field span-2">
-                <label for="transfer-identifier">Waybill number / barcode</label>
-                    <input id="transfer-identifier" name="identifier" value="{{ old('identifier') }}" maxlength="120" required autocomplete="off" placeholder="Scan or enter a Waybill from the queue below" data-waybill-identifier>
-                    <div class="waybill-scan-tools"><button type="button" class="waybill-camera-button" data-waybill-camera-open><i data-lucide="camera"></i>Use camera</button><small>Manual entry and USB/Bluetooth scanners also work. Do not scan the Courier Run ID.</small></div>
+                <label for="transfer-identifier">Waybill number or Parcel barcode</label>
+                    <input id="transfer-identifier" name="identifier" value="{{ old('identifier') }}" maxlength="120" required autocomplete="off" placeholder="Scan a Parcel label or enter a Waybill" data-waybill-identifier>
+                    <div class="waybill-scan-tools"><button type="button" class="waybill-camera-button" data-waybill-camera-open><i data-lucide="camera"></i>Use camera</button><small>Camera and USB/Bluetooth scanners read the Parcel barcode. Manual entry and Select Waybill also work.</small></div>
                 @error('identifier')<small class="form-error">{{ $message }}</small>@enderror
             </div>
             <div class="field span-2">
@@ -32,9 +32,15 @@
                 <input id="transfer-center" type="text" value="{{ $sortingCenter?->name ?? 'No active Sorting Center available' }}" readonly>
             </div>
         </div>
-        <div class="waybill-camera-panel" data-waybill-camera-panel hidden><video data-waybill-camera-video playsinline muted></video><p class="waybill-camera-status" data-waybill-camera-status>Point the camera at the Code 128 waybill barcode.</p><button type="button" class="button button-small" data-waybill-camera-close>Cancel camera</button></div>
+        <div class="waybill-camera-panel" data-waybill-camera-panel hidden><video data-waybill-camera-video playsinline muted></video><p class="waybill-camera-status" data-waybill-camera-status>Point the camera at the Code 128 Parcel barcode.</p><button type="button" class="button button-small" data-waybill-camera-close>Cancel camera</button></div>
+        <div class="zone-routing-note is-handoff" data-handoff-preview hidden aria-live="polite">
+            <strong data-handoff-preview-waybill></strong>
+            <small data-handoff-preview-count></small>
+            <small>Accepting this Waybill receives every parcel in the shipment, not only the scanned Parcel.</small>
+        </div>
+        <p class="zone-routing-note is-handoff" data-handoff-lookup-status role="status" aria-live="polite">Scan a Parcel label or select a Waybill below to review the shipment before acceptance.</p>
         <div class="form-actions">
-            <button class="button button-primary" type="submit" @disabled(! $sortingCenter)><i data-lucide="scan-line"></i> Accept scanned Waybill</button>
+            <button class="button button-primary" type="submit" data-handoff-accept-button @disabled(! $sortingCenter)><i data-lucide="scan-line"></i> <span data-handoff-accept-label>Review Waybill</span></button>
         </div>
     </form>
 </section>

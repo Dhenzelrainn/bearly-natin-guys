@@ -77,8 +77,29 @@ class RiderAttendanceQrTest extends TestCase
             'scanned_at' => $shift->checked_in_at?->toDateTimeString(),
         ]);
 
+        $riderDashboard = $this->actingAs($rider->user)
+            ->get(route('rider.dashboard.pickups'))
+            ->assertOk()
+            ->assertSee('data-rider-attendance-state', false)
+            ->assertSee('Checked in')
+            ->assertSee('Time in: '.$shift->checkedInAtPht()?->format('M j, Y · g:i A'));
+        $this->assertCacheIsPrivateAndNoStore($riderDashboard->headers->get('Cache-Control'));
+
+        $logisticsUpdates = $this->actingAs($logisticsUser)
+            ->getJson(route('logistics.rider-attendance.updates'))
+            ->assertOk()
+            ->assertJsonPath('data.checked_in_count', 1)
+            ->assertJsonPath('data.riders.0.id', $rider->id)
+            ->assertJsonPath('data.riders.0.status', 'checked_in')
+            ->assertJsonPath('data.riders.0.check_in_at', $shift->checkedInAtPht()?->toIso8601String());
+        $this->assertCacheIsPrivateAndNoStore($logisticsUpdates->headers->get('Cache-Control'));
+
         $this->scan($rider->user, $challenge)->assertStatus(409);
         $this->assertSame(1, $rider->shifts()->count());
+        $this->actingAs($rider->user)
+            ->get(route('rider.dashboard.pickups'))
+            ->assertOk()
+            ->assertSee('Checked in');
 
         $this->travel(1)->hours();
         $checkoutChallenge = $this->issueChallenge($logisticsUser);
@@ -139,6 +160,13 @@ class RiderAttendanceQrTest extends TestCase
                 && $rows->get($courier->id)['work_type'] === 'Courier'
                 && $rows->get($legacyLocal->id)['work_type'] === 'Local Rider';
         });
+
+        $this->actingAs($logisticsUser)
+            ->getJson(route('logistics.rider-attendance.updates'))
+            ->assertOk()
+            ->assertJsonPath('data.roster_count', 3)
+            ->assertJsonPath('data.riders.0.id', $local->id)
+            ->assertJsonMissing(['id' => $foreign->id]);
     }
 
     public function test_manual_absence_is_cutoff_gated_audited_and_kept_when_a_later_qr_checkin_arrives(): void

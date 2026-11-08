@@ -120,9 +120,11 @@ Route::middleware('guest')->group(function () {
         ->name('register.draft.save');
 
     Route::post('/register/email/send', [EmailVerificationController::class, 'send'])
-        ->middleware('throttle:10,1')->block(30, 5)->name('register.email.send');
+        ->middleware('throttle:30,1')->block(30, 5)->name('register.email.send');
     Route::post('/register/email/check', [EmailVerificationController::class, 'check'])
-        ->middleware('throttle:15,1')->block(30, 5)->name('register.email.check');
+        ->middleware('throttle:30,1')->block(30, 5)->name('register.email.check');
+    Route::post('/register/email/status', [EmailVerificationController::class, 'status'])
+        ->middleware('throttle:30,1')->name('register.email.status');
     Route::get('/login', [BearlyAuthController::class, 'showLogin'])
         ->name('login');
 
@@ -133,7 +135,7 @@ Route::middleware('guest')->group(function () {
         ->name('register');
 
     Route::post('/register', [BearlyAuthController::class, 'register'])
-        ->middleware('throttle:10,1')->block(30, 5)->name('register.submit');
+        ->middleware('throttle:registration-submit')->block(30, 5)->name('register.submit');
 
     Route::get('/auth/google', [BearlyAuthController::class, 'redirectToGoogle'])
         ->name('google.redirect');
@@ -494,6 +496,9 @@ Route::prefix('admin')
 
         Route::get('/registrations/buyers', [AdminRegistrationController::class, 'buyers'])
             ->name('registrations.buyers');
+
+        Route::get('/registrations/buyer-ids', [AdminRegistrationController::class, 'buyerIds'])
+            ->name('registrations.buyer-ids');
 
         Route::get('/registrations/sellers', [AdminRegistrationController::class, 'sellers'])
             ->name('registrations.sellers');
@@ -1467,6 +1472,9 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
 
         Route::get('/rider-attendance', [LogisticsRiderAttendanceController::class, 'index'])
             ->name('rider-attendance.index');
+        Route::get('/rider-attendance/updates', [LogisticsRiderAttendanceController::class, 'updates'])
+            ->middleware('throttle:30,1')
+            ->name('rider-attendance.updates');
         Route::post('/rider-attendance/challenge', [LogisticsRiderAttendanceController::class, 'issueChallenge'])
             ->middleware('throttle:30,1')
             ->name('rider-attendance.challenge');
@@ -1640,6 +1648,8 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
             ->whereNumber('run')
             ->name('transfers.runs.exceptions.resolve');
 
+        Route::get('/transfers/lookup', [LogisticsController::class, 'lookupIncomingTransfer'])
+            ->name('transfers.lookup');
         Route::post('/transfers/accept', [LogisticsController::class, 'acceptTransfer'])
             ->name('transfers.accept');
 
@@ -1880,6 +1890,14 @@ Route::prefix('rider')->name('rider.')->group(function () {
 
             Route::get('/deliver/{id}', [RiderController::class, 'deliver'])
                 ->name('orders.delivery');
+
+            Route::get('/deliver/{id}/verification-progress', [RiderController::class, 'deliveryVerificationProgress'])
+                ->middleware('throttle:60,1')
+                ->name('orders.delivery.progress');
+
+            Route::post('/deliver/{id}/verify-parcel', [RiderController::class, 'verifyDeliveryParcel'])
+                ->middleware('throttle:60,1')
+                ->name('orders.delivery.verify');
 
             Route::post('/deliver/{id}/start', [RiderController::class, 'startDelivery'])
                 ->name('orders.delivery.start');

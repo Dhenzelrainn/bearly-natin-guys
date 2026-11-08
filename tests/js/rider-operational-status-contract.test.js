@@ -48,6 +48,28 @@ test('Rider availability surfaces expose hooks for both local pickup and Courier
     assert.match(courierView, /Off duty/);
 });
 
+test('QR attendance confirmation refreshes the Rider state and Logistics roster from persisted records', async () => {
+    const [riderAttendanceScript, logisticsAttendanceScript, logisticsAttendanceView, riderAttendancePartial] = await Promise.all([
+        read('resources/js/rider-attendance-qr.js'),
+        read('resources/js/logistics-attendance-qr.js'),
+        read('resources/views/logistics/rider-attendance/index.blade.php'),
+        read('resources/views/rider/partials/attendance-qr-scanner.blade.php'),
+    ]);
+
+    assert.match(riderPickupView, /data-rider-attendance-indicator/);
+    assert.match(riderPickupView, /data-rider-attendance-state/);
+    assert.match(courierView, /data-rider-attendance-indicator/);
+    assert.match(riderAttendancePartial, /data-attendance-scan-status/);
+    assert.match(riderAttendanceScript, /updateShiftIndicator\(result\.data \|\| \{\}\)/);
+    assert.match(riderAttendanceScript, /This QR was already used\. Refreshing to check your saved attendance status/);
+    assert.match(riderAttendanceScript, /window\.location\.reload\(\)/);
+    assert.match(logisticsAttendanceView, /data-updates-url="\{\{ route\('logistics\.rider-attendance\.updates'\) \}\}"/);
+    assert.match(logisticsAttendanceView, /data-attendance-rider-row/);
+    assert.match(logisticsAttendanceScript, /cache: 'no-store'/);
+    assert.match(logisticsAttendanceScript, /window\.setInterval\(refreshRoster, 5_000\)/);
+    assert.match(logisticsAttendanceScript, /data-attendance-checked-in-count/);
+});
+
 test('Local Rider availability labels describe assignment intake separately from attendance', async () => {
     const attendanceView = await read('resources/views/rider/attendance/index.blade.php');
 
@@ -180,7 +202,7 @@ test('Rider pickup details keep workflow, action footer, map metadata, and waybi
 test('Logistics pickup UI keeps the recommendation as a manual confirmation', async () => {
     const pickupStyles = await read('resources/css/logistics.css');
 
-    assert.match(logisticsPickupView, /Suggested Rider:/);
+    assert.match(logisticsPickupView, /(?:Service-area recommendation|Fallback Rider suggestion|Nearby fallback suggestion)/);
     assert.match(logisticsPickupView, /data-lucide="sparkles"/);
     assert.match(logisticsPickupView, /Assign Rider &amp; schedule pickup/);
     assert.match(pickupStyles, /\.pickup-rider-recommendation/);

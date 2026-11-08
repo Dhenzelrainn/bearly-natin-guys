@@ -31,6 +31,20 @@
     </div>
 </div>
 
+@if(session('pickup_error'))
+    <div class="flash-banner is-danger" role="alert" aria-live="assertive">
+        <i data-lucide="triangle-alert" aria-hidden="true"></i>
+        <span>{{ session('pickup_error') }}</span>
+    </div>
+@endif
+
+@error('waybill_identifier')
+    <div class="flash-banner is-danger" role="alert" aria-live="assertive">
+        <i data-lucide="triangle-alert" aria-hidden="true"></i>
+        <span>{{ $message }}</span>
+    </div>
+@enderror
+
 <div class="workflow-steps">
     <div
         class="workflow-step
@@ -386,6 +400,7 @@
                                 'rider.orders.pickup.confirm',
                                 $job['id']
                             ) }}"
+                            data-waybill-scan-form
                             data-single-submit
                         >
                             @csrf
@@ -394,7 +409,7 @@
                                     <i data-lucide="scan-line" aria-hidden="true"></i>
                                     <div>
                                         <strong>Match the parcel waybill</strong>
-                                        <p>Scan one code shown below from a parcel label to match it to this pickup.</p>
+                                        <p>Scan a Code 128 Parcel barcode from one of the printed labels. It must belong to this pickup.</p>
                                     </div>
                                 </div>
 
@@ -406,12 +421,23 @@
                                                 && ($group['waybill'] ?? null) !== 'Not generated');
                                     @endphp
                                     @forelse($assignedWaybills as $group)
+                                        @php
+                                            $parcelBarcodes = collect($group['parcels'] ?? [])
+                                                ->pluck('parcel_no')
+                                                ->filter()
+                                                ->values();
+                                        @endphp
                                         <div class="rider-waybill-expected-item">
+                                            <small>Waybill reference</small>
                                             <code>{{ $group['waybill'] }}</code>
                                             @if(filled($group['barcode_value'] ?? null)
-                                                && $group['barcode_value'] !== $group['waybill'])
-                                                <small>Code 128 barcode: <code>{{ $group['barcode_value'] }}</code></small>
+                                                && $group['barcode_value'] !== $group['waybill']
+                                                && !$parcelBarcodes->contains($group['barcode_value']))
+                                                <small>Waybill barcode: <code>{{ $group['barcode_value'] }}</code></small>
                                             @endif
+                                            @foreach($parcelBarcodes as $parcelBarcode)
+                                                <small>Printed Parcel barcode (Code 128): <code>{{ $parcelBarcode }}</code></small>
+                                            @endforeach
                                         </div>
                                     @empty
                                         <p class="rider-waybill-missing">No generated waybill is attached. Contact the seller before pickup.</p>
@@ -419,15 +445,15 @@
                                 </div>
 
                                 <div class="rider-waybill-scan-field">
-                                    <label for="rider-waybill-identifier">Scan or enter a waybill code</label>
+                                    <label for="rider-waybill-identifier">Scan or enter a printed Parcel barcode or Waybill reference</label>
                                     <div class="waybill-scan-tools">
-                                        <input id="rider-waybill-identifier" type="text" name="waybill_identifier" data-waybill-identifier required maxlength="120" placeholder="Scan the barcode or type its code" autocomplete="off" spellcheck="false" aria-describedby="rider-waybill-scan-help">
-                                        <button type="button" class="waybill-camera-button" data-waybill-camera-open><i data-lucide="camera"></i>Scan</button>
+                                        <input id="rider-waybill-identifier" type="text" name="waybill_identifier" value="{{ old('waybill_identifier') }}" data-waybill-identifier required maxlength="120" placeholder="Scan Code 128 or type the printed code" autocomplete="off" spellcheck="false" aria-describedby="rider-waybill-scan-help">
+                                        <button type="button" class="waybill-camera-button" data-waybill-camera-open><i data-lucide="camera" aria-hidden="true"></i>Scan Parcel</button>
                                     </div>
                                     <input type="hidden" name="scan_method" value="manual" data-waybill-scan-method>
-                                    <small id="rider-waybill-scan-help">Use the camera, a USB/Bluetooth scanner, or type the code shown on the label.</small>
+                                    <small id="rider-waybill-scan-help">Scan the Code 128 barcode printed on a Parcel label, use a USB/Bluetooth scanner, or enter the Waybill reference shown above.</small>
                                 </div>
-                                <div class="waybill-camera-panel" data-waybill-camera-panel hidden><video data-waybill-camera-video playsinline muted></video><p class="waybill-camera-status" data-waybill-camera-status>Point the camera at the Code 128 waybill barcode.</p><button type="button" class="button button-small" data-waybill-camera-close>Cancel camera</button></div>
+                                <div class="waybill-camera-panel" data-waybill-camera-panel hidden><video data-waybill-camera-video playsinline muted></video><p class="waybill-camera-status" data-waybill-camera-status>Point the camera at the Code 128 Parcel barcode.</p><button type="button" class="button button-small" data-waybill-camera-close>Cancel camera</button></div>
                             </div>
 
                             <button

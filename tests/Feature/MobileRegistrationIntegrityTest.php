@@ -10,6 +10,7 @@ use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
@@ -35,6 +36,7 @@ class MobileRegistrationIntegrityTest extends TestCase
         Cache::flush();
         Mail::fake();
         Storage::fake('local');
+        Storage::fake('public');
         $this->seed(DatabaseSeeder::class);
     }
 
@@ -170,6 +172,51 @@ class MobileRegistrationIntegrityTest extends TestCase
         } finally {
             Carbon::setTestNow();
         }
+    }
+
+    public function test_mobile_buyer_registration_saves_optional_id_privately_and_photo_publicly(): void
+    {
+        Notification::fake();
+        $email = 'mobile-buyer-uploads@example.test';
+        $verificationId = $this->verifyMobileEmail($email);
+
+        $response = $this->post('/api/mobile/register/buyer', $this->buyerData([
+            'email' => $email,
+            'verification_id' => $verificationId,
+            'valid_id' => UploadedFile::fake()->create('mobile-buyer-id.pdf', 100, 'application/pdf'),
+            'profile_photo' => UploadedFile::fake()->createWithContent(
+                'mobile-buyer.png',
+                (string) file_get_contents(public_path('images/icon-buyer.png')),
+            ),
+        ]), ['Accept' => 'application/json']);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.email', $email)
+            ->assertJsonPath('data.status', AccountStatus::Active->value);
+
+        $buyer = User::query()->where('email', $email)->firstOrFail();
+        $this->assertSame(AccountStatus::Active->value, $buyer->status);
+        $this->assertStringStartsWith('registration-documents/buyer-valid-ids/', $buyer->valid_id_path);
+        $this->assertStringStartsWith('profile-photos/', $buyer->profile_photo_path);
+        Storage::disk('local')->assertExists($buyer->valid_id_path);
+        Storage::disk('public')->assertExists($buyer->profile_photo_path);
+        $response->assertJsonPath(
+            'data.profile_photo_url',
+            Storage::disk('public')->url($buyer->profile_photo_path),
+        );
+        $this->assertFalse($buyer->applications()->exists());
+        $this->assertNull($buyer->approved_by);
+        $this->assertNull($buyer->approved_at);
+
+        $login = $this->postJson('/api/mobile/login', [
+            'email' => $email,
+            'password' => 'Password123',
+        ])->assertOk();
+
+        $this->withHeader('Authorization', 'Bearer '.$login->json('token'))
+            ->getJson('/api/user')
+            ->assertOk()
+            ->assertJsonMissingPath('valid_id_path');
     }
 
     public function test_mobile_buyer_registration_rejects_a_region_that_does_not_match_the_selected_city(): void

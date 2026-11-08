@@ -6,6 +6,7 @@ use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Models\AccountApplication;
 use App\Models\Category;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
@@ -16,6 +17,32 @@ class AdminRegistrationController extends Controller
     public function buyers(): RedirectResponse
     {
         return redirect()->route('admin.registrations');
+    }
+
+    public function buyerIds(Request $request): View
+    {
+        $search = trim((string) $request->query('search'));
+
+        $buyers = User::query()
+            ->where('role', UserRole::Buyer->value)
+            ->whereNotNull('valid_id_path')
+            ->when($search !== '', function (Builder $query) use ($search): void {
+                $query->where(function (Builder $query) use ($search): void {
+                    $query->where('name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%");
+                });
+            })
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate(15)
+            ->withQueryString();
+
+        return view('admin.registrations.buyer-ids', [
+            'admin' => $this->adminSummary($request),
+            'topNotifications' => [],
+            'buyers' => $buyers,
+            'search' => $search,
+        ]);
     }
 
     public function sellers(Request $request): View

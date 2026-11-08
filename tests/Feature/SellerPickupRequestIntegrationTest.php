@@ -188,7 +188,10 @@ class SellerPickupRequestIntegrationTest extends TestCase
             ->post(route('rider.orders.pickup.accept', $pickup->pickup_no))
             ->assertRedirect();
         $this->actingAs($rider->user)
-            ->post(route('rider.orders.pickup.confirm', $pickup->pickup_no))
+            ->post(route('rider.orders.pickup.confirm', $pickup->pickup_no), [
+                'waybill_identifier' => $pickup->parcels()->firstOrFail()->parcel_no,
+                'scan_method' => 'camera',
+            ])
             ->assertRedirect();
 
         $this->assertSame('scheduled', $pickup->fresh()->status);

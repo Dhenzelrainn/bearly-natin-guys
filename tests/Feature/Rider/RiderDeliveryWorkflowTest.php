@@ -738,6 +738,7 @@ class RiderDeliveryWorkflowTest extends TestCase
             $completed['shipment']->shipment_no,
             $rider->user,
         );
+        $this->verifyAssignmentParcels($completed, $rider->user);
         $deliveryService->completeDelivery(
             $completed['shipment']->shipment_no,
             $rider->user,
@@ -768,6 +769,7 @@ class RiderDeliveryWorkflowTest extends TestCase
             $foreignCompleted['shipment']->shipment_no,
             $foreignRider->user,
         );
+        $this->verifyAssignmentParcels($foreignCompleted, $foreignRider->user);
         $deliveryService->completeDelivery(
             $foreignCompleted['shipment']->shipment_no,
             $foreignRider->user,
@@ -1032,6 +1034,11 @@ class RiderDeliveryWorkflowTest extends TestCase
             ->assertSee('Received by')
             ->assertSee('Delivery proof photo')
             ->assertSee('delivery-form', false)
+            ->assertSee('data-rider-delivery-scan-form', false)
+            ->assertSee('data-delivery-expected-parcel=', false)
+            ->assertSee('data-delivery-scan-progress', false)
+            ->assertSee('Verify every assigned Parcel')
+            ->assertSee('Scanning verifies the Parcels; it does not complete delivery.')
             ->assertSee('class="delivery-failure"', false)
             ->assertSee('data-delivery-active="true"', false)
             ->assertSee('Report a failed attempt');
@@ -2337,6 +2344,7 @@ class RiderDeliveryWorkflowTest extends TestCase
             $assignment['shipment']->shipment_no,
             $rider->user
         );
+        $this->verifyAssignmentParcels($assignment, $rider->user);
 
         $this->assertSame(
             1,
@@ -2422,6 +2430,7 @@ class RiderDeliveryWorkflowTest extends TestCase
             $assignment['shipment']->shipment_no,
             $rider->user
         );
+        $this->verifyAssignmentParcels($assignment, $rider->user);
 
         $completion = $service->completeDelivery(
             $assignment['shipment']->shipment_no,
@@ -2430,7 +2439,7 @@ class RiderDeliveryWorkflowTest extends TestCase
             'Delivery Recipient',
             'Received in good condition.',
             14.0712,
-            121.3250
+            121.3250,
         );
         $shipment = $completion->shipment;
 
@@ -2604,6 +2613,7 @@ class RiderDeliveryWorkflowTest extends TestCase
 
         $delivery = app(RiderDeliveryService::class);
         $delivery->startDelivery($assignment['shipment']->shipment_no, $rider->user);
+        $this->verifyAssignmentParcels($assignment, $rider->user);
         $completion = $delivery->completeDelivery(
             $assignment['shipment']->shipment_no,
             $rider->user,
@@ -2665,6 +2675,8 @@ class RiderDeliveryWorkflowTest extends TestCase
             $rider->user
         );
 
+        $this->verifyAssignmentParcels($assignment, $rider->user);
+
         $response = $this
             ->actingAs($rider->user)
             ->post(
@@ -2700,6 +2712,266 @@ class RiderDeliveryWorkflowTest extends TestCase
         ]);
 
         $this->assertDatabaseCount('delivery_proofs', 1);
+    }
+
+    public function test_delivery_scan_rejects_altered_and_unassigned_codes_and_completion_stays_blocked(): void
+    {
+        Storage::fake('local');
+
+        $rider = $this->makeRider('SCAN-DELIVERY-OWNER');
+        $otherRider = $this->makeRider('SCAN-DELIVERY-OTHER');
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'SCAN-DELIVERY-OWNER',
+            1,
+            0,
+            'Scan Owner Recipient',
+        );
+        $otherAssignment = $this->makeDispatchAssignment(
+            $otherRider,
+            'SCAN-DELIVERY-OTHER',
+            1,
+            0,
+            'Scan Other Recipient',
+        );
+
+        app(RiderDeliveryService::class)->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+        );
+
+        $verifyUrl = route('rider.orders.delivery.verify', $assignment['shipment']->shipment_no);
+
+        $this->actingAs($rider->user)
+            ->postJson($verifyUrl, [
+                'barcode' => strtolower($this->parcelBarcodes($assignment)[0]),
+                'scan_method' => 'manual',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('barcode');
+
+        $this->actingAs($rider->user)
+            ->postJson($verifyUrl, [
+                'barcode' => $this->parcelBarcodes($otherAssignment)[0],
+                'scan_method' => 'manual',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('barcode');
+
+        $this->actingAs($otherRider->user)
+            ->postJson($verifyUrl, [
+                'barcode' => $this->parcelBarcodes($assignment)[0],
+                'scan_method' => 'manual',
+            ])
+            ->assertForbidden();
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.delivery.confirm', $assignment['shipment']->shipment_no), [
+                'recipient_name' => 'Scan Owner Recipient',
+                'proof_photo' => $this->fakeProofPhoto('unverified-delivery.png'),
+            ])
+            ->assertSessionHasErrors('parcel_verification');
+
+        $this->assertSame(ParcelStatus::OutForDelivery->value, $assignment['parcels']->first()->fresh()->status);
+        $this->assertDatabaseMissing('shipment_events', [
+            'shipment_id' => $assignment['shipment']->id,
+            'event_type' => 'parcel_barcode_verified',
+        ]);
+        $this->assertDatabaseCount('delivery_attempts', 0);
+        $this->assertDatabaseCount('delivery_proofs', 0);
+        $this->assertSame([], Storage::disk('local')->allFiles('delivery-proofs'));
+    }
+
+    public function test_delivery_scan_persists_syncs_and_notifies_logistics_once_after_all_assigned_parcels_are_verified(): void
+    {
+        Notification::fake();
+
+        $rider = $this->makeRider('SCAN-SAVED');
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'SCAN-SAVED',
+            2,
+            0,
+            'Saved Scan Recipient',
+        );
+        $service = app(RiderDeliveryService::class);
+        $service->startDelivery($assignment['shipment']->shipment_no, $rider->user);
+        $verifyUrl = route('rider.orders.delivery.verify', $assignment['shipment']->shipment_no);
+        $barcodes = $this->parcelBarcodes($assignment);
+        $statusAfterStart = $assignment['shipment']->fresh()->status;
+
+        $this->actingAs($rider->user)
+            ->postJson($verifyUrl, ['barcode' => $barcodes[0], 'scan_method' => 'camera'])
+            ->assertOk()
+            ->assertJsonPath('data.verified_count', 1)
+            ->assertJsonPath('data.total_count', 2)
+            ->assertJsonPath('data.all_verified', false);
+
+        $this->assertDatabaseHas('shipment_events', [
+            'shipment_id' => $assignment['shipment']->id,
+            'parcel_id' => $assignment['parcels']->first()->id,
+            'event_type' => 'parcel_barcode_verified',
+            'from_status' => ParcelStatus::OutForDelivery->value,
+            'to_status' => ParcelStatus::OutForDelivery->value,
+            'scan_method' => 'camera',
+            'actor_user_id' => $rider->user_id,
+        ]);
+        $this->assertSame($statusAfterStart, $assignment['shipment']->fresh()->status);
+        $this->assertSame(ParcelStatus::OutForDelivery->value, $assignment['parcels']->first()->fresh()->status);
+        $this->assertDatabaseCount('delivery_attempts', 0);
+        $this->assertDatabaseCount('delivery_proofs', 0);
+        Notification::assertNotSentTo($this->logistics, WorkflowNotification::class);
+
+        $this->actingAs($rider->user)
+            ->postJson($verifyUrl, ['barcode' => $barcodes[0], 'scan_method' => 'camera'])
+            ->assertOk()
+            ->assertJsonPath('data.newly_verified', false)
+            ->assertJsonPath('data.verified_count', 1);
+        $this->assertSame(
+            1,
+            $assignment['shipment']->events()->where('event_type', 'parcel_barcode_verified')->count(),
+        );
+
+        $this->actingAs($rider->user)
+            ->getJson(route('rider.orders.delivery.progress', $assignment['shipment']->shipment_no))
+            ->assertOk()
+            ->assertJsonPath('data.verified_count', 1)
+            ->assertJsonPath('data.assigned_parcel_nos.0', $barcodes[0])
+            ->assertHeader('Cache-Control', 'no-store, private');
+
+        $deliveryPage = $this->actingAs($rider->user)
+            ->get(route('rider.orders.delivery', $assignment['shipment']->shipment_no))
+            ->assertOk()
+            ->assertSee('data-delivery-verified="true"', false);
+        $this->assertStringContainsString('no-store', $deliveryPage->headers->get('Cache-Control'));
+
+        $this->actingAs($rider->user)
+            ->postJson($verifyUrl, ['barcode' => $barcodes[1], 'scan_method' => 'manual'])
+            ->assertOk()
+            ->assertJsonPath('data.verified_count', 2)
+            ->assertJsonPath('data.all_verified', true);
+
+        Notification::assertSentToTimes($this->logistics, WorkflowNotification::class, 1);
+        Notification::assertSentTo(
+            $this->logistics,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'logistics_delivery_parcels_verified'
+                && $notification->meta()['shipment_id'] === $assignment['shipment']->id
+                && $notification->meta()['parcel_count'] === 2,
+        );
+
+        $this->actingAs($rider->user)
+            ->postJson($verifyUrl, ['barcode' => $barcodes[1], 'scan_method' => 'manual'])
+            ->assertOk()
+            ->assertJsonPath('data.newly_verified', false);
+
+        $this->assertSame(
+            2,
+            $assignment['shipment']->events()->where('event_type', 'parcel_barcode_verified')->count(),
+        );
+        Notification::assertSentToTimes($this->logistics, WorkflowNotification::class, 1);
+        $this->assertSame(ShipmentStatus::OutForDelivery->value, $assignment['shipment']->fresh()->status);
+        foreach ($assignment['parcels'] as $parcel) {
+            $this->assertSame(ParcelStatus::OutForDelivery->value, $parcel->fresh()->status);
+        }
+    }
+
+    public function test_delivery_scan_rejects_parcels_that_are_not_out_for_delivery(): void
+    {
+        $rider = $this->makeRider('SCAN-STATUS');
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'SCAN-STATUS',
+            1,
+            0,
+            'Status Scan Recipient',
+        );
+
+        app(RiderDeliveryService::class)->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+        );
+        $assignment['parcels']->first()->update(['status' => ParcelStatus::Delivered->value]);
+
+        $this->actingAs($rider->user)
+            ->postJson(route('rider.orders.delivery.verify', $assignment['shipment']->shipment_no), [
+                'barcode' => $assignment['parcels']->first()->parcel_no,
+                'scan_method' => 'manual',
+            ])
+            ->assertStatus(409);
+
+        $this->assertDatabaseMissing('shipment_events', [
+            'shipment_id' => $assignment['shipment']->id,
+            'event_type' => 'parcel_barcode_verified',
+        ]);
+    }
+
+    public function test_confirm_delivery_requires_all_assigned_parcels_to_be_scanned(): void
+    {
+        Storage::fake('local');
+
+        $rider = $this->makeRider('SCAN-DELIVERY-MULTI');
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'SCAN-DELIVERY-MULTI',
+            2,
+            0,
+            'Multi Scan Recipient',
+        );
+        $barcodes = $this->parcelBarcodes($assignment);
+
+        app(RiderDeliveryService::class)->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+        );
+
+        $verifyUrl = route('rider.orders.delivery.verify', $assignment['shipment']->shipment_no);
+        $this->actingAs($rider->user)
+            ->postJson($verifyUrl, ['barcode' => $barcodes[0]])
+            ->assertOk()
+            ->assertJsonPath('data.verified_count', 1);
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.delivery.confirm', $assignment['shipment']->shipment_no), [
+                'recipient_name' => 'Multi Scan Recipient',
+                'proof_photo' => $this->fakeProofPhoto('incomplete-delivery-scan.png'),
+            ])
+            ->assertSessionHasErrors('parcel_verification');
+
+        foreach ($assignment['parcels'] as $parcel) {
+            $this->assertSame(ParcelStatus::OutForDelivery->value, $parcel->fresh()->status);
+        }
+        $this->assertDatabaseCount('delivery_attempts', 0);
+        $this->assertDatabaseCount('delivery_proofs', 0);
+        $this->assertSame([], Storage::disk('local')->allFiles('delivery-proofs'));
+
+        $this->actingAs($rider->user)
+            ->postJson($verifyUrl, ['barcode' => $barcodes[1]])
+            ->assertOk()
+            ->assertJsonPath('data.all_verified', true);
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.delivery.confirm', $assignment['shipment']->shipment_no), [
+                'recipient_name' => 'Multi Scan Recipient',
+                'proof_photo' => $this->fakeProofPhoto('complete-delivery-scan.png'),
+            ])
+            ->assertRedirect(route('rider.orders.delivery', $assignment['shipment']->shipment_no))
+            ->assertSessionHas('job_status', 'Delivery completed successfully.');
+
+        foreach ($assignment['parcels'] as $parcel) {
+            $this->assertSame(ParcelStatus::Delivered->value, $parcel->fresh()->status);
+            $event = $assignment['shipment']->events()
+                ->where('parcel_id', $parcel->id)
+                ->where('event_type', 'parcel_delivered')
+                ->sole();
+            $this->assertSame(ParcelStatus::Delivered->value, $event->to_status);
+            $verificationEvent = $assignment['shipment']->events()
+                ->where('parcel_id', $parcel->id)
+                ->where('event_type', 'parcel_barcode_verified')
+                ->sole();
+            $this->assertSame(ParcelStatus::OutForDelivery->value, $verificationEvent->to_status);
+            $this->assertSame('manual', $verificationEvent->scan_method);
+        }
     }
 
     public function test_confirm_delivery_requires_recipient_and_photo(): void
@@ -2767,6 +3039,7 @@ class RiderDeliveryWorkflowTest extends TestCase
             $assignment['shipment']->shipment_no,
             $rider->user
         );
+        $this->verifyAssignmentParcels($assignment, $rider->user);
 
         $firstCompletion = $service->completeDelivery(
             shipmentNo: $assignment['shipment']->shipment_no,
@@ -2924,11 +3197,13 @@ class RiderDeliveryWorkflowTest extends TestCase
             $riderB->user
         );
 
+        $this->verifyAssignmentParcels($assignment, $riderA->user, [$firstParcel->parcel_no]);
+
         $service->completeDelivery(
             $assignment['shipment']->shipment_no,
             $riderA->user,
             $this->fakeProofPhoto('rider-a-proof.png'),
-            'Split Recipient'
+            'Split Recipient',
         );
 
         $this->assertDatabaseHas('parcels', [
@@ -2951,11 +3226,12 @@ class RiderDeliveryWorkflowTest extends TestCase
             'event_type' => 'shipment_delivered',
         ]);
 
+        $this->verifyAssignmentParcels($assignment, $riderB->user, [$secondParcel->parcel_no]);
         $service->completeDelivery(
             $assignment['shipment']->shipment_no,
             $riderB->user,
             $this->fakeProofPhoto('rider-b-proof.png'),
-            'Split Recipient'
+            'Split Recipient',
         );
 
         $this->assertDatabaseHas('shipments', [
@@ -3311,13 +3587,14 @@ class RiderDeliveryWorkflowTest extends TestCase
             'event_type' => 'shipment_delivery_failed',
         ]);
 
+        $this->verifyAssignmentParcels($assignment, $riderB->user, [$secondParcel->parcel_no]);
         $service->completeDelivery(
             $assignment['shipment']->shipment_no,
             $riderB->user,
             $this->fakeProofPhoto(
                 'split-failure-proof.png'
             ),
-            'Split Failure Recipient'
+            'Split Failure Recipient',
         );
 
         $this->assertDatabaseHas('parcels', [
@@ -3664,6 +3941,7 @@ class RiderDeliveryWorkflowTest extends TestCase
             $assignment['shipment']->shipment_no,
             $rider->user
         );
+        $this->verifyAssignmentParcels($assignment, $rider->user);
 
         $this->assertDatabaseCount(
             'delivery_attempts',
@@ -3681,7 +3959,7 @@ class RiderDeliveryWorkflowTest extends TestCase
                 'second-attempt-proof.png'
             ),
             'Second Attempt Recipient',
-            'Delivered successfully on retry.'
+            'Delivered successfully on retry.',
         );
         $shipment = $completion->shipment;
 
@@ -3766,6 +4044,35 @@ class RiderDeliveryWorkflowTest extends TestCase
                 )
                 ->count()
         );
+    }
+
+    /**
+     * @param  array{parcels: \Illuminate\Support\Collection<int, Parcel>}  $assignment
+     * @return list<string>
+     */
+    private function parcelBarcodes(array $assignment): array
+    {
+        return $assignment['parcels']
+            ->pluck('parcel_no')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array{shipment: Shipment, parcels: \Illuminate\Support\Collection<int, Parcel>}  $assignment
+     * @param  list<string>|null  $barcodes
+     */
+    private function verifyAssignmentParcels(array $assignment, User $actor, ?array $barcodes = null): void
+    {
+        $service = app(RiderDeliveryService::class);
+
+        foreach ($barcodes ?? $this->parcelBarcodes($assignment) as $barcode) {
+            $service->verifyParcelBarcode(
+                $assignment['shipment']->shipment_no,
+                $actor,
+                $barcode,
+            );
+        }
     }
 
     private function fakeProofPhoto(string $name = 'proof.png', int $sizeKilobytes = 0): UploadedFile
@@ -4513,12 +4820,13 @@ class RiderDeliveryWorkflowTest extends TestCase
                 $delivery['shipment']->shipment_no,
                 $assignedRider->user
             );
+            $this->verifyAssignmentParcels($delivery, $assignedRider->user);
 
             $deliveryService->completeDelivery(
                 $delivery['shipment']->shipment_no,
                 $assignedRider->user,
                 $this->fakeProofPhoto("history-{$suffix}.png"),
-                $delivery['shipment']->sellerOrder()->firstOrFail()->order()->firstOrFail()->recipient_name
+                $delivery['shipment']->sellerOrder()->firstOrFail()->order()->firstOrFail()->recipient_name,
             );
         }
 
@@ -4660,11 +4968,12 @@ class RiderDeliveryWorkflowTest extends TestCase
             $returned['shipment']->shipment_no,
             $rider->user
         );
+        $this->verifyAssignmentParcels($returned, $rider->user);
         $deliveryService->completeDelivery(
             $returned['shipment']->shipment_no,
             $rider->user,
             $this->fakeProofPhoto('history-return.png'),
-            'Seller Receiver'
+            'Seller Receiver',
         );
 
         $this->actingAs($rider->user)

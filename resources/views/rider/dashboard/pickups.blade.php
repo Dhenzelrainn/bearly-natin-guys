@@ -97,15 +97,15 @@
         </a>
     </div>
     <div class="panel-body">
-        <div class="attention-item">
+        <div class="attention-item" role="status" aria-live="polite">
             <i data-lucide="clock-4" aria-hidden="true"></i>
-            <span>
-                <strong>{{ $currentShift ? 'Shift in progress' : 'No open shift' }}</strong>
+            <span data-rider-attendance-indicator>
+                <strong class="rider-attendance-status {{ $currentShift ? 'is-checked-in' : 'is-not-checked-in' }}" data-rider-attendance-state>{{ $currentShift ? 'Checked in' : 'Not checked in' }}</strong>
                 <small>
                     @if($currentShift)
-                        Checked in {{ $currentShift->checkedInAtPht()?->format('M j, Y · g:i A') }} {{ \App\Models\RiderShift::TIMEZONE_LABEL }}.
+                        <span data-rider-attendance-detail>Time in: {{ $currentShift->checkedInAtPht()?->format('M j, Y · g:i A') }} {{ \App\Models\RiderShift::TIMEZONE_LABEL }}.</span>
                     @else
-                        You are not currently checked in. Record attendance independently from accepting new assignments.
+                        <span data-rider-attendance-detail>You are not currently checked in. Record attendance independently from accepting new assignments.</span>
                     @endif
                 </small>
             </span>

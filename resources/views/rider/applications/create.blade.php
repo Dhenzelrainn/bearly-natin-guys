@@ -169,6 +169,7 @@
                     data-registration-form
                     data-email-send="{{ route('register.email.send') }}"
                     data-email-check="{{ route('register.email.check') }}"
+                    data-email-status="{{ route('register.email.status') }}"
                     data-postal-url="{{ route('postal.lookup') }}"
                     data-draft-save-url="{{ route('register.draft.save', 'rider') }}"
                     data-draft-step="{{ $registrationDraft['step'] ?? 1 }}"
@@ -179,9 +180,9 @@
                     <script type="application/json" data-registration-draft>@json($registrationDraft['fields'] ?? [])</script>
                     <p class="registration-draft-notice" role="status" aria-live="polite">
                         @if ($registrationDraft['has_draft'] ?? false)
-                            Your saved application was restored. Fields save on this browser for 7 days; passwords, codes, documents, and consent are not saved.
+                            Your saved application was restored. Fields save on this browser for 7 days; passwords, codes, uploads, and consent are not saved.
                         @else
-                            Fields save on this browser for 7 days. Passwords, codes, documents, and consent are not saved.
+                            Fields save on this browser for 7 days. Passwords, codes, uploads, and consent are not saved.
                         @endif
                         <span data-registration-draft-status></span>
                     </p>
@@ -253,6 +254,26 @@
                                     placeholder="e.g. Dela Cruz"
                                     required
                                 >
+                            </div>
+
+                            <div class="field span-3">
+                                <label for="rider-profile-photo">
+                                    Profile picture <span>(Optional)</span>
+                                </label>
+                                <label class="upload-field">
+                                    <input
+                                        id="rider-profile-photo"
+                                        type="file"
+                                        name="profile_photo"
+                                        accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                                        data-file-input
+                                        data-file-help="JPEG, PNG, or WebP up to 10 MB. If upload fails, choose a copy saved on your device."
+                                    >
+                                    <i data-lucide="user-round"></i>
+                                    <strong>Choose a profile picture</strong>
+                                    <small data-file-name>JPEG, PNG, or WebP up to 10 MB</small>
+                                </label>
+                                <small class="field-help">If a phone or cloud-provider file cannot be uploaded, save a copy on the device and select it again.</small>
                             </div>
 
                             <div class="field">

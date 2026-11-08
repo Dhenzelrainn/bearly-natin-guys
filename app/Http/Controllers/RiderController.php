@@ -30,20 +30,21 @@ use App\Services\RegistrationDraftService;
 use App\Services\RegistrationLifecycleService;
 use App\Services\ReturnRefundService;
 use App\Services\RiderAccountStatusService;
+use App\Services\RiderAttendanceQrService;
 use App\Services\RiderDeliveryHistoryService;
 use App\Services\RiderDeliveryService;
 use App\Services\RiderEarningsService;
-use App\Services\RiderAttendanceQrService;
+use App\Services\RiderLocationService;
 use App\Services\RiderPickupRouteService;
 use App\Services\RiderPickupService;
-use App\Services\RiderLocationService;
 use App\Services\RiderShiftService;
-use App\Services\RiderWorkloadService;
 use App\Services\RiderVehicleChangeService;
+use App\Services\RiderWorkloadService;
 use App\Services\RiderZoneAssignmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -55,6 +56,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Throwable;
 
 class RiderController extends Controller
@@ -889,6 +891,7 @@ class RiderController extends Controller
                 'mimes:jpg,jpeg,png,pdf',
                 'max:5120',
             ],
+            'profile_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
             'terms' => ['accepted'],
             'password' => ['required', 'confirmed', 'min:8', 'regex:/[a-z]/', 'regex:/[A-Z]/', 'regex:/[0-9]/'],
         ]);
@@ -944,12 +947,20 @@ class RiderController extends Controller
             ? null
             : strtoupper(substr($validated['middle_initial'], 0, 1)).'.';
 
-        $orCrPath = $request->file('or_cr')
-            ->store('registration-documents/riders/or-cr', 'local');
-        $driverLicensePath = $request->file('driver_license')
-            ->store('registration-documents/riders/licenses', 'local');
+        $orCrPath = null;
+        $driverLicensePath = null;
+        $profilePhotoPath = null;
 
         try {
+            $orCrPath = $request->file('or_cr')
+                ->store('registration-documents/riders/or-cr', 'local');
+            $driverLicensePath = $request->file('driver_license')
+                ->store('registration-documents/riders/licenses', 'local');
+            $profilePhotoPath = $request->file('profile_photo')?->store(
+                'profile-photos',
+                'public'
+            );
+
             $user = DB::transaction(function () use (
                 $validated,
                 $middleInitial,
@@ -957,7 +968,8 @@ class RiderController extends Controller
                 $verifiedAt,
                 $logistics,
                 $orCrPath,
-                $driverLicensePath
+                $driverLicensePath,
+                $profilePhotoPath
             ): User {
                 $user = User::create([
                     'name' => trim($validated['first_name'].' '.($middleInitial ?? '').' '.$validated['last_name']),
@@ -991,6 +1003,7 @@ class RiderController extends Controller
                     'plate_number' => $validated['plate_number'],
                     'or_cr_path' => $orCrPath,
                     'driver_license_path' => $driverLicensePath,
+                    'profile_photo_path' => $profilePhotoPath,
                     'password' => Hash::make($validated['password']),
                 ]);
 
@@ -1034,11 +1047,12 @@ class RiderController extends Controller
             Storage::disk('local')->delete(
                 array_filter([$orCrPath, $driverLicensePath])
             );
+            Storage::disk('public')->delete(array_filter([$profilePhotoPath]));
 
             throw $exception;
         }
 
-        $verification->forget($request);
+        $verification->forget($request, $validated['email']);
         app(RegistrationDraftService::class)->forget($request, 'rider');
 
         session([
@@ -1067,7 +1081,7 @@ class RiderController extends Controller
         );
     }
 
-    public function pickupsDashboard(RiderShiftService $shifts): View
+    public function pickupsDashboard(RiderShiftService $shifts): Response
     {
         /** @var User|null $user */
         $user = Auth::user();
@@ -1079,7 +1093,7 @@ class RiderController extends Controller
 
         $profile = $user?->riderProfile()->first();
 
-        return view(
+        return response()->view(
             'rider.dashboard.pickups',
             $this->shared() + [
                 'pickups' => $pickups,
@@ -1115,7 +1129,7 @@ class RiderController extends Controller
                         ->count(),
                 ],
             ]
-        );
+        )->header('Cache-Control', 'private, no-store');
     }
 
     public function attendanceHistory(Request $request, RiderShiftService $shifts): View
@@ -1129,20 +1143,38 @@ class RiderController extends Controller
 
     public function courierDashboard(
         Request $request,
+        BuyerCatalogService $catalog,
         LinehaulRunService $runs,
         RiderShiftService $shifts,
         CourierDailyEarningService $dailyEarnings,
-    ): View
-    {
+    ): Response {
         $profile = $this->courierProfileFor($request);
+        $courierRuns = $runs->courierRunsFor($profile);
 
-        return view('rider.dashboard.courier', $this->shared() + [
+        foreach ($courierRuns as $run) {
+            foreach ($run->shipments as $shipment) {
+                $orderItems = $shipment->parcels
+                    ->flatMap(fn ($parcel) => $parcel->contents->map(
+                        fn ($content) => $content->orderItem
+                    ))
+                    ->filter()
+                    ->unique('id')
+                    ->values();
+
+                $shipment->setAttribute(
+                    'product_previews',
+                    $this->orderItemPreviewData($orderItems, $catalog),
+                );
+            }
+        }
+
+        return response()->view('rider.dashboard.courier', $this->shared() + [
             'courierProfile' => $profile,
-            'runs' => $runs->courierRunsFor($profile),
+            'runs' => $courierRuns,
             'currentShift' => $shifts->currentShift($profile),
             'courierEarnings' => $dailyEarnings->summaryFor($profile),
             'courierEarningHistory' => $dailyEarnings->historyFor($profile, 5),
-        ]);
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     public function courierHistory(Request $request, LinehaulRunService $runs): View
@@ -1443,8 +1475,7 @@ class RiderController extends Controller
 
     public function deliveriesDashboard(
         RiderWorkloadService $workloadService,
-    ): View
-    {
+    ): View {
         /** @var User|null $user */
         $user = Auth::user();
 
@@ -1647,17 +1678,28 @@ class RiderController extends Controller
         $user = Auth::user();
 
         $data = $request->validate([
-            'waybill_identifier' => ['nullable', 'string', 'max:120'],
+            'waybill_identifier' => ['required', 'string', 'max:120'],
             'scan_method' => ['nullable', Rule::in(['camera', 'barcode', 'manual', 'image'])],
         ]);
 
-        $pickupService->confirmPickup(
-            $id,
-            $user,
-            $returns,
-            $data['waybill_identifier'] ?? null,
-            $data['scan_method'] ?? 'manual',
-        );
+        try {
+            $pickupService->confirmPickup(
+                $id,
+                $user,
+                $returns,
+                $data['waybill_identifier'],
+                $data['scan_method'] ?? 'manual',
+            );
+        } catch (ConflictHttpException $exception) {
+            if ($request->expectsJson()) {
+                throw $exception;
+            }
+
+            return redirect()
+                ->route('rider.orders.pickup', $id)
+                ->withInput($request->only('waybill_identifier', 'scan_method'))
+                ->with('pickup_error', $exception->getMessage());
+        }
 
         return redirect()
             ->route(
@@ -1673,7 +1715,8 @@ class RiderController extends Controller
     public function deliver(
         string $id,
         BuyerCatalogService $catalog,
-    ): View {
+        RiderDeliveryService $deliveryService,
+    ): Response {
         /** @var User|null $user */
         $user = Auth::user();
 
@@ -1692,12 +1735,70 @@ class RiderController extends Controller
             404
         );
 
-        return view(
+        if ($job['status'] === 'Out for Delivery') {
+            $progress = $deliveryService->deliveryVerificationProgress($id, $user);
+            $assignedParcelNos = array_fill_keys($progress['assigned_parcel_nos'], true);
+            $verifiedParcelNos = array_fill_keys($progress['verified_parcel_nos'], true);
+
+            $job['parcels'] = $job['parcels']
+                ->filter(fn (array $parcel): bool => isset($assignedParcelNos[(string) $parcel['parcel_no']]))
+                ->map(
+                fn (array $parcel): array => $parcel + [
+                    'verified' => isset($verifiedParcelNos[(string) $parcel['parcel_no']]),
+                ],
+            );
+            $job['parcel_count'] = $progress['total_count'];
+            $job['verified_count'] = $progress['verified_count'];
+            $job['verification_progress_url'] = route('rider.orders.delivery.progress', $id);
+            $job['verification_url'] = route('rider.orders.delivery.verify', $id);
+        }
+
+        return response()->view(
             'rider.orders.delivery',
             $this->shared() + [
                 'job' => $job,
             ]
+        )->header('Cache-Control', 'private, no-store');
+    }
+
+    public function deliveryVerificationProgress(
+        Request $request,
+        string $id,
+        RiderDeliveryService $deliveryService,
+    ): JsonResponse {
+        /** @var User $user */
+        $user = $request->user();
+        $progress = $deliveryService->deliveryVerificationProgress($id, $user);
+
+        return response()->json([
+            'data' => $progress,
+            'message' => 'Saved Parcel verification progress.',
+        ])->header('Cache-Control', 'private, no-store');
+    }
+
+    public function verifyDeliveryParcel(
+        Request $request,
+        string $id,
+        RiderDeliveryService $deliveryService,
+    ): JsonResponse {
+        $validated = $request->validate([
+            'barcode' => ['required', 'string', 'max:120'],
+            'scan_method' => ['nullable', Rule::in(['camera', 'manual', 'barcode'])],
+        ]);
+
+        /** @var User $user */
+        $user = $request->user();
+        $progress = $deliveryService->verifyParcelBarcode(
+            $id,
+            $user,
+            $validated['barcode'],
+            $validated['scan_method'] ?? 'manual',
         );
+
+        return response()->json([
+            'data' => $progress,
+            'message' => 'Parcel barcode verified and saved.',
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     public function startDelivery(

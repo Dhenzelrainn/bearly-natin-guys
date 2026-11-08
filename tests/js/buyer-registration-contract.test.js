@@ -11,13 +11,23 @@ const registrationView = await readFile(
     'utf8',
 );
 
-test('Buyer registration hides seller documents and makes seller ID conditional', () => {
+test('Buyer registration offers an optional ID while Seller ID stays required', () => {
     assert.match(registrationView, /data-seller-document @if\(\$registrationRole !== 'seller'\) hidden @endif/);
-    assert.match(registrationView, /<input name="valid_id" type="file"[^>]*data-file-preview>/);
-    assert.doesNotMatch(registrationView, /<input name="valid_id" type="file"[^>]*required/);
-    assert.match(registrationScript, /seller:\s*\[[^\]]*'valid_id'[^\]]*'business_permit'/s);
+    assert.match(registrationView, /<input name="valid_id" type="file"[^>]*data-file-preview[^>]*@required\(\$registrationRole === 'seller'\)>/);
+    assert.match(registrationView, /Admins can view your ID\. It does not affect email-based Buyer activation\./);
+    assert.match(registrationView, /name="profile_photo" type="file" accept="image\/jpeg,image\/png,image\/webp/);
+    assert.doesNotMatch(registrationScript, /seller:\s*\[[^\]]*'valid_id'/s);
+    assert.match(registrationScript, /validIdInput\.required = role === 'seller'/);
     assert.match(registrationScript, /element\.hidden = inactive;[\s\S]*?input\.disabled = inactive;/);
     assert.match(registrationScript, /roleRequired\[role\][\s\S]*?setAttribute\('required', 'required'\)/);
+});
+
+test('Profile-photo browser validation matches its image formats and 10 MB server limit', () => {
+    assert.match(registrationScript, /const allowedProfilePhotoTypes = \[[\s\S]*?'image\/webp'/);
+    assert.match(registrationScript, /const maxProfilePhotoSize = 10 \* 1024 \* 1024/);
+    assert.match(registrationScript, /const isProfilePhoto = input\.name === 'profile_photo'/);
+    assert.match(registrationScript, /isProfilePhoto\s*\? allowedProfilePhotoTypes\s*: allowedDocumentTypes/);
+    assert.match(registrationView, /If upload fails on your phone, choose a copy saved on the device/);
 });
 
 test('Buyer registration explains immediate email-verified activation and Seller review', () => {

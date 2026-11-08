@@ -287,7 +287,6 @@ document.addEventListener('DOMContentLoaded', () => {
         seller: [
             'business_name',
             'business_category_id',
-            'valid_id',
             'business_permit',
         ],
     };
@@ -304,6 +303,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const summaryTitle = registration.querySelector('[data-summary-title]');
         const nextHeading = registration.querySelector('[data-next-heading]');
         const submitLabel = registration.querySelector('[data-submit-label]');
+        const validIdInput = form.elements['valid_id'];
+        const validIdRequired = registration.querySelector('[data-valid-id-required]');
+        const validIdHelp = registration.querySelector('[data-valid-id-help]');
+
+        if (validIdInput) {
+            validIdInput.required = role === 'seller';
+        }
+
+        if (validIdRequired) {
+            validIdRequired.textContent = role === 'seller' ? 'Required' : 'Optional';
+        }
+
+        if (validIdHelp) {
+            validIdHelp.textContent = role === 'seller'
+                ? 'Passport, driver’s license, national ID, or another government-issued ID.'
+                : 'Admins can view your ID. It does not affect email-based Buyer activation.';
+        }
 
         if (stepLabel) {
             stepLabel.textContent =
@@ -325,7 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (documentsDescription) {
             documentsDescription.textContent = role === 'seller'
                 ? 'Upload your required Seller documents and confirm your application.'
-                : 'Check your information before creating your Buyer account. No government ID is required.';
+                : 'Check your information before creating your Buyer account. A Valid ID is optional and does not affect email-based activation.';
         }
 
         if (summaryTitle) {
@@ -1158,6 +1174,12 @@ document.addEventListener('DOMContentLoaded', () => {
     ];
 
     const maxDocumentSize = 5 * 1024 * 1024;
+    const allowedProfilePhotoTypes = [
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+    ];
+    const maxProfilePhotoSize = 10 * 1024 * 1024;
 
     const formatFileSize = (bytes) =>
         bytes < 1048576
@@ -1195,13 +1217,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function validateDocument(input, file) {
+    function validateUpload(input, file) {
         let error = '';
+        const isProfilePhoto = input.name === 'profile_photo';
+        const allowedTypes = isProfilePhoto
+            ? allowedProfilePhotoTypes
+            : allowedDocumentTypes;
+        const allowedExtensions = isProfilePhoto
+            ? ['jpg', 'jpeg', 'png', 'webp']
+            : ['jpg', 'jpeg', 'png', 'pdf'];
+        const maxSize = isProfilePhoto
+            ? maxProfilePhotoSize
+            : maxDocumentSize;
+        const extension = file.name.split('.').pop()?.toLowerCase() || '';
 
-        if (!allowedDocumentTypes.includes(file.type)) {
-            error = 'Upload a PNG, JPG, JPEG, or PDF file.';
-        } else if (file.size > maxDocumentSize) {
-            error = 'The file must not exceed 5 MB.';
+        if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(extension)) {
+            error = isProfilePhoto
+                ? 'Upload a JPG, JPEG, PNG, or WebP image.'
+                : 'Upload a PNG, JPG, JPEG, or PDF file.';
+        } else if (file.size > maxSize) {
+            error = isProfilePhoto
+                ? 'The profile photo must not exceed 10 MB.'
+                : 'The file must not exceed 5 MB.';
         }
 
         input.setCustomValidity(error);
@@ -1216,7 +1253,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const transfer = new DataTransfer();
         transfer.items.add(file);
         input.files = transfer.files;
-        validateDocument(input, file);
+        validateUpload(input, file);
     }
 
     form.querySelectorAll('[data-file-preview]').forEach((input) => {
@@ -1229,7 +1266,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const file = input.files[0];
 
             file
-                ? validateDocument(input, file)
+                ? validateUpload(input, file)
                 : renderFileState(input);
         });
 
@@ -1262,7 +1299,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ?.addEventListener('click', () => {
                 const file = input.files[0];
 
-                if (!file || !validateDocument(input, file)) {
+                if (!file || !validateUpload(input, file)) {
                     return;
                 }
 

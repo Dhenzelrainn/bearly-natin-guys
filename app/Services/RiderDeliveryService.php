@@ -12,6 +12,7 @@ use App\Models\DeliveryAttempt;
 use App\Models\DeliveryProof;
 use App\Models\DispatchBatch;
 use App\Models\Parcel;
+use App\Models\RiderProfile;
 use App\Models\Shipment;
 use App\Models\ShipmentEvent;
 use App\Models\User;
@@ -31,6 +32,151 @@ class RiderDeliveryService
     public function __construct(
         private readonly NotificationService $notifications,
     ) {}
+
+    /**
+     * Persist a successful exact Parcel barcode scan immediately. Verification
+     * is an audit event only: it does not move the Parcel or Shipment status.
+     *
+     * @return array{parcel_no: string, verified_at: string, newly_verified: bool, assigned_parcel_nos: list<string>, verified_parcel_nos: list<string>, verified_count: int, total_count: int, all_verified: bool}
+     */
+    public function verifyParcelBarcode(
+        string $shipmentNo,
+        User $actor,
+        string $barcode,
+        string $scanMethod = 'manual',
+    ): array {
+        return DB::transaction(function () use ($shipmentNo, $actor, $barcode, $scanMethod): array {
+            if (! in_array($scanMethod, ['camera', 'manual', 'barcode'], true)) {
+                throw ValidationException::withMessages([
+                    'scan_method' => 'Choose a supported Parcel barcode scan method.',
+                ]);
+            }
+
+            $rider = $this->activeApprovedLocalRider($actor, 'verify delivery Parcels');
+
+            $shipment = Shipment::query()
+                ->where('shipment_no', $shipmentNo)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $this->assertShipmentOwnedByRiderProvider($shipment, $rider);
+
+            ['batches' => $batches, 'parcels' => $parcels, 'parcel_batch_ids' => $parcelBatchIds]
+                = $this->assignedDeliveryParcels($shipment, $rider, lock: true);
+
+            if ($parcels->isEmpty() || $parcels->contains(
+                fn (Parcel $parcel): bool => $parcel->status !== ParcelStatus::OutForDelivery->value,
+            )) {
+                throw new ConflictHttpException(
+                    'Only Parcels currently out for delivery can be barcode-verified.',
+                );
+            }
+
+            /** @var Parcel|null $parcel */
+            $parcel = $parcels->first(
+                fn (Parcel $assignedParcel): bool => $assignedParcel->parcel_no === $barcode,
+            );
+
+            if (! $parcel) {
+                throw ValidationException::withMessages([
+                    'barcode' => 'That exact Parcel barcode is not assigned to this delivery.',
+                ]);
+            }
+
+            $batchId = $parcelBatchIds[$parcel->id] ?? null;
+
+            if (! $batchId) {
+                throw new AuthorizationException('This Parcel is not assigned to this Rider.');
+            }
+
+            $verificationEvent = ShipmentEvent::query()
+                ->where('shipment_id', $shipment->id)
+                ->where('parcel_id', $parcel->id)
+                ->where('event_type', 'parcel_barcode_verified')
+                ->where('metadata->dispatch_batch_id', $batchId)
+                ->where('metadata->rider_profile_id', $rider->id)
+                ->first();
+
+            $newlyVerified = ! $verificationEvent;
+
+            if ($newlyVerified) {
+                $verificationEvent = $shipment->events()->create([
+                    'parcel_id' => $parcel->id,
+                    'event_type' => 'parcel_barcode_verified',
+                    'from_status' => ParcelStatus::OutForDelivery->value,
+                    'to_status' => ParcelStatus::OutForDelivery->value,
+                    'sorting_center_id' => $parcel->current_sorting_center_id,
+                    'sorting_zone_id' => $parcel->current_zone_id,
+                    'actor_user_id' => $actor->id,
+                    'source' => 'rider',
+                    'scan_method' => $scanMethod,
+                    'metadata' => [
+                        'dispatch_batch_id' => (int) $batchId,
+                        'rider_profile_id' => (int) $rider->id,
+                    ],
+                    'occurred_at' => now(),
+                ]);
+            }
+
+            $progress = $this->deliveryVerificationProgressFor(
+                $shipment,
+                $rider,
+                $parcels,
+                $parcelBatchIds,
+            );
+
+            if ($newlyVerified && $progress['all_verified']) {
+                $this->notifyLogisticsDeliveryParcelsVerified(
+                    $shipment,
+                    $rider,
+                    $actor,
+                    $batches,
+                    $progress['total_count'],
+                );
+            }
+
+            return [
+                'parcel_no' => (string) $parcel->parcel_no,
+                'verified_at' => $verificationEvent->occurred_at->toIso8601String(),
+                'newly_verified' => $newlyVerified,
+                ...$progress,
+            ];
+        }, 3);
+    }
+
+    /**
+     * Read server-authoritative scan progress for the authenticated Rider's
+     * active delivery assignment.
+     *
+     * @return array{assigned_parcel_nos: list<string>, verified_parcel_nos: list<string>, verified_count: int, total_count: int, all_verified: bool}
+     */
+    public function deliveryVerificationProgress(string $shipmentNo, User $actor): array
+    {
+        $rider = $this->activeApprovedLocalRider($actor, 'view delivery verification progress');
+        $shipment = Shipment::query()
+            ->where('shipment_no', $shipmentNo)
+            ->firstOrFail();
+
+        $this->assertShipmentOwnedByRiderProvider($shipment, $rider);
+
+        ['parcels' => $parcels, 'parcel_batch_ids' => $parcelBatchIds]
+            = $this->assignedDeliveryParcels($shipment, $rider, lock: false);
+
+        if ($parcels->isEmpty() || $parcels->contains(
+            fn (Parcel $parcel): bool => $parcel->status !== ParcelStatus::OutForDelivery->value,
+        )) {
+            throw new ConflictHttpException(
+                'This delivery is no longer accepting Parcel barcode verification.',
+            );
+        }
+
+        return $this->deliveryVerificationProgressFor(
+            $shipment,
+            $rider,
+            $parcels,
+            $parcelBatchIds,
+        );
+    }
 
     public function startDelivery(
         string $shipmentNo,
@@ -1253,6 +1399,19 @@ class RiderDeliveryService
                         );
                     }
 
+                    $verificationProgress = $this->deliveryVerificationProgressFor(
+                        $shipment,
+                        $rider,
+                        $parcels,
+                        $parcelBatchIds,
+                    );
+
+                    if (! $verificationProgress['all_verified']) {
+                        throw ValidationException::withMessages([
+                            'parcel_verification' => 'Scan each assigned Parcel barcode before confirming delivery.',
+                        ]);
+                    }
+
                     $now = now();
 
                     foreach ($parcels as $parcel) {
@@ -1541,6 +1700,187 @@ class RiderDeliveryService
 
             throw $exception;
         }
+    }
+
+    private function activeApprovedLocalRider(User $actor, string $action): RiderProfile
+    {
+        if (
+            $actor->role !== UserRole::Rider->value
+            || $actor->status !== AccountStatus::Active->value
+        ) {
+            throw new AuthorizationException("Only an active Rider can {$action}.");
+        }
+
+        $rider = $actor->riderProfile()->first();
+        $this->assertLocalRider($rider);
+
+        if (! $rider || $rider->verification_status !== 'approved') {
+            throw new AuthorizationException('An approved Rider profile is required.');
+        }
+
+        return $rider;
+    }
+
+    private function assertShipmentOwnedByRiderProvider(Shipment $shipment, RiderProfile $rider): void
+    {
+        if ((int) $shipment->logistics_profile_id !== (int) $rider->logistics_profile_id) {
+            throw new AuthorizationException(
+                'This shipment does not belong to your Logistics provider.',
+            );
+        }
+    }
+
+    /**
+     * @return array{batches: Collection<int, DispatchBatch>, parcels: Collection<int, Parcel>, parcel_batch_ids: array<int, int>}
+     */
+    private function assignedDeliveryParcels(
+        Shipment $shipment,
+        RiderProfile $rider,
+        bool $lock,
+    ): array {
+        $batchQuery = DispatchBatch::query()
+            ->where('rider_profile_id', $rider->id)
+            ->where('status', 'dispatched')
+            ->whereHas(
+                'parcels',
+                fn ($query) => $query->where('parcels.shipment_id', $shipment->id),
+            );
+
+        if ($lock) {
+            $batchQuery->lockForUpdate();
+        }
+
+        $batches = $batchQuery
+            ->with([
+                'parcels' => fn ($query) => $query->where('parcels.shipment_id', $shipment->id),
+            ])
+            ->orderBy('id')
+            ->get();
+
+        if ($batches->isEmpty()) {
+            throw new AuthorizationException('This shipment is not assigned to this Rider.');
+        }
+
+        $parcelBatchIds = [];
+
+        foreach ($batches as $batch) {
+            foreach ($batch->parcels as $parcel) {
+                $parcelBatchIds[$parcel->id] = (int) $batch->id;
+            }
+        }
+
+        if ($parcelBatchIds === []) {
+            throw new AuthorizationException('No assigned Parcels were found.');
+        }
+
+        $parcelQuery = Parcel::query()
+            ->whereIn('id', array_keys($parcelBatchIds))
+            ->where('shipment_id', $shipment->id);
+
+        if ($lock) {
+            $parcelQuery->lockForUpdate();
+        }
+
+        $parcels = $parcelQuery->get();
+
+        if ($parcels->isEmpty()) {
+            throw new AuthorizationException('No assigned Parcels were found.');
+        }
+
+        return [
+            'batches' => $batches,
+            'parcels' => $parcels,
+            'parcel_batch_ids' => $parcelBatchIds,
+        ];
+    }
+
+    /**
+     * @param  Collection<int, Parcel>  $parcels
+     * @param  array<int, int>  $parcelBatchIds
+     * @return array{assigned_parcel_nos: list<string>, verified_parcel_nos: list<string>, verified_count: int, total_count: int, all_verified: bool}
+     */
+    private function deliveryVerificationProgressFor(
+        Shipment $shipment,
+        RiderProfile $rider,
+        Collection $parcels,
+        array $parcelBatchIds,
+    ): array {
+        $verifiedParcelIds = [];
+
+        ShipmentEvent::query()
+            ->where('shipment_id', $shipment->id)
+            ->whereIn('parcel_id', $parcels->modelKeys())
+            ->where('event_type', 'parcel_barcode_verified')
+            ->get(['parcel_id', 'metadata'])
+            ->each(function (ShipmentEvent $event) use ($parcelBatchIds, $rider, &$verifiedParcelIds): void {
+                $parcelId = (int) $event->parcel_id;
+                $metadata = $event->metadata ?? [];
+
+                if (
+                    isset($parcelBatchIds[$parcelId])
+                    && (int) ($metadata['dispatch_batch_id'] ?? 0) === $parcelBatchIds[$parcelId]
+                    && (int) ($metadata['rider_profile_id'] ?? 0) === (int) $rider->id
+                ) {
+                    $verifiedParcelIds[$parcelId] = true;
+                }
+            });
+
+        $verifiedParcelNos = $parcels
+            ->filter(fn (Parcel $parcel): bool => isset($verifiedParcelIds[(int) $parcel->id]))
+            ->pluck('parcel_no')
+            ->map(fn ($parcelNo): string => (string) $parcelNo)
+            ->values()
+            ->all();
+        $verifiedCount = count($verifiedParcelNos);
+        $totalCount = $parcels->count();
+        $assignedParcelNos = $parcels
+            ->pluck('parcel_no')
+            ->map(fn ($parcelNo): string => (string) $parcelNo)
+            ->values()
+            ->all();
+
+        return [
+            'assigned_parcel_nos' => $assignedParcelNos,
+            'verified_parcel_nos' => $verifiedParcelNos,
+            'verified_count' => $verifiedCount,
+            'total_count' => $totalCount,
+            'all_verified' => $totalCount > 0 && $verifiedCount === $totalCount,
+        ];
+    }
+
+    /**
+     * @param  Collection<int, DispatchBatch>  $batches
+     */
+    private function notifyLogisticsDeliveryParcelsVerified(
+        Shipment $shipment,
+        RiderProfile $rider,
+        User $actor,
+        Collection $batches,
+        int $parcelCount,
+    ): void {
+        $shipment->loadMissing('logisticsProfile.user');
+        $logisticsUser = $shipment->logisticsProfile?->user;
+
+        if (! $logisticsUser) {
+            return;
+        }
+
+        $parcelLabel = $parcelCount === 1 ? '1 Parcel' : "{$parcelCount} Parcels";
+
+        $this->notifications->sendAfterCommit($logisticsUser, new WorkflowNotification(
+            eventKey: 'logistics_delivery_parcels_verified',
+            title: 'Delivery Parcels verified',
+            body: "All {$parcelLabel} assigned to {$actor->name} for shipment {$shipment->shipment_no} have been barcode-verified. Delivery remains Out for Delivery until the Rider confirms the handoff.",
+            actionUrl: route('logistics.dispatch.monitoring'),
+            type: 'info',
+            meta: [
+                'shipment_id' => (int) $shipment->id,
+                'shipment_no' => $shipment->shipment_no,
+                'rider_profile_id' => (int) $rider->id,
+                'dispatch_batch_ids' => $batches->modelKeys(),
+                'parcel_count' => $parcelCount,
+            ],
+        ));
     }
 
     private function assertLocalRider(?\App\Models\RiderProfile $rider): void

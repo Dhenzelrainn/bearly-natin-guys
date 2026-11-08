@@ -7,6 +7,8 @@ async function setupRiderAttendanceQr() {
     const status = control.querySelector('[data-attendance-scan-status]');
     const scanUrl = control.dataset.scanUrl;
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    const shiftState = document.querySelector('[data-rider-attendance-state]');
+    const shiftDetail = document.querySelector('[data-rider-attendance-detail]');
     let scanner = null;
     let active = false;
     let submitting = false;
@@ -14,6 +16,43 @@ async function setupRiderAttendanceQr() {
     const setStatus = (text, isError = false) => {
         status.textContent = text;
         status.classList.toggle('is-error', isError);
+    };
+
+    const formatPhtTime = (value) => {
+        const date = new Date(value || '');
+        if (Number.isNaN(date.getTime())) return null;
+
+        return new Intl.DateTimeFormat('en-PH', {
+            timeZone: 'Asia/Manila',
+            dateStyle: 'medium',
+            hour: 'numeric',
+            minute: '2-digit',
+        }).format(date);
+    };
+
+    const updateShiftIndicator = (attendance) => {
+        if (!shiftState || !shiftDetail) return;
+
+        const time = formatPhtTime(attendance.scanned_at);
+
+        if (attendance.scan_type === 'check_in') {
+            shiftState.textContent = 'Checked in';
+            shiftState.classList.add('is-checked-in');
+            shiftState.classList.remove('is-not-checked-in');
+            shiftDetail.textContent = time
+                ? `Time in recorded at ${time} PHT. Your attendance is saved.`
+                : 'Your attendance is saved. You are checked in.';
+            return;
+        }
+
+        if (attendance.scan_type === 'check_out') {
+            shiftState.textContent = 'Not checked in';
+            shiftState.classList.add('is-not-checked-in');
+            shiftState.classList.remove('is-checked-in');
+            shiftDetail.textContent = time
+                ? `Time out recorded at ${time} PHT. Your shift is closed.`
+                : 'Your time out is saved. Your shift is closed.';
+        }
     };
 
     const stopScanner = async () => {
@@ -56,9 +95,18 @@ async function setupRiderAttendanceQr() {
 
             if (!response.ok) {
                 const validationMessage = Object.values(result.errors || {}).flat()[0];
-                throw new Error(validationMessage || result.message || 'The QR could not be accepted. Scan the current code and try again.');
+                const message = validationMessage || result.message || 'The QR could not be accepted. Scan the current code and try again.';
+
+                if (response.status === 409 && message.includes('already been used for your attendance')) {
+                    setStatus('This QR was already used. Refreshing to check your saved attendance status…');
+                    window.setTimeout(() => window.location.reload(), 700);
+                    return;
+                }
+
+                throw new Error(message);
             }
 
+            updateShiftIndicator(result.data || {});
             setStatus(result.message || 'Attendance recorded.');
             window.setTimeout(() => window.location.reload(), 900);
         } catch (error) {

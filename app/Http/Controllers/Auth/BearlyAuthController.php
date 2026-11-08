@@ -442,13 +442,14 @@ class BearlyAuthController extends Controller
                     ->where('is_active', true),
             ],
             'valid_id' => [
-                'exclude_unless:role,seller',
-                'required',
+                'required_if:role,seller',
+                'nullable',
                 'file',
                 'mimes:jpg,jpeg,png,pdf',
                 'max:5120',
             ],
             'business_permit' => ['required_if:role,seller', 'nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
+            'profile_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
             'password' => ['required', 'confirmed', 'min:8', 'regex:/[a-z]/', 'regex:/[A-Z]/', 'regex:/[0-9]/'],
             'terms' => ['accepted'],
         ], [
@@ -500,8 +501,14 @@ class BearlyAuthController extends Controller
 
         $validIdPath = null;
         $businessPermitPath = null;
+        $profilePhotoPath = null;
 
         try {
+            if ($request->hasFile('profile_photo')) {
+                $profilePhotoPath = $request->file('profile_photo')
+                    ->store('profile-photos', 'public');
+            }
+
             if ($data['role'] === UserRole::Seller->value) {
                 $validIdPath = $request->file('valid_id')
                     ->store('registration-documents/valid-ids', 'local');
@@ -510,6 +517,9 @@ class BearlyAuthController extends Controller
                     'registration-documents/business-permits',
                     'local'
                 );
+            } elseif ($request->hasFile('valid_id')) {
+                $validIdPath = $request->file('valid_id')
+                    ->store('registration-documents/buyer-valid-ids', 'local');
             }
 
             $user = DB::transaction(function () use (
@@ -519,7 +529,8 @@ class BearlyAuthController extends Controller
                 $isGoogleRegistration,
                 $verifiedAt,
                 $validIdPath,
-                $businessPermitPath
+                $businessPermitPath,
+                $profilePhotoPath
             ): User {
                 $user = User::create([
                     'name' => trim($data['first_name'].' '.($data['middle_initial'] ?? '').' '.$data['last_name']),
@@ -558,6 +569,7 @@ class BearlyAuthController extends Controller
                         : null,
                     'valid_id_path' => $validIdPath,
                     'business_permit_path' => $businessPermitPath,
+                    'profile_photo_path' => $profilePhotoPath,
                     'password' => Hash::make($data['password']),
                 ]);
 
@@ -610,11 +622,12 @@ class BearlyAuthController extends Controller
             Storage::disk('local')->delete(
                 array_filter([$validIdPath, $businessPermitPath])
             );
+            Storage::disk('public')->delete(array_filter([$profilePhotoPath]));
 
             throw $exception;
         }
 
-        $verification->forget($request);
+        $verification->forget($request, $data['email']);
         $drafts->forget($request, 'buyer-seller');
 
         $request->session()->forget([

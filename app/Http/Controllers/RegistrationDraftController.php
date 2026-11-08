@@ -22,6 +22,13 @@ class RegistrationDraftController extends Controller
             (int) $validated['step'],
         );
 
+        if (! $draft) {
+            return response()->json([
+                'data' => ['saved' => false],
+                'message' => 'This registration draft is no longer active.',
+            ]);
+        }
+
         return response()->json([
             'data' => [
                 'expires_at' => $draft->expires_at->toIso8601String(),

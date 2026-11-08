@@ -581,7 +581,10 @@ class RiderPickupWorkflowTest extends TestCase
             ->assertRedirect();
 
         $this->actingAs($rider->user)
-            ->post(route('rider.orders.pickup.confirm', $record['pickup']->pickup_no))
+            ->post(route('rider.orders.pickup.confirm', $record['pickup']->pickup_no), [
+                'waybill_identifier' => $record['parcel']->parcel_no,
+                'scan_method' => 'camera',
+            ])
             ->assertRedirect();
 
         $this->assertSame('return_in_transit', $returnRequest->fresh()->status);
@@ -708,6 +711,52 @@ class RiderPickupWorkflowTest extends TestCase
         $this->assertSame('bulky', $record['parcel']->fresh()->size_class);
     }
 
+    public function test_rider_can_confirm_pickup_using_the_printed_parcel_barcode(): void
+    {
+        $provider = $this->makeProvider('PRINTED-BARCODE');
+        $rider = $this->makeRider($provider, 'PRINTED-BARCODE');
+        $seller = $this->makeSeller('PRINTED-BARCODE');
+        $record = $this->makePickupAssignment($provider, $seller, $rider, 'PRINTED-BARCODE');
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.accept', $record['pickup']->pickup_no))
+            ->assertRedirect();
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.confirm', $record['pickup']->pickup_no), [
+                'waybill_identifier' => $record['parcel']->parcel_no,
+                'scan_method' => 'camera',
+            ])
+            ->assertRedirect(route('rider.orders.pickup', $record['pickup']->pickup_no));
+
+        $this->assertSame('picked_up', $record['assignment']->fresh()->status);
+        $this->assertSame('picked_up', $record['parcel']->fresh()->status);
+        $event = $record['shipment']->events()
+            ->where('parcel_id', $record['parcel']->id)
+            ->where('event_type', 'parcel_picked_up')
+            ->sole();
+        $this->assertSame('camera', $event->metadata['scan_method']);
+    }
+
+    public function test_rider_cannot_confirm_pickup_without_a_waybill_or_parcel_code(): void
+    {
+        $provider = $this->makeProvider('SCAN-REQUIRED');
+        $rider = $this->makeRider($provider, 'SCAN-REQUIRED');
+        $seller = $this->makeSeller('SCAN-REQUIRED');
+        $record = $this->makePickupAssignment($provider, $seller, $rider, 'SCAN-REQUIRED');
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.accept', $record['pickup']->pickup_no))
+            ->assertRedirect();
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.confirm', $record['pickup']->pickup_no), [])
+            ->assertSessionHasErrors('waybill_identifier');
+
+        $this->assertSame('accepted', $record['assignment']->fresh()->status);
+        $this->assertSame('ready_for_pickup', $record['parcel']->fresh()->status);
+    }
+
     public function test_logistics_batch_consolidates_pickup_earnings_across_assignments_and_shifts(): void
     {
         $provider = $this->makeProvider('MULTI-SHIFT-BATCH');
@@ -820,9 +869,14 @@ class RiderPickupWorkflowTest extends TestCase
                 route(
                     'rider.orders.pickup.confirm',
                     $record['pickup']->pickup_no
-                )
+                ),
+                [
+                    'waybill_identifier' => $record['parcel']->parcel_no,
+                    'scan_method' => 'camera',
+                ]
             )
-            ->assertStatus(409);
+            ->assertRedirect(route('rider.orders.pickup', $record['pickup']->pickup_no))
+            ->assertSessionHas('pickup_error', 'This pickup assignment cannot be confirmed in its current state.');
 
         $this->assertSame(
             'assigned',
@@ -897,7 +951,11 @@ class RiderPickupWorkflowTest extends TestCase
                 route(
                     'rider.orders.pickup.confirm',
                     $record['pickup']->pickup_no
-                )
+                ),
+                [
+                    'waybill_identifier' => $record['parcel']->parcel_no,
+                    'scan_method' => 'camera',
+                ]
             )
             ->assertNotFound();
 
@@ -959,7 +1017,10 @@ class RiderPickupWorkflowTest extends TestCase
 
         $this
             ->actingAs($rider->user)
-            ->post($url)
+            ->post($url, [
+                'waybill_identifier' => $record['parcel']->parcel_no,
+                'scan_method' => 'camera',
+            ])
             ->assertRedirect();
 
         $pickedUpAt =
@@ -969,8 +1030,12 @@ class RiderPickupWorkflowTest extends TestCase
 
         $this
             ->actingAs($rider->user)
-            ->post($url)
-            ->assertStatus(409);
+            ->post($url, [
+                'waybill_identifier' => $record['parcel']->parcel_no,
+                'scan_method' => 'camera',
+            ])
+            ->assertRedirect(route('rider.orders.pickup', $record['pickup']->pickup_no))
+            ->assertSessionHas('pickup_error', 'This pickup assignment cannot be confirmed in its current state.');
 
         $assignment =
             $record['assignment']->fresh();
@@ -1348,6 +1413,8 @@ class RiderPickupWorkflowTest extends TestCase
                     ->barcode_value
             )
             ->assertSee('rider-waybill-expected', false)
+            ->assertSee('data-waybill-scan-form', false)
+            ->assertSee('Printed Parcel barcode (Code 128):')
             ->assertSee('data-waybill-identifier', false)
             ->assertSee('Match the parcel waybill')
             ->assertSee('Rider Pickup Preview Product')
@@ -1376,7 +1443,7 @@ class RiderPickupWorkflowTest extends TestCase
             ->assertSee('data-map-forward-geocode-url="'.route('maps.forward-geocode').'"', false);
     }
 
-    public function test_rider_cannot_confirm_pickup_with_a_waybill_from_another_assignment(): void
+    public function test_rider_cannot_confirm_pickup_with_a_parcel_barcode_or_waybill_from_another_assignment(): void
     {
         $provider = $this->makeProvider('SCAN-SCOPE');
         $rider = $this->makeRider($provider, 'SCAN-SCOPE');
@@ -1390,10 +1457,25 @@ class RiderPickupWorkflowTest extends TestCase
 
         $this->actingAs($rider->user)
             ->post(route('rider.orders.pickup.confirm', $record['pickup']->pickup_no), [
+                'waybill_identifier' => $other['parcel']->parcel_no,
+                'scan_method' => 'camera',
+            ])
+            ->assertRedirect(route('rider.orders.pickup', $record['pickup']->pickup_no))
+            ->assertSessionHas('pickup_error', 'The scanned Parcel barcode or Waybill reference does not belong to this Rider pickup assignment.');
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.confirm', $record['pickup']->pickup_no), [
                 'waybill_identifier' => $other['waybill']->waybill_no,
                 'scan_method' => 'barcode',
             ])
-            ->assertStatus(409);
+            ->assertRedirect(route('rider.orders.pickup', $record['pickup']->pickup_no))
+            ->assertSessionHas('pickup_error', 'The scanned Parcel barcode or Waybill reference does not belong to this Rider pickup assignment.');
+
+        $this->actingAs($rider->user)
+            ->get(route('rider.orders.pickup', $record['pickup']->pickup_no))
+            ->assertOk()
+            ->assertSee('The scanned Parcel barcode or Waybill reference does not belong to this Rider pickup assignment.')
+            ->assertSee('value="'.$other['waybill']->waybill_no.'"', false);
 
         $this->assertSame('accepted', $record['assignment']->fresh()->status);
         $this->assertSame('ready_for_pickup', $record['parcel']->fresh()->status);

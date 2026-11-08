@@ -15,7 +15,7 @@
     'headerSearchAction' => route('products.index'),
 ])
 <main class="checkout-shell">
-    <a class="checkout-back" href="{{ route('home') }}"><span class="material-symbols-outlined">arrow_back</span> Continue Shopping</a>
+    <a class="checkout-back" href="{{ route('buyer.profile', ['purchase_filter' => 'to-receive']) }}#purchases"><span class="material-symbols-outlined" aria-hidden="true">arrow_back</span> Back to To Receive Orders</a>
     @if (session('success'))<p class="checkout-success" role="status">{{ session('success') }}</p>@endif
     @if (session('warning'))
         <p class="checkout-warning checkout-cancellation-note" role="status">{{ session('warning') }}</p>

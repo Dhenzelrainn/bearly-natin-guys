@@ -23,6 +23,7 @@ use App\Models\User;
 use App\Models\Waybill;
 use App\Services\DispatchService;
 use App\Services\RiderDeliveryRecommendationService;
+use App\Services\RiderDeliveryService;
 use App\Services\RiderLocationService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -1264,6 +1265,46 @@ class DispatchWorkflowTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.fulfillment.delivery-proofs.show', $traversalProof))
             ->assertNotFound();
+    }
+
+    public function test_monitoring_timeline_shows_saved_parcel_verification_before_delivery_confirmation(): void
+    {
+        $zone = $this->makeZone($this->centerA, 'BARCODE-VERIFY');
+        $rider = $this->makeRider(
+            $this->profileA,
+            $this->centerA,
+            $zone,
+            'BARCODE-VERIFY',
+            10,
+        );
+        $record = $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $zone,
+            'BARCODE-VERIFY',
+        );
+        $batch = app(DispatchService::class)->dispatchZone(
+            $zone,
+            $rider,
+            $this->logisticsA,
+        );
+        $deliveryService = app(RiderDeliveryService::class);
+        $deliveryService->startDelivery($record['shipment']->shipment_no, $rider->user);
+        $deliveryService->verifyParcelBarcode(
+            $record['shipment']->shipment_no,
+            $rider->user,
+            $record['parcel']->parcel_no,
+        );
+
+        $this->assertSame(ParcelStatus::OutForDelivery->value, $record['parcel']->fresh()->status);
+        $this->assertDatabaseCount('delivery_attempts', 0);
+
+        $this->actingAs($this->logisticsA)
+            ->get(route('logistics.dispatch.monitoring'))
+            ->assertOk()
+            ->assertSee('Parcel barcode verified')
+            ->assertSee($record['parcel']->parcel_no)
+            ->assertSee('Delivery remains Out for Delivery until the Rider confirms the handoff.');
     }
 
     public function test_monitoring_derives_real_stages_progress_and_metrics(): void

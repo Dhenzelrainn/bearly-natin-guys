@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\UserRole;
 use App\Models\Address;
+use App\Models\CodCashCollection;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
 use App\Models\Payment;
@@ -104,7 +105,8 @@ class BuyerOrderConfirmationTest extends TestCase
             ->assertOk()
             ->assertSee('Order completed')
             ->assertDontSee('Confirm receipt')
-            ->assertSee('class="checkout-back" href="'.route('home').'"', false);
+            ->assertSee('class="checkout-back" href="'.route('buyer.profile', ['purchase_filter' => 'to-receive']).'#purchases"', false)
+            ->assertSee('Back to To Receive Orders');
 
         $this->actingAs($seller)
             ->get(route('seller.orders'))
@@ -119,6 +121,62 @@ class BuyerOrderConfirmationTest extends TestCase
             ->assertJsonPath('data.orders.0.seller_order_id', $sellerOrder->id)
             ->assertJsonPath('data.orders.0.seller_order_status', 'completed')
             ->assertJsonPath('data.orders.0.status_label', 'Completed');
+    }
+
+    public function test_buyer_can_confirm_delivered_cod_order_before_finance_reconciliation(): void
+    {
+        $buyer = $this->buyer('cod-before-finance');
+        [, $store] = $this->seller();
+        $provider = $this->provider('cod-before-finance');
+        $order = $this->marketplaceOrder($buyer, 'cod-before-finance');
+        $sellerOrder = $this->sellerOrder($order, $store, 'cod-before-finance', 'handed_to_logistics');
+        $shipment = $this->shipment($sellerOrder, $provider, 'cod-before-finance', 'delivered');
+        $collection = $this->recordCodAtRider($shipment, $provider, 'cod-before-finance');
+
+        $purchase = collect($this->actingAs($buyer)
+            ->getJson(route('buyer.purchases.data'))
+            ->assertOk()
+            ->json('data'))
+            ->firstWhere('id', $order->order_no);
+
+        $this->assertSame('to-receive', $purchase['status']);
+        $this->assertTrue($purchase['can_confirm']);
+        $this->assertSame(route('checkout.confirm-receipt', $order->id), $purchase['confirm_url']);
+        $this->assertSame('collected', $collection->status);
+        $this->assertSame('pending', $order->payments()->sole()->status);
+
+        $this->actingAs($buyer)
+            ->post(route('checkout.confirm-receipt', $order->id))
+            ->assertRedirect(route('checkout.confirmation', $order->order_no))
+            ->assertSessionHas('success');
+
+        $this->assertSame('completed', $sellerOrder->fresh()->status);
+        $this->assertSame('fulfilled', $order->fresh()->status);
+        $this->assertSame('unpaid', $order->fresh()->payment_status);
+        $this->assertSame('pending', $order->payments()->sole()->status);
+        $this->assertNull($order->payments()->sole()->paid_at);
+        $this->assertSame('collected', $collection->fresh()->status);
+
+        $codCash = app(CodCashCollectionService::class);
+        $amountMinor = (int) $shipment->cod_amount_minor;
+        $codCash->receiveAtLogistics($provider['user'], (int) $collection->id, $amountMinor);
+        $codCash->remitToFinance($provider['user'], (int) $collection->id, $amountMinor);
+
+        $finance = User::factory()->create([
+            'name' => 'Finance cod-before-finance',
+            'email' => 'confirm-finance-cod-before-finance-'.(++$this->sequence).'@example.test',
+            'role' => UserRole::Admin->value,
+            'status' => 'active',
+        ]);
+        $finance->roles()->syncWithoutDetaching([
+            Role::query()->where('name', UserRole::Admin->value)->value('id'),
+        ]);
+        $codCash->reconcileAtFinance($finance, (int) $collection->id, $amountMinor);
+
+        $this->assertSame('reconciled', $collection->fresh()->status);
+        $this->assertSame('paid', $order->fresh()->payment_status);
+        $this->assertSame('paid', $order->payments()->sole()->status);
+        $this->assertNotNull($order->payments()->sole()->paid_at);
     }
 
     public function test_seller_order_status_updates_are_scoped_to_the_authenticated_store(): void
@@ -248,6 +306,8 @@ class BuyerOrderConfirmationTest extends TestCase
         $this->actingAs($buyer)
             ->get(route('checkout.confirmation', $order->order_no))
             ->assertOk()
+            ->assertSee('href="'.route('buyer.profile', ['purchase_filter' => 'to-receive']).'#purchases"', false)
+            ->assertSee('Back to To Receive Orders')
             ->assertSee('seller-products/variants/detail-test.png', false)
             ->assertSee('SNAPSHOT-DETAIL-001')
             ->assertSee('SKU: SNAPSHOT-DETAIL-001')
@@ -256,6 +316,12 @@ class BuyerOrderConfirmationTest extends TestCase
             ->assertSee('20 Buyer Street')
             ->assertSee(now()->format('M j, Y'))
             ->assertSee('Confirm receipt');
+
+        $this->actingAs($buyer)
+            ->get(route('buyer.profile', ['purchase_filter' => 'to-receive']))
+            ->assertOk()
+            ->assertSee('data-initial-purchase-filter="to-receive"', false)
+            ->assertSee('data-order-filter="to-receive"', false);
     }
 
     private function buyer(string $suffix): User
@@ -419,6 +485,26 @@ class BuyerOrderConfirmationTest extends TestCase
     /** @param array{user: User, profile: LogisticsProfile} $provider */
     private function collectCod(Shipment $shipment, array $provider, string $suffix): void
     {
+        $codCash = app(CodCashCollectionService::class);
+        $collection = $this->recordCodAtRider($shipment, $provider, $suffix);
+        $codCash->receiveAtLogistics($provider['user'], (int) $collection->id, (int) $shipment->cod_amount_minor);
+        $codCash->remitToFinance($provider['user'], (int) $collection->id, (int) $shipment->cod_amount_minor);
+
+        $finance = User::factory()->create([
+            'name' => 'Finance '.$suffix,
+            'email' => 'confirm-finance-'.Str::slug($suffix).'-'.(++$this->sequence).'@example.test',
+            'role' => UserRole::Admin->value,
+            'status' => 'active',
+        ]);
+        $finance->roles()->syncWithoutDetaching([
+            Role::query()->where('name', UserRole::Admin->value)->value('id'),
+        ]);
+        $codCash->reconcileAtFinance($finance, (int) $collection->id, (int) $shipment->cod_amount_minor);
+    }
+
+    /** @param array{user: User, profile: LogisticsProfile} $provider */
+    private function recordCodAtRider(Shipment $shipment, array $provider, string $suffix): CodCashCollection
+    {
         $rider = User::factory()->create([
             'name' => 'COD Rider '.$suffix,
             'email' => 'confirm-cod-rider-'.Str::slug($suffix).'-'.Str::upper(Str::random(5)).'@example.test',
@@ -436,24 +522,10 @@ class BuyerOrderConfirmationTest extends TestCase
             'verification_status' => 'approved',
         ]);
 
-        $codCash = app(CodCashCollectionService::class);
-        $collection = $codCash->recordRiderCollection(
+        return app(CodCashCollectionService::class)->recordRiderCollection(
             $shipment,
             $rider,
             (int) $shipment->cod_amount_minor,
         );
-        $codCash->receiveAtLogistics($provider['user'], (int) $collection->id, (int) $shipment->cod_amount_minor);
-        $codCash->remitToFinance($provider['user'], (int) $collection->id, (int) $shipment->cod_amount_minor);
-
-        $finance = User::factory()->create([
-            'name' => 'Finance '.$suffix,
-            'email' => 'confirm-finance-'.Str::slug($suffix).'-'.(++$this->sequence).'@example.test',
-            'role' => UserRole::Admin->value,
-            'status' => 'active',
-        ]);
-        $finance->roles()->syncWithoutDetaching([
-            Role::query()->where('name', UserRole::Admin->value)->value('id'),
-        ]);
-        $codCash->reconcileAtFinance($finance, (int) $collection->id, (int) $shipment->cod_amount_minor);
     }
 }

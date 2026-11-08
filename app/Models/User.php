@@ -14,7 +14,14 @@ class User extends Authenticatable
 
     protected $guarded = [];
 
-    protected $hidden = ['password', 'remember_token'];
+    protected $hidden = [
+        'password',
+        'remember_token',
+        'valid_id_path',
+        'business_permit_path',
+        'or_cr_path',
+        'driver_license_path',
+    ];
 
     protected function casts(): array
     {

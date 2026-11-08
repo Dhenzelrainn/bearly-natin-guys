@@ -39,6 +39,7 @@ class RegistrationValidationTest extends TestCase
 
         $this->seed(DatabaseSeeder::class);
         Storage::fake('local');
+        Storage::fake('public');
     }
 
     public function test_database_backed_seller_categories_persist_the_matching_business_category_id(): void
@@ -107,7 +108,7 @@ class RegistrationValidationTest extends TestCase
         $this->assertDatabaseMissing('users', ['email' => 'legacy-category-choice@example.test']);
     }
 
-    public function test_buyer_registration_hides_the_seller_id_upload_and_does_not_mark_it_required(): void
+    public function test_buyer_registration_shows_an_optional_id_and_profile_photo_upload(): void
     {
         $response = $this->get(route('register'))
             ->assertOk()
@@ -131,6 +132,95 @@ class RegistrationValidationTest extends TestCase
         $this->assertNotEmpty($matches[0] ?? null);
         $this->assertDoesNotMatchRegularExpression('/\srequired(?:\s|>)/', $matches[0]);
         $this->assertMatchesRegularExpression('/data-seller-document\s+hidden/', $html);
+        $this->assertStringNotContainsString('data-valid-id-document hidden', $html);
+        $this->assertStringContainsString('name="profile_photo"', $html);
+        $this->assertStringContainsString('accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"', $html);
+    }
+
+    public function test_buyer_registration_stores_optional_id_privately_and_photo_publicly_without_admin_review(): void
+    {
+        $email = 'buyer-uploads@example.test';
+        $this->grantEmailProof($email);
+
+        $this->post(route('register.submit'), $this->buyerData($email, '09181234567', [
+            'valid_id' => UploadedFile::fake()->create('buyer-id.pdf', 100, 'application/pdf'),
+            'profile_photo' => $this->fakeProfilePhoto('buyer-profile.png'),
+        ]))->assertRedirect(route('login'));
+
+        $buyer = User::query()->where('email', $email)->firstOrFail();
+
+        $this->assertSame(AccountStatus::Active->value, $buyer->status);
+        $this->assertNotNull($buyer->valid_id_path);
+        $this->assertNotNull($buyer->profile_photo_path);
+        $this->assertStringStartsWith('registration-documents/buyer-valid-ids/', $buyer->valid_id_path);
+        $this->assertStringStartsWith('profile-photos/', $buyer->profile_photo_path);
+        Storage::disk('local')->assertExists($buyer->valid_id_path);
+        Storage::disk('public')->assertExists($buyer->profile_photo_path);
+        $this->assertFalse($buyer->applications()->exists());
+        $this->assertNull($buyer->approved_by);
+        $this->assertNull($buyer->approved_at);
+
+        $admin = User::query()->where('email', 'admin@bearly.test')->firstOrFail();
+        $this->actingAs($admin)
+            ->get(route('admin.registrations.buyer-ids'))
+            ->assertOk()
+            ->assertSee('Buyer ID uploads')
+            ->assertSee($email)
+            ->assertSee(route('admin.applications.document', ['user' => $buyer, 'type' => 'valid-id']), false);
+
+        $documentResponse = $this->get(route('admin.applications.document', [
+            'user' => $buyer,
+            'type' => 'valid-id',
+        ]))->assertOk();
+        $this->assertStringContainsString('no-store', (string) $documentResponse->headers->get('Cache-Control'));
+
+        $this->actingAs($buyer)
+            ->get(route('admin.registrations.buyer-ids'))
+            ->assertForbidden();
+    }
+
+    public function test_profile_photo_validation_accepts_jpeg_and_webp_and_rejects_non_images(): void
+    {
+        foreach ([
+            [
+                'email' => 'buyer-jpeg-photo@example.test',
+                'phone' => '09181234567',
+                'filename' => 'buyer-profile.jpg',
+                'source' => public_path('images/bearly-logo-waybill.jpg'),
+            ],
+            [
+                'email' => 'buyer-webp-photo@example.test',
+                'phone' => '09181234568',
+                'filename' => 'buyer-profile.webp',
+                'source' => public_path('images/landing/hero.webp'),
+            ],
+        ] as $fixture) {
+            $this->grantEmailProof($fixture['email']);
+            $profilePhoto = UploadedFile::fake()->createWithContent(
+                $fixture['filename'],
+                (string) file_get_contents($fixture['source']),
+            );
+
+            $this->post(route('register.submit'), $this->buyerData(
+                $fixture['email'],
+                $fixture['phone'],
+                ['profile_photo' => $profilePhoto],
+            ))->assertRedirect(route('login'));
+
+            $buyer = User::query()->where('email', $fixture['email'])->firstOrFail();
+            $this->assertNotNull($buyer->profile_photo_path);
+            Storage::disk('public')->assertExists($buyer->profile_photo_path);
+        }
+
+        $invalidEmail = 'buyer-invalid-photo@example.test';
+        $this->from(route('register'))
+            ->post(route('register.submit'), $this->buyerData($invalidEmail, '09181234569', [
+                'profile_photo' => UploadedFile::fake()->create('not-an-image.pdf', 100, 'application/pdf'),
+            ]))
+            ->assertRedirect(route('register'))
+            ->assertSessionHasErrors('profile_photo');
+
+        $this->assertDatabaseMissing('users', ['email' => $invalidEmail]);
     }
 
     public function test_rider_and_logistics_registration_show_short_placeholders_across_all_steps(): void
@@ -139,7 +229,7 @@ class RegistrationValidationTest extends TestCase
             route('rider.register') => 'Rider application',
             route('logistics.register') => 'Logistics partner application',
         ] as $registrationRoute => $registrationLabel) {
-            $this->get($registrationRoute)
+            $response = $this->get($registrationRoute)
                 ->assertOk()
                 ->assertSee('<header class="registration-header" data-registration-header>', false)
                 ->assertSee('class="registration-brand-divider" aria-hidden="true"', false)
@@ -156,7 +246,9 @@ class RegistrationValidationTest extends TestCase
                 ->assertSee('data-search-placeholder="Search region"', false)
                 ->assertSee('data-search-placeholder="Search municipality"', false)
                 ->assertSee('placeholder="Create password"', false)
-                ->assertSee('placeholder="Confirm password"', false);
+                ->assertSee('placeholder="Confirm password"', false)
+                ->assertSee('name="profile_photo"', false)
+                ->assertSee('accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"', false);
         }
 
         $this->get(route('rider.register'))
@@ -167,6 +259,29 @@ class RegistrationValidationTest extends TestCase
         $this->get(route('logistics.register'))
             ->assertOk()
             ->assertSee('placeholder="Registered facility or business name"', false);
+    }
+
+    public function test_registration_name_fields_render_first_middle_then_last(): void
+    {
+        foreach ([
+            route('register') => 'Buyer/Seller',
+            route('rider.register') => 'Rider',
+            route('logistics.register') => 'Logistics',
+        ] as $registrationRoute => $registrationRole) {
+            $html = (string) $this->get($registrationRoute)
+                ->assertOk()
+                ->getContent();
+
+            $firstNamePosition = strpos($html, 'name="first_name"');
+            $lastNamePosition = strpos($html, 'name="last_name"');
+            $middleInitialPosition = strpos($html, 'name="middle_initial"');
+
+            $this->assertNotFalse($firstNamePosition, "{$registrationRole} registration is missing the first name field.");
+            $this->assertNotFalse($lastNamePosition, "{$registrationRole} registration is missing the last name field.");
+            $this->assertNotFalse($middleInitialPosition, "{$registrationRole} registration is missing the middle initial field.");
+            $this->assertLessThan($middleInitialPosition, $firstNamePosition, "{$registrationRole} registration must show First name before Middle initial.");
+            $this->assertLessThan($lastNamePosition, $middleInitialPosition, "{$registrationRole} registration must show Middle initial before Last name.");
+        }
     }
 
     public function test_rider_logistics_partner_selector_is_after_municipality_in_address_step(): void
@@ -204,6 +319,93 @@ class RegistrationValidationTest extends TestCase
         $this->assertNotFalse($barangayPosition);
         $this->assertGreaterThan($cityPosition, $partnerPosition);
         $this->assertLessThan($barangayPosition, $partnerPosition);
+    }
+
+    public function test_registration_submit_rate_limit_is_scoped_to_session_and_email(): void
+    {
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.42']);
+
+        // Separate visitors sharing one public IP should not exhaust the old
+        // ten-submissions-per-IP bucket just by registering around the same time.
+        for ($attempt = 1; $attempt <= 12; $attempt++) {
+            $this->from(route('register'))
+                ->post(route('register.submit'), [
+                    'role' => UserRole::Buyer->value,
+                    'email' => "shared-ip-{$attempt}@example.test",
+                ])
+                ->assertRedirect(route('register'));
+        }
+
+        // A single email still has a dedicated limit, even across fresh sessions.
+        for ($attempt = 1; $attempt <= 5; $attempt++) {
+            $email = $attempt % 2 === 0
+                ? 'same-email@example.test'
+                : 'Same-Email@example.test';
+
+            $this->from(route('register'))
+                ->post(route('register.submit'), [
+                    'role' => UserRole::Buyer->value,
+                    'email' => $email,
+                ])
+                ->assertRedirect(route('register'));
+        }
+
+        $this->from(route('register'))
+            ->post(route('register.submit'), [
+                'role' => UserRole::Buyer->value,
+                'email' => 'same-email@example.test',
+            ])
+            ->assertStatus(429);
+
+        // Keep an aggregate burst ceiling as a backstop for traffic using
+        // many sessions and addresses from one IP.
+        for ($attempt = 1; $attempt <= 42; $attempt++) {
+            $this->from(route('register'))
+                ->post(route('register.submit'), [
+                    'role' => UserRole::Buyer->value,
+                    'email' => "ip-cap-{$attempt}@example.test",
+                ])
+                ->assertRedirect(route('register'));
+        }
+
+        $this->from(route('register'))
+            ->post(route('register.submit'), [
+                'role' => UserRole::Buyer->value,
+                'email' => 'ip-cap-final@example.test',
+            ])
+            ->assertStatus(429);
+    }
+
+    public function test_registration_submit_still_limits_repeated_attempts_in_one_session(): void
+    {
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.43']);
+
+        $sessionCookieName = (string) config('session.cookie');
+        $sessionCookie = $this->get(route('register'))
+            ->assertOk()
+            ->getCookie($sessionCookieName);
+
+        $this->assertNotNull($sessionCookie);
+
+        for ($attempt = 1; $attempt <= 10; $attempt++) {
+            $response = $this->withCookie($sessionCookieName, $sessionCookie->getValue())
+                ->from(route('register'))
+                ->post(route('register.submit'), [
+                    'role' => UserRole::Buyer->value,
+                    'email' => "same-session-{$attempt}@example.test",
+                ])
+                ->assertRedirect(route('register'));
+
+            $sessionCookie = $response->getCookie($sessionCookieName) ?? $sessionCookie;
+        }
+
+        $this->withCookie($sessionCookieName, $sessionCookie->getValue())
+            ->from(route('register'))
+            ->post(route('register.submit'), [
+                'role' => UserRole::Buyer->value,
+                'email' => 'same-session-eleventh@example.test',
+            ])
+            ->assertStatus(429);
     }
 
     public function test_buyer_registration_rejects_missing_email_proof_without_persisting_user_or_address(): void
@@ -311,6 +513,24 @@ class RegistrationValidationTest extends TestCase
         $this->withCookie(RegistrationDraftService::COOKIE_NAME, $token)
             ->post(route('register.submit'), $this->buyerData($email, '09181234567'))
             ->assertRedirect(route('login'));
+
+        $this->assertDatabaseMissing('registration_drafts', [
+            'browser_token_hash' => hash('sha256', $token),
+            'flow' => 'buyer-seller',
+        ]);
+
+        $this->withCookie(RegistrationDraftService::COOKIE_NAME, $token)
+            ->postJson(route('register.draft.save', 'buyer-seller'), [
+                'fields' => [
+                    'role' => UserRole::Buyer->value,
+                    'first_name' => 'Bianca',
+                    'email' => $email,
+                ],
+                'step' => 2,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.saved', false)
+            ->assertJsonPath('message', 'This registration draft is no longer active.');
 
         $this->assertDatabaseMissing('registration_drafts', [
             'browser_token_hash' => hash('sha256', $token),
@@ -912,6 +1132,14 @@ class RegistrationValidationTest extends TestCase
                 'verified_at' => now()->toDateTimeString(),
             ],
             now()->addMinutes(30)
+        );
+    }
+
+    private function fakeProfilePhoto(string $filename): UploadedFile
+    {
+        return UploadedFile::fake()->createWithContent(
+            $filename,
+            (string) file_get_contents(public_path('images/icon-buyer.png')),
         );
     }
 }

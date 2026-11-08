@@ -96,6 +96,10 @@ class NotificationCategoryService
                     'logistics_linehaul_exception_resolved',
                 ],
             ],
+            'deliveries' => [
+                'label' => 'Delivery monitoring',
+                'events' => ['logistics_delivery_parcels_verified'],
+            ],
             'cash' => [
                 'label' => 'COD & refund cash',
                 'events' => ['logistics_cod_collected', 'logistics_refund_cash_issued'],

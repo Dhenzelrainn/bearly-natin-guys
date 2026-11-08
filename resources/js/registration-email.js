@@ -1,3 +1,5 @@
+import { emailVerificationFailure } from './email-verification-error.js';
+
 export function setupEmail(form, role) {
     const stored = form.elements.email;
     const panel = form.querySelector('[data-email-verification]');
@@ -52,6 +54,7 @@ export function setupEmail(form, role) {
     let verifiedUntil = 0;
     let sentEmail = '';
     let busy = false;
+    let restoring = false;
     let cooldownUntil = 0;
     let generation = 0;
 
@@ -62,6 +65,7 @@ export function setupEmail(form, role) {
 
     function reset() {
         generation++;
+        restoring = false;
         verifiedEmail = '';
         verifiedUntil = 0;
         sentEmail = '';
@@ -110,28 +114,78 @@ export function setupEmail(form, role) {
         const data = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-            if (response.status === 429) {
-                cooldownUntil =
-                    Date.now() +
-                    Number(response.headers.get('Retry-After') || 60) * 1000;
-            }
-
-            throw new Error(
-                response.status === 419
-                    ? 'Your session expired. Refresh the page and try again.'
-                    : Object.values(data.errors || {}).flat()[0] ||
-                      (response.status === 429
-                          ? 'Too many requests. Please wait before trying again.'
-                          : 'Verification is unavailable. Please try again.')
+            const failure = emailVerificationFailure(
+                response,
+                data,
+                'Verification is unavailable. Please try again.',
             );
+            const error = new Error(failure.message);
+            error.retryAfter = failure.retryAfter;
+
+            throw error;
         }
 
         return data;
     }
 
+    async function restoreVerifiedProof() {
+        const email = normalizedStoredEmail();
+
+        if (
+            !form.dataset.emailStatus ||
+            !email ||
+            !stored.checkValidity()
+        ) {
+            return;
+        }
+
+        stored.value = email;
+        const requestGeneration = generation;
+        restoring = true;
+        message('Checking saved email verification…');
+        refresh();
+
+        try {
+            const data = await post(form.dataset.emailStatus, {});
+
+            if (
+                requestGeneration !== generation ||
+                normalizedStoredEmail() !== email
+            ) {
+                return;
+            }
+
+            if (data.verified && Number(data.expires_in) > 0) {
+                verifiedEmail = email;
+                sentEmail = email;
+                verifiedUntil = Date.now() + Number(data.expires_in) * 1000;
+                entry.hidden = true;
+                code.value = '';
+                message('Email address verified. You may continue.');
+                status.dataset.state = 'verified';
+            } else {
+                message('Verify your email address to continue.');
+            }
+        } catch (error) {
+            if (requestGeneration === generation) {
+                message(
+                    'Could not check the saved verification. Please retry or request a new code.',
+                    true,
+                );
+            }
+        } finally {
+            if (requestGeneration === generation) {
+                restoring = false;
+            }
+
+            refresh();
+        }
+    }
+
     send.addEventListener('click', async () => {
         if (
             busy ||
+            restoring ||
             Date.now() < cooldownUntil ||
             !validEmail()
         ) {
@@ -159,6 +213,10 @@ export function setupEmail(form, role) {
             code.focus();
         } catch (error) {
             if (requestGeneration === generation) {
+                if (error.retryAfter) {
+                    cooldownUntil = Date.now() + error.retryAfter * 1000;
+                }
+
                 message(error.message, true);
             }
         } finally {
@@ -168,7 +226,7 @@ export function setupEmail(form, role) {
     });
 
     check.addEventListener('click', async () => {
-        if (busy || !validEmail()) return;
+        if (busy || restoring || !validEmail()) return;
 
         if (stored.value !== sentEmail) {
             reset();
@@ -227,13 +285,16 @@ export function setupEmail(form, role) {
 
         send.disabled =
             busy ||
+            restoring ||
             left > 0 ||
             Boolean(verifiedEmail);
 
-        check.disabled = busy;
+        check.disabled = busy || restoring;
 
         send.textContent = busy
             ? 'Please wait…'
+            : restoring
+                ? 'Checking…'
             : verifiedEmail
                 ? 'Verified'
                 : left
@@ -255,6 +316,7 @@ export function setupEmail(form, role) {
     }
 
     reset();
+    void restoreVerifiedProof();
     refresh();
     window.setInterval(refresh, 1000);
 
@@ -262,6 +324,11 @@ export function setupEmail(form, role) {
         updateRole: refresh,
         validate: () => {
             if (!validEmail()) return false;
+
+            if (restoring) {
+                message('Checking whether this email is already verified. Please wait.');
+                return false;
+            }
 
             if (
                 ['buyer', 'seller'].includes(role()) &&

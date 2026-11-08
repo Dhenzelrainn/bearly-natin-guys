@@ -11,8 +11,11 @@ use App\Models\Order;
 use App\Models\User;
 use App\Observers\AccountApplicationObserver;
 use App\Observers\AddressObserver;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Filesystem\FilesystemAdapter;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\View;
@@ -34,6 +37,28 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Keep repeated registration attempts bounded without making a low
+        // shared-IP threshold block unrelated visitors behind the same NAT.
+        RateLimiter::for('registration-submit', function (Request $request): array {
+            $appKey = (string) config('app.key');
+            $sessionId = $request->hasSession()
+                ? $request->session()->getId()
+                : 'no-session:'.$request->ip();
+            $email = strtolower(trim((string) $request->input('email', '')));
+
+            $limits = [
+                Limit::perMinute(10)->by('session:'.hash_hmac('sha256', $sessionId, $appKey)),
+                Limit::perMinute(60)->by('ip:'.$request->ip()),
+            ];
+
+            if ($email !== '') {
+                $limits[] = Limit::perMinute(5)
+                    ->by('email:'.hash_hmac('sha256', $email, $appKey));
+            }
+
+            return $limits;
+        });
+
         // For the Cloudflare development hostname, always use compiled Vite assets.
         // Localhost can keep using the normal public/hot Vite dev server.
         if (

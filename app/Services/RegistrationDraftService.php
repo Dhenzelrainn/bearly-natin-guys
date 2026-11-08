@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\RegistrationDraft;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Str;
 
@@ -59,6 +61,11 @@ class RegistrationDraftService
         if ($draft?->expires_at->isPast()) {
             $draft->delete();
             $draft = null;
+        } elseif ($draft && $this->emailAlreadyRegistered(
+            is_array($draft->payload) ? ($draft->payload['email'] ?? null) : null
+        )) {
+            $draft->delete();
+            $draft = null;
         } elseif ($draft) {
             $draft->forceFill(['expires_at' => now()->addDays(self::TTL_DAYS)])->save();
         }
@@ -78,7 +85,7 @@ class RegistrationDraftService
     /**
      * @param  array<string, mixed>  $fields
      */
-    public function save(Request $request, string $flow, array $fields, int $step): RegistrationDraft
+    public function save(Request $request, string $flow, array $fields, int $step): ?RegistrationDraft
     {
         $definition = $this->definition($flow);
         $allowed = array_fill_keys($definition['fields'], true);
@@ -97,27 +104,44 @@ class RegistrationDraftService
             $safeFields[$name] = $value;
         }
 
-        $draft = RegistrationDraft::query()->firstOrNew([
-            'browser_token_hash' => $this->browserTokenHash($request),
-            'flow' => $flow,
-        ]);
-        $draft->forceFill([
-            'payload' => $safeFields,
-            'step' => min($definition['max_step'], max(1, $step)),
-            'expires_at' => now()->addDays(self::TTL_DAYS),
-        ])->save();
+        $browserTokenHash = $this->browserTokenHash($request);
 
-        return $draft;
+        return Cache::lock($this->lockKey($browserTokenHash, $flow), 10)
+            ->block(5, function () use ($safeFields, $definition, $browserTokenHash, $flow, $step): ?RegistrationDraft {
+                if ($this->emailAlreadyRegistered($safeFields['email'] ?? null)) {
+                    RegistrationDraft::query()
+                        ->where('browser_token_hash', $browserTokenHash)
+                        ->where('flow', $flow)
+                        ->delete();
+
+                    return null;
+                }
+
+                $draft = RegistrationDraft::query()->firstOrNew([
+                    'browser_token_hash' => $browserTokenHash,
+                    'flow' => $flow,
+                ]);
+                $draft->forceFill([
+                    'payload' => $safeFields,
+                    'step' => min($definition['max_step'], max(1, $step)),
+                    'expires_at' => now()->addDays(self::TTL_DAYS),
+                ])->save();
+
+                return $draft;
+            });
     }
 
     public function forget(Request $request, string $flow): void
     {
         $this->definition($flow);
 
-        RegistrationDraft::query()
-            ->where('browser_token_hash', $this->browserTokenHash($request))
-            ->where('flow', $flow)
-            ->delete();
+        $browserTokenHash = $this->browserTokenHash($request);
+
+        Cache::lock($this->lockKey($browserTokenHash, $flow), 10)
+            ->block(5, fn () => RegistrationDraft::query()
+                ->where('browser_token_hash', $browserTokenHash)
+                ->where('flow', $flow)
+                ->delete());
     }
 
     public function pruneExpired(): int
@@ -159,5 +183,27 @@ class RegistrationDraftService
         ));
 
         return hash('sha256', $token);
+    }
+
+    private function lockKey(string $browserTokenHash, string $flow): string
+    {
+        return 'registration-draft:'.$flow.':'.$browserTokenHash.':lock';
+    }
+
+    private function emailAlreadyRegistered(mixed $email): bool
+    {
+        if (! is_string($email)) {
+            return false;
+        }
+
+        $email = strtolower(trim($email));
+
+        if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return false;
+        }
+
+        return User::withTrashed()
+            ->whereRaw('LOWER(email) = ?', [$email])
+            ->exists();
     }
 }

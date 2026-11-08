@@ -51,9 +51,10 @@ class AccountApprovalWorkflowTest extends TestCase
 
         $this->seed(DatabaseSeeder::class);
         Mail::fake();
+        Storage::fake('public');
     }
 
-    public function test_new_buyer_registration_activates_after_email_proof_without_id_or_admin_review(): void
+    public function test_new_buyer_registration_activates_after_email_proof_with_optional_id_and_no_admin_review(): void
     {
         Storage::fake('local');
         Notification::fake();
@@ -111,7 +112,9 @@ class AccountApprovalWorkflowTest extends TestCase
 
         $this->assertNotNull($buyer->email_verified_at);
         $this->assertNull($buyer->phone_verified_at);
-        $this->assertNull($buyer->valid_id_path);
+        $this->assertNotNull($buyer->valid_id_path);
+        $this->assertStringStartsWith('registration-documents/buyer-valid-ids/', $buyer->valid_id_path);
+        Storage::disk('local')->assertExists($buyer->valid_id_path);
         $this->assertNull($buyer->approved_by);
         $this->assertNull($buyer->approved_at);
         $this->assertGuest();
@@ -201,6 +204,7 @@ class AccountApprovalWorkflowTest extends TestCase
                     100,
                     'application/pdf'
                 ),
+            'profile_photo' => $this->fakeProfilePhoto('seller-profile.png'),
             'password' => 'Password123',
             'password_confirmation' =>
                 'Password123',
@@ -265,6 +269,7 @@ class AccountApprovalWorkflowTest extends TestCase
             ->assertExists(
                 $seller->business_permit_path
             );
+        Storage::disk('public')->assertExists($seller->profile_photo_path);
     }
 
     public function test_logistics_application_is_saved_for_admin_approval(): void
@@ -314,6 +319,7 @@ class AccountApprovalWorkflowTest extends TestCase
                             100,
                             'application/pdf'
                         ),
+                'profile_photo' => $this->fakeProfilePhoto('logistics-profile.png'),
                 'password' => 'Password123',
                 'password_confirmation' =>
                     'Password123',
@@ -348,6 +354,7 @@ class AccountApprovalWorkflowTest extends TestCase
                 $logistics
                     ->business_permit_path
             );
+        Storage::disk('public')->assertExists($logistics->profile_photo_path);
 
         $application = $logistics
             ->applications()
@@ -500,6 +507,7 @@ class AccountApprovalWorkflowTest extends TestCase
                             100,
                             'application/pdf'
                         ),
+                'profile_photo' => $this->fakeProfilePhoto('rider-profile.png'),
                 'password' =>
                     'Password123',
                 'password_confirmation' =>
@@ -548,6 +556,7 @@ class AccountApprovalWorkflowTest extends TestCase
                 $rider
                     ->driver_license_path
             );
+        Storage::disk('public')->assertExists($rider->profile_photo_path);
     }
 
     public function test_admin_can_approve_buyer_seller_and_logistics_applications(): void
@@ -1454,6 +1463,14 @@ class AccountApprovalWorkflowTest extends TestCase
                         ->toDateTimeString(),
             ],
             now()->addMinutes(30)
+        );
+    }
+
+    private function fakeProfilePhoto(string $filename): UploadedFile
+    {
+        return UploadedFile::fake()->createWithContent(
+            $filename,
+            (string) file_get_contents(public_path('images/icon-buyer.png')),
         );
     }
 }

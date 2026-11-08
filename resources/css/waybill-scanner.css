@@ -53,6 +53,6 @@
 
 @media(max-width:480px){
     .ops-body[data-module="rider"] .rider-waybill-verification{gap:12px;padding:12px}
-    .ops-body[data-module="rider"] .waybill-scan-tools{align-items:stretch}
-    .ops-body[data-module="rider"] .waybill-camera-button{min-width:78px;padding-inline:10px}
+    .ops-body[data-module="rider"] .rider-waybill-scan-field .waybill-scan-tools{display:grid;grid-template-columns:minmax(0,1fr);width:100%}
+    .ops-body[data-module="rider"] .rider-waybill-scan-field .waybill-camera-button{display:inline-flex;width:100%;min-height:46px}
 }

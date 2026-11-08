@@ -449,6 +449,10 @@ class LinehaulRunService
     public function courierRunsFor(RiderProfile $profile)
     {
         return $this->courierRunsQueryFor($profile)
+            ->with([
+                'shipments.parcels.contents.orderItem.variant',
+                'shipments.parcels.contents.orderItem.product.images.variant',
+            ])
             ->limit(50)
             ->get();
     }

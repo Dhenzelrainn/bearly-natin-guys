@@ -87,6 +87,54 @@ class ShipmentHandoffService
     }
 
     /**
+     * Resolve an incoming Waybill number or printed Parcel barcode for a
+     * destination Logistics preview without exposing another provider's handoff.
+     *
+     * @return array{waybill_no: string, shipment_no: string, parcel_count: int, matched_by: string}
+     */
+    public function previewIncoming(string $identifier, User $actor): array
+    {
+        $identifier = trim($identifier);
+        $destination = $actor->logisticsProfile;
+
+        if (! $destination) {
+            throw new AuthorizationException('Only destination Logistics can look up an incoming handoff.');
+        }
+
+        [$waybill, $matchedBy] = $this->waybillForIdentifier($identifier);
+        $shipment = $waybill->shipment;
+
+        $transfer = ShipmentTransfer::query()
+            ->where('shipment_id', $shipment->id)
+            ->where('to_logistics_profile_id', $destination->id)
+            ->where('status', 'sent')
+            ->firstOrFail();
+
+        $runAssignment = LinehaulRunShipment::query()
+            ->where('shipment_id', $shipment->id)
+            ->first();
+
+        if ($runAssignment) {
+            $runStatus = LinehaulRun::query()
+                ->whereKey($runAssignment->linehaul_run_id)
+                ->value('status');
+
+            if ($runStatus !== 'arrived') {
+                throw new ConflictHttpException(
+                    'Wait until the assigned Courier run is marked Arrived before accepting this Waybill.'
+                );
+            }
+        }
+
+        return [
+            'waybill_no' => (string) $waybill->waybill_no,
+            'shipment_no' => (string) $shipment->shipment_no,
+            'parcel_count' => (int) $shipment->parcels()->count(),
+            'matched_by' => $matchedBy,
+        ];
+    }
+
+    /**
      * Tell the receiving Logistics account that parcels are on the way.
      */
     private function notifyDestinationOfHandoff(ShipmentTransfer $transfer, LogisticsProfile $origin, ?User $targetUser): void
@@ -117,9 +165,7 @@ class ShipmentHandoffService
             $actor,
             $scanMethod
         ): ShipmentTransfer {
-            $waybill = Waybill::query()
-                ->matchingIdentifier(trim($identifier))
-                ->firstOrFail();
+            [$waybill, $matchedBy] = $this->waybillForIdentifier(trim($identifier));
 
             $shipment = Shipment::query()
                 ->lockForUpdate()
@@ -254,6 +300,7 @@ class ShipmentHandoffService
                         'shipment_transfer_id' => $transfer->id,
                         'from_logistics_profile_id' => $transfer->from_logistics_profile_id,
                         'to_logistics_profile_id' => $recipient->id,
+                        'scanned_identifier_type' => $matchedBy,
                     ],
                     'occurred_at' => $now,
                 ]);
@@ -272,6 +319,33 @@ class ShipmentHandoffService
                 'toSortingCenter',
             ]);
         }, attempts: 3);
+    }
+
+    /**
+     * The printed Code 128 barcode identifies a Parcel, while the handoff
+     * transaction applies to its parent Waybill and the entire shipment.
+     *
+     * @return array{0: Waybill, 1: 'waybill'|'parcel_barcode'}
+     */
+    private function waybillForIdentifier(string $identifier): array
+    {
+        $waybill = Waybill::query()
+            ->matchingIdentifier($identifier)
+            ->first();
+
+        if ($waybill) {
+            return [$waybill, 'waybill'];
+        }
+
+        $waybill = Waybill::query()
+            ->whereHas('parcels', fn ($query) => $query->where('parcel_no', $identifier))
+            ->first();
+
+        if ($waybill) {
+            return [$waybill, 'parcel_barcode'];
+        }
+
+        throw (new ModelNotFoundException)->setModel(Waybill::class, [$identifier]);
     }
 
     /**

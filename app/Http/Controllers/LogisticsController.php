@@ -397,6 +397,7 @@ class LogisticsController extends Controller
                 'mimes:jpg,jpeg,png,pdf',
                 'max:5120',
             ],
+            'profile_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
             'business_permit' => [
                 'required',
                 'file',
@@ -438,19 +439,28 @@ class LogisticsController extends Controller
             ? null
             : strtoupper(substr($validated['middle_initial'], 0, 1)).'.';
 
-        $validIdPath = $request->file('valid_id')
-            ->store('registration-documents/logistics/valid-ids', 'local');
-        $businessPermitPath = $request->file('business_permit')
-            ->store('registration-documents/logistics/permits', 'local');
+        $validIdPath = null;
+        $businessPermitPath = null;
+        $profilePhotoPath = null;
 
         try {
+            $validIdPath = $request->file('valid_id')
+                ->store('registration-documents/logistics/valid-ids', 'local');
+            $businessPermitPath = $request->file('business_permit')
+                ->store('registration-documents/logistics/permits', 'local');
+            $profilePhotoPath = $request->file('profile_photo')?->store(
+                'profile-photos',
+                'public'
+            );
+
             $user = DB::transaction(function () use (
                 $validated,
                 $middleInitial,
                 $request,
                 $verifiedAt,
                 $validIdPath,
-                $businessPermitPath
+                $businessPermitPath,
+                $profilePhotoPath
             ): User {
                 $user = User::create([
                     'name' => trim($validated['first_name'].' '.($middleInitial ?? '').' '.$validated['last_name']),
@@ -482,6 +492,7 @@ class LogisticsController extends Controller
                     'business_name' => $validated['business_name'],
                     'valid_id_path' => $validIdPath,
                     'business_permit_path' => $businessPermitPath,
+                    'profile_photo_path' => $profilePhotoPath,
                     'password' => Hash::make($validated['password']),
                 ]);
 
@@ -523,11 +534,12 @@ class LogisticsController extends Controller
             Storage::disk('local')->delete(
                 array_filter([$validIdPath, $businessPermitPath])
             );
+            Storage::disk('public')->delete(array_filter([$profilePhotoPath]));
 
             throw $exception;
         }
 
-        $verification->forget($request);
+        $verification->forget($request, $validated['email']);
         app(RegistrationDraftService::class)->forget($request, 'logistics');
 
         session([
@@ -3831,6 +3843,22 @@ class LogisticsController extends Controller
             ->with('success', "{$transfer->shipment?->waybill?->waybill_no} was sent to {$transfer->toLogisticsProfile?->display_name} for destination-city handling.");
     }
 
+    public function lookupIncomingTransfer(
+        Request $request,
+        ShipmentHandoffService $handoffs
+    ): JsonResponse {
+        $data = $request->validate([
+            'identifier' => ['required', 'string', 'max:120'],
+        ]);
+
+        $preview = $handoffs->previewIncoming($data['identifier'], $request->user());
+
+        return response()->json([
+            'data' => $preview,
+            'message' => 'Incoming Waybill is ready for destination acceptance.',
+        ])->header('Cache-Control', 'no-store, private');
+    }
+
     public function acceptTransfer(
         Request $request,
         ShipmentHandoffService $handoffs
@@ -4915,11 +4943,17 @@ class LogisticsController extends Controller
                 'sortingZone:id,code,name',
                 'riderProfile.user:id,name',
                 'parcels',
+                'parcels.events' => fn ($query) => $query
+                    ->where('event_type', 'parcel_barcode_verified')
+                    ->orderBy('occurred_at'),
                 'parcels.shipment.sellerOrder.items.product.images.variant',
                 'parcels.shipment.sellerOrder.items.variant',
                 'parcels.shipment.sellerOrders.items.product.images.variant',
                 'parcels.shipment.sellerOrders.items.variant',
                 'deliveryAttempts' => fn ($query) => $query->orderBy('attempted_at'),
+                'deliveryAttempts.parcel.events' => fn ($query) => $query
+                    ->where('event_type', 'parcel_delivered')
+                    ->orderBy('occurred_at'),
                 'deliveryAttempts.proofs' => fn ($query) => $query
                     ->where('type', 'photo')
                     ->orderByDesc('captured_at'),
@@ -5263,6 +5297,30 @@ class LogisticsController extends Controller
         * the Rider module starts persisting DeliveryAttempt.
         */
         foreach ($batch->parcels as $parcel) {
+            foreach ($parcel->events as $verificationEvent) {
+                $metadata = $verificationEvent->metadata ?? [];
+
+                if (
+                    (int) ($metadata['dispatch_batch_id'] ?? 0) !== (int) $batch->id
+                    || (int) ($metadata['rider_profile_id'] ?? 0) !== (int) $batch->rider_profile_id
+                ) {
+                    continue;
+                }
+
+                $verifiedAt = $verificationEvent->occurred_at;
+
+                if (! $verifiedAt) {
+                    continue;
+                }
+
+                $timeline->push([
+                    'time' => $verifiedAt->format('M j, g:i A'),
+                    'label' => 'Parcel barcode verified',
+                    'detail' => "Parcel {$parcel->parcel_no} verified. Delivery remains Out for Delivery until the Rider confirms the handoff.",
+                    'sort_at' => $verifiedAt->timestamp,
+                ]);
+            }
+
             if (
                 ! $parcel->last_event_at
                 || $parcel->status
@@ -5310,6 +5368,13 @@ class LogisticsController extends Controller
             }
 
             $proof = $attempt->proofs->first();
+            $verificationEvent = $attempt->parcel?->events?->first(
+                fn (ShipmentEvent $event): bool =>
+                    ($event->metadata['verification_method'] ?? null)
+                        === 'parcel_barcode'
+                    && (int) ($event->metadata['delivery_attempt_id'] ?? 0)
+                        === (int) $attempt->id,
+            );
 
             $timeline->push([
                 'time' => $attemptAt->format(
@@ -5338,6 +5403,12 @@ class LogisticsController extends Controller
                         'logistics.dispatch.monitoring.delivery-proofs.show',
                         $proof,
                     )
+                    : null,
+
+                'verification_detail' => $verificationEvent
+                    ? 'Parcel barcode verified for Parcel '
+                        .$attempt->parcel?->parcel_no
+                        .'.'
                     : null,
 
                 'sort_at' => $attemptAt->timestamp,

@@ -467,8 +467,65 @@
                         method="POST"
                         action="{{ route('rider.orders.delivery.confirm', $job['id']) }}"
                         enctype="multipart/form-data"
+                        data-rider-delivery-scan-form
+                        data-delivery-verify-url="{{ $job['verification_url'] }}"
+                        data-delivery-progress-url="{{ $job['verification_progress_url'] }}"
                     >
                         @csrf
+
+                        <section class="rider-waybill-verification rider-delivery-scan" aria-labelledby="delivery-parcel-scan-heading">
+                            <div class="rider-waybill-verification-heading">
+                                <i data-lucide="scan-line" aria-hidden="true"></i>
+                                <div>
+                                    <strong id="delivery-parcel-scan-heading">Verify every assigned Parcel</strong>
+                                    <p>Each successful scan is saved for this delivery and shown to Logistics. Scanning verifies the Parcels; it does not complete delivery.</p>
+                                </div>
+                            </div>
+
+                            <div class="rider-waybill-scan-field">
+                                <label for="delivery-parcel-barcode">Parcel barcode (Code 128)</label>
+                                <div class="waybill-scan-tools">
+                                    <input
+                                        id="delivery-parcel-barcode"
+                                        type="text"
+                                        maxlength="120"
+                                        placeholder="Scan or enter the exact Parcel code"
+                                        autocomplete="off"
+                                        autocapitalize="off"
+                                        spellcheck="false"
+                                        inputmode="text"
+                                        aria-describedby="delivery-parcel-scan-help"
+                                        data-delivery-barcode-input
+                                    >
+                                    <button class="button button-small" type="button" data-delivery-verify-code>Verify parcel</button>
+                                    <button class="waybill-camera-button" type="button" aria-controls="delivery-parcel-camera-panel" aria-pressed="false" data-delivery-camera-open>
+                                        <i data-lucide="camera" aria-hidden="true"></i>
+                                        <span data-delivery-camera-label>Scan with camera</span>
+                                    </button>
+                                </div>
+                                <small id="delivery-parcel-scan-help">Use the camera or a USB/Bluetooth scanner, then press Verify parcel or Enter. Manual entry must match the printed code exactly; no character substitutions are made.</small>
+                            </div>
+
+                            <div id="delivery-parcel-camera-panel" class="waybill-camera-panel rider-delivery-camera-panel" data-delivery-camera-panel hidden>
+                                <video data-delivery-camera-video playsinline muted></video>
+                                <button class="button button-small" type="button" data-delivery-camera-close>Stop camera</button>
+                            </div>
+
+                            <p class="waybill-camera-status rider-delivery-scan-status" data-delivery-scan-status role="status" aria-live="polite" aria-atomic="true">Scan the exact barcode for each of the {{ $job['parcel_count'] }} assigned Parcel{{ $job['parcel_count'] === 1 ? '' : 's' }}. Saved scans sync to this delivery.</p>
+                            <p class="rider-delivery-scan-progress" data-delivery-scan-progress aria-live="polite">{{ $job['verified_count'] }} of {{ $job['parcel_count'] }} parcels verified</p>
+                            <ul class="rider-delivery-scan-list" data-delivery-scan-list aria-label="Parcel verification progress">
+                                @foreach($job['parcels'] as $parcel)
+                                    <li data-delivery-expected-parcel="{{ $parcel['parcel_no'] }}" data-delivery-verified="{{ $parcel['verified'] ? 'true' : 'false' }}">
+                                        <span>Parcel {{ $loop->iteration }}</span>
+                                        <span data-delivery-parcel-state>{{ $parcel['verified'] ? 'Verified · saved' : 'Awaiting scan' }}</span>
+                                    </li>
+                                @endforeach
+                            </ul>
+
+                            @error('parcel_verification')
+                                <small class="delivery-field-error" role="alert">{{ $message }}</small>
+                            @enderror
+                        </section>
 
                         <div class="delivery-form-grid">
                             @if($job['purpose'] === 'outbound' && $job['cod_minor'] > 0)

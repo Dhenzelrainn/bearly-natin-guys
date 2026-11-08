@@ -33,14 +33,14 @@ test('Rider Address step blocks when no selected Logistics partner matches the c
     );
 });
 
-test('Dark Rider and Logistics registration styles make searchable address menus readable', () => {
+test('Dark registration styles make searchable address menus readable across auth and Rider/Logistics flows', () => {
     assert.match(
         themeStyles,
-        /:root\[data-theme="dark"\] body\.registration-body\[data-module\] \.registration-main \.registration-address-grid \.searchable-select__panel\s*\{[^}]*background: var\(--theme-surface\)/,
+        /:root\[data-theme="dark"\] body\.registration-body\[data-module\] \.registration-main \.registration-address-grid \.searchable-select__panel,\s*:root\[data-theme="dark"\] body\.auth-body \.register-form \.searchable-select__panel\s*\{[^}]*background: var\(--theme-surface\)/,
     );
     assert.match(
         themeStyles,
-        /:root\[data-theme="dark"\] body\.registration-body\[data-module\] \.registration-main \.registration-address-grid \.searchable-select__option\s*\{[^}]*color: var\(--theme-text\)/,
+        /:root\[data-theme="dark"\] body\.registration-body\[data-module\] \.registration-main \.registration-address-grid \.searchable-select__option,\s*:root\[data-theme="dark"\] body\.auth-body \.register-form \.searchable-select__option\s*\{[^}]*color: var\(--theme-text\)/,
     );
     assert.match(
         themeStyles,

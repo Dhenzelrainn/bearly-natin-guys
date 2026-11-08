@@ -40,8 +40,14 @@ class ApplicationPendingStatusTest extends TestCase
 
         $this->get(route('application.pending', ['user_id' => $other->id, 'email' => $other->email]))
             ->assertOk()
+            ->assertSee('class="login-page pending-status-page"', false)
+            ->assertSee('class="pending-receipt"', false)
+            ->assertDontSee('class="buyer-pending"', false)
             ->assertSee('Historical Buyer application status')
             ->assertSee('New Buyer registrations activate after email verification')
+            ->assertSee('Historical application; not in the active Admin queue')
+            ->assertDontSee('Approval authority')
+            ->assertDontSee('data-status-url=', false)
             ->assertSee('Historical pending')
             ->assertSee('data-final="0"', false)
             ->assertDontSee($other->email)
@@ -66,6 +72,8 @@ class ApplicationPendingStatusTest extends TestCase
         $this->get(route('application.pending'))
             ->assertOk()
             ->assertSee('Account Verified')
+            ->assertSee('Your buyer account is active. Sign in to continue to your dashboard.')
+            ->assertDontSee('stays locked until')
             ->assertSee('Proceed to Sign In')
             ->assertSee('data-final="1"', false);
     }
@@ -113,13 +121,29 @@ class ApplicationPendingStatusTest extends TestCase
         ])->get(route('application.pending'))
             ->assertOk()
             ->assertSee('Historical Buyer application status')
-            ->assertSee('outside the active Admin queues')
+            ->assertSee('no longer in the active Admin queues')
             ->assertSee('Upload a clearer front-side ID image.')
             ->assertSee('data-final="0"', false)
             ->assertSee('Return to sign in')
             ->assertDontSee('Proceed to Sign In');
 
         $this->assertGuest();
+    }
+
+    public function test_seller_pending_screen_uses_the_application_status_receipt(): void
+    {
+        $seller = $this->pendingUser(UserRole::Seller->value, 'seller-pending@example.test');
+        $this->applicationFor($seller, 'submitted');
+
+        $this->withSession([
+            ApplicationReviewService::SESSION_KEY => $seller->id,
+        ])->get(route('application.pending'))
+            ->assertOk()
+            ->assertSee('class="login-page pending-status-page"', false)
+            ->assertSee('class="pending-receipt"', false)
+            ->assertSee('Application submitted')
+            ->assertSee('Pending review')
+            ->assertSee('data-status-url="'.route('application.pending.status').'"', false);
     }
 
     public function test_logistics_and_rider_pending_screens_use_the_shared_persisted_status(): void
@@ -135,6 +159,7 @@ class ApplicationPendingStatusTest extends TestCase
                 ApplicationReviewService::SESSION_KEY => $user->id,
             ])->get(route($routeName))
                 ->assertOk()
+                ->assertSee('class="registration-card', false)
                 ->assertSee('Pending review')
                 ->assertSee('data-final="0"', false)
                 ->assertSee('data-status-url="'.route('application.pending.status').'"', false);

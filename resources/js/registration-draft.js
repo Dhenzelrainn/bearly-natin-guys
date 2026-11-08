@@ -99,8 +99,11 @@ export function setupRegistrationDraft(form) {
                     body: JSON.stringify(payload()),
                 });
                 if (!response.ok) throw new Error('Draft save failed');
+                const result = await response.json().catch(() => ({}));
                 savedChanges = currentChanges;
-                if (status) status.textContent = 'Saved on this browser for 7 days.';
+                if (status) {
+                    status.textContent = result.message || 'Saved on this browser for 7 days.';
+                }
                 if (keepalive) break;
             }
         } catch (_) {

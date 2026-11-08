@@ -1,7 +1,9 @@
 import { isValidPhilippineMobile } from './registration-phone.js';
 import { restoreRegistrationDraft, setupRegistrationDraft } from './registration-draft.js';
+import { emailVerificationFailure } from './email-verification-error.js';
 import './notification-center.js';
 import './rider-attendance-qr.js';
+import './rider-delivery-scanner.js';
 import './rider-delivery-map.js';
 import {
     acknowledgeConversation,
@@ -1235,6 +1237,7 @@ function setupRegistrationEmail(form) {
     let verifiedUntil = 0;
     let sentEmail = '';
     let busy = false;
+    let restoring = false;
     let cooldownUntil = 0;
     let generation = 0;
 
@@ -1248,6 +1251,7 @@ function setupRegistrationEmail(form) {
 
     const resetVerification = () => {
         generation++;
+        restoring = false;
         verifiedEmail = '';
         verifiedUntil = 0;
         sentEmail = '';
@@ -1287,25 +1291,71 @@ function setupRegistrationEmail(form) {
         const data = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-            if (response.status === 429) {
-                cooldownUntil =
-                    Date.now() +
-                    Number(response.headers.get('Retry-After') || 60) * 1000;
-            }
-
-            throw new Error(
-                response.status === 419
-                    ? 'Your session expired. Refresh the page and try again.'
-                    : Object.values(data.errors || {}).flat()[0] ||
-                      (
-                          response.status === 429
-                              ? 'Too many requests. Please wait before trying again.'
-                              : 'Email verification is unavailable. Please try again.'
-                      )
+            const failure = emailVerificationFailure(
+                response,
+                data,
+                'Email verification is unavailable. Please try again.',
             );
+            const error = new Error(failure.message);
+            error.retryAfter = failure.retryAfter;
+
+            throw error;
         }
 
         return data;
+    }
+
+    async function restoreVerifiedProof() {
+        const requestedEmail = normalizedEmail();
+
+        if (
+            !form.dataset.emailStatus ||
+            !requestedEmail ||
+            !email.checkValidity()
+        ) {
+            return;
+        }
+
+        email.value = requestedEmail;
+        const requestGeneration = generation;
+        restoring = true;
+        setStatus('Checking saved email verification…');
+        refresh();
+
+        try {
+            const data = await post(form.dataset.emailStatus);
+
+            if (
+                requestGeneration !== generation ||
+                normalizedEmail() !== requestedEmail
+            ) {
+                return;
+            }
+
+            if (data.verified && Number(data.expires_in) > 0) {
+                verifiedEmail = requestedEmail;
+                sentEmail = requestedEmail;
+                verifiedUntil = Date.now() + Number(data.expires_in) * 1000;
+                entry.hidden = true;
+                code.value = '';
+                setStatus('Email address verified. You may continue.', 'verified');
+            } else {
+                setStatus('Verify your email address to continue.');
+            }
+        } catch (_) {
+            if (requestGeneration === generation) {
+                setStatus(
+                    'Could not check the saved verification. Please retry or request a new code.',
+                    'error',
+                );
+            }
+        } finally {
+            if (requestGeneration === generation) {
+                restoring = false;
+            }
+
+            refresh();
+        }
     }
 
     const refresh = () => {
@@ -1318,11 +1368,13 @@ function setupRegistrationEmail(form) {
             verifiedEmail === normalizedEmail() &&
             Date.now() < verifiedUntil;
 
-        send.disabled = busy || secondsLeft > 0 || isVerified;
-        check.disabled = busy;
+        send.disabled = busy || restoring || secondsLeft > 0 || isVerified;
+        check.disabled = busy || restoring;
 
         send.textContent = busy
             ? 'Please wait…'
+            : restoring
+                ? 'Checking…'
             : isVerified
                 ? 'Verified'
                 : secondsLeft
@@ -1352,7 +1404,7 @@ function setupRegistrationEmail(form) {
     });
 
     send.addEventListener('click', async () => {
-        if (busy || Date.now() < cooldownUntil || !validEmail()) return;
+        if (busy || restoring || Date.now() < cooldownUntil || !validEmail()) return;
 
         busy = true;
         resetVerification();
@@ -1380,6 +1432,10 @@ function setupRegistrationEmail(form) {
             code.focus();
         } catch (error) {
             if (requestGeneration === generation) {
+                if (error.retryAfter) {
+                    cooldownUntil = Date.now() + error.retryAfter * 1000;
+                }
+
                 setStatus(error.message, 'error');
             }
         } finally {
@@ -1389,7 +1445,7 @@ function setupRegistrationEmail(form) {
     });
 
     check.addEventListener('click', async () => {
-        if (busy || !validEmail()) return;
+        if (busy || restoring || !validEmail()) return;
 
         if (normalizedEmail() !== sentEmail) {
             resetVerification();
@@ -1445,12 +1501,18 @@ function setupRegistrationEmail(form) {
     });
 
     resetVerification();
+    void restoreVerifiedProof();
     refresh();
     window.setInterval(refresh, 1000);
 
     return {
         validate: () => {
             if (!validEmail()) return false;
+
+            if (restoring) {
+                setStatus('Checking whether this email is already verified. Please wait.');
+                return false;
+            }
 
             if (
                 verifiedEmail !== normalizedEmail() ||
@@ -2393,6 +2455,7 @@ function setupRegistration() {
                         label.textContent =
                             input.files?.[0]
                                 ?.name ||
+                            input.dataset.fileHelp ||
                             'Choose a JPG, PNG, or PDF file';
                     }
                 }

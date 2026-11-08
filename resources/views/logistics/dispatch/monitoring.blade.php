@@ -283,47 +283,57 @@
 
 @foreach($deliveries as $delivery)
     <section
-        class="modal"
+        class="modal delivery-timeline-modal"
         data-modal="delivery-{{ $loop->index }}"
         hidden
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delivery-timeline-title-{{ $loop->index }}"
+        aria-describedby="delivery-timeline-subtitle-{{ $loop->index }}"
     >
-        <div class="modal-header">
-            <div>
-                <h3>
-                    {{ $delivery['id'] }}
-                    delivery timeline
-                </h3>
+        <div class="modal-header delivery-timeline-header">
+            <div class="delivery-timeline-heading">
+                <span class="delivery-timeline-icon" aria-hidden="true">
+                    <i data-lucide="package"></i>
+                </span>
 
-                <p>
-                    {{ $delivery['rider'] }}
-                    ·
-                    {{ $delivery['zone'] }}
-                </p>
+                <div class="delivery-timeline-heading-copy">
+                    <p class="delivery-timeline-eyebrow">Dispatch monitoring</p>
+                    <h3 id="delivery-timeline-title-{{ $loop->index }}">
+                        {{ $delivery['id'] }} delivery timeline
+                    </h3>
+                    <p id="delivery-timeline-subtitle-{{ $loop->index }}">
+                        {{ $delivery['rider'] }}
+                        <span aria-hidden="true">·</span>
+                        {{ $delivery['zone'] }}
+                    </p>
+                </div>
             </div>
 
             <button
-                class="icon-button"
+                class="icon-button delivery-timeline-dismiss"
                 type="button"
                 data-modal-close
+                aria-label="Close delivery timeline"
             >
-                <i data-lucide="x"></i>
+                <i data-lucide="x" aria-hidden="true"></i>
             </button>
         </div>
 
-        <div class="modal-body">
-            <div class="activity-list">
+        <div class="modal-body delivery-timeline-body">
+            <div class="activity-list delivery-timeline-list {{ count($delivery['timeline']) ? 'has-events' : 'is-empty' }}">
                 @forelse(
                     $delivery['timeline']
                     as $event
                 )
-                    <div class="activity-item">
-                        <span class="activity-time">
+                    <article class="activity-item delivery-timeline-event {{ $event['label'] === 'Parcel barcode verified' ? 'is-verification' : '' }}">
+                        <span class="activity-time delivery-timeline-time">
                             {{ $event['time'] }}
                         </span>
 
-                        <span class="activity-dot"></span>
+                        <span class="activity-dot delivery-timeline-marker" aria-hidden="true"></span>
 
-                        <span class="activity-copy">
+                        <span class="activity-copy delivery-timeline-copy">
                             <strong>
                                 {{ $event['label'] }}
                             </strong>
@@ -331,6 +341,12 @@
                             <small>
                                 {{ $event['detail'] }}
                             </small>
+
+                            @if(filled($event['verification_detail'] ?? null))
+                                <small class="activity-verification">
+                                    {{ $event['verification_detail'] }}
+                                </small>
+                            @endif
 
                             @if(filled($event['proof_url'] ?? null))
                                 <a
@@ -343,9 +359,10 @@
                                 </a>
                             @endif
                         </span>
-                    </div>
+                    </article>
                 @empty
                     <div class="empty-state">
+                        <i data-lucide="clock" aria-hidden="true"></i>
                         No delivery activity has
                         been recorded yet.
                     </div>
@@ -353,9 +370,9 @@
             </div>
         </div>
 
-        <div class="modal-footer">
+        <div class="modal-footer delivery-timeline-footer">
             <button
-                class="button"
+                class="button delivery-timeline-close"
                 type="button"
                 data-modal-close
             >

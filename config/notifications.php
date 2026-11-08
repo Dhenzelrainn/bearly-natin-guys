@@ -295,6 +295,15 @@ return [
             'defaults' => ['in_app' => true, 'email' => true],
         ],
 
+        'logistics_delivery_parcels_verified' => [
+            'label' => 'Delivery parcel verification',
+            'description' => 'One alert when every Parcel assigned to a Rider delivery stop has been barcode-verified.',
+            'group' => 'shipments',
+            'audience' => ['logistics'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => false],
+        ],
+
         'logistics_linehaul_assigned' => [
             'label' => 'Courier run assignments',
             'description' => 'Courier assignments created for your Logistics facility.',

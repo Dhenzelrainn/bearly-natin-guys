@@ -10,7 +10,7 @@
     <script>window.bearlyLiveWishlist = @json($wishlistItems ?? []);</script>
     @vite(['resources/css/buyer.css','resources/css/profile.css','resources/css/addresses.css','resources/css/maps.css','resources/css/bearly-chat.css','resources/js/profile.js','resources/js/account-addresses.js','resources/js/my-likes.js','resources/js/my-purchases.js','resources/js/reviews-ratings.js','resources/js/bearly-chat.js'])
 </head>
-<body class="bh profile-page">
+<body class="bh profile-page" data-initial-purchase-filter="{{ request()->query('purchase_filter') === 'to-receive' ? 'to-receive' : 'all' }}">
 @include('buyer.partials.buyer-header', [
     'headerSearchFormId' => 'profile-search-form',
     'headerSearchInputId' => 'profile-search-input',

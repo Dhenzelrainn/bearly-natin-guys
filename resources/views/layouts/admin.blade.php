@@ -333,6 +333,11 @@ $adminNavGroups = [
                 'icon' => 'clipboard-check',
             ],
             [
+                'label' => 'Buyer ID uploads',
+                'route' => 'admin.registrations.buyer-ids',
+                'icon' => 'id-card',
+            ],
+            [
                 'label' => 'Seller Applications',
                 'route' => 'admin.registrations.sellers',
                 'icon' => 'store',

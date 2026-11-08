@@ -46,6 +46,45 @@ class FormDraftPersistenceTest extends TestCase
         $this->assertFalse($service->forPage($secondBrowser, 'rider')['has_draft']);
     }
 
+    public function test_registration_drafts_for_an_existing_account_are_rejected_and_cleared(): void
+    {
+        $email = 'draft-owner@example.test';
+        User::create([
+            'name' => 'Draft Owner',
+            'first_name' => 'Draft',
+            'last_name' => 'Owner',
+            'email' => $email,
+            'role' => 'buyer',
+            'status' => 'active',
+            'password' => 'Password123',
+        ]);
+
+        $token = str_repeat('d', 64);
+        $request = $this->requestWithBrowserToken($token);
+        $draft = RegistrationDraft::query()->create([
+            'browser_token_hash' => hash('sha256', $token),
+            'flow' => 'buyer-seller',
+            'payload' => ['email' => strtoupper($email), 'first_name' => 'Draft'],
+            'step' => 2,
+            'expires_at' => now()->addDays(2),
+        ]);
+        $service = app(RegistrationDraftService::class);
+
+        $page = $service->forPage($request, 'buyer-seller');
+
+        $this->assertFalse($page['has_draft']);
+        $this->assertSame([], $page['fields']);
+        $this->assertDatabaseMissing('registration_drafts', ['id' => $draft->id]);
+        $this->assertNull($service->save($request, 'buyer-seller', [
+            'email' => $email,
+            'first_name' => 'Late autosave',
+        ], 2));
+        $this->assertDatabaseMissing('registration_drafts', [
+            'browser_token_hash' => hash('sha256', $token),
+            'flow' => 'buyer-seller',
+        ]);
+    }
+
     public function test_seller_draft_color_updates_use_explicit_image_ids_and_cleanup_files(): void
     {
         Storage::fake('local');

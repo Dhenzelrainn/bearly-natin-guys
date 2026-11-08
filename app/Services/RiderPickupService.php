@@ -175,23 +175,28 @@ class RiderPickupService
                     );
                 }
 
-                if (filled($waybillIdentifier)) {
-                    $identifier = trim($waybillIdentifier);
-                    $matched = $parcels->contains(function ($parcel) use ($identifier): bool {
-                        $waybill = $parcel->waybill;
+                $identifier = trim((string) $waybillIdentifier);
+                if ($identifier === '') {
+                    throw new ConflictHttpException(
+                        'Scan or enter a printed Parcel barcode or Waybill reference before confirming pickup.'
+                    );
+                }
 
-                        return $waybill
-                            && in_array($identifier, [
-                                (string) $waybill->waybill_no,
-                                (string) $waybill->barcode_value,
-                            ], true);
-                    });
+                $matched = $parcels->contains(function ($parcel) use ($identifier): bool {
+                    $waybill = $parcel->waybill;
 
-                    if (! $matched) {
-                        throw new ConflictHttpException(
-                            'The scanned waybill does not belong to this Rider pickup assignment.'
-                        );
-                    }
+                    return $waybill
+                        && in_array($identifier, [
+                            (string) $parcel->parcel_no,
+                            (string) $waybill->waybill_no,
+                            (string) $waybill->barcode_value,
+                        ], true);
+                });
+
+                if (! $matched) {
+                    throw new ConflictHttpException(
+                        'The scanned Parcel barcode or Waybill reference does not belong to this Rider pickup assignment.'
+                    );
                 }
 
                 /*

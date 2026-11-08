@@ -10,10 +10,8 @@
         $state = 'unavailable';
     }
 
-    $isBuyer = $role === 'buyer' && $state !== 'unavailable';
-    $isHistoricalBuyerApplication = $isBuyer && in_array($state, ['pending', 'under_review', 'needs_revision'], true);
+    $isHistoricalBuyerApplication = $role === 'buyer' && in_array($state, ['pending', 'under_review', 'needs_revision'], true);
     $isApproved = $state === 'approved';
-    $isRejected = $state === 'rejected';
     $needsRevision = $state === 'needs_revision';
     $isFinal = (bool) ($review['final'] ?? ($state === 'unavailable'));
     $statusUrl = $review && ! $isHistoricalBuyerApplication ? route('application.pending.status') : null;
@@ -41,20 +39,19 @@
         'unavailable' => 'is-unavailable',
         default => 'is-pending',
     };
-    $timelineReviewState = $isApproved
-        ? 'is-complete'
-        : ($isRejected || $needsRevision ? 'is-complete' : 'is-current');
-    $timelineDecisionState = $isApproved
-        ? 'is-complete'
-        : ($isRejected ? 'is-rejected' : 'is-upcoming');
+    $kicker = $isHistoricalBuyerApplication
+        ? 'Historical application'
+        : ($isApproved
+            ? 'Account Verified'
+            : ($state === 'unavailable'
+                ? 'Status unavailable'
+                : ($state === 'rejected' ? 'Application not approved' : 'Application submitted')));
 @endphp
 
 @section('title', $heading.' | Bearly')
 
 @section('header-action')
-    @if(! $isBuyer)
-        <a href="{{ route('login') }}" class="header-link">{{ $isApproved ? 'Sign in' : 'Return to sign in' }}</a>
-    @endif
+    <a href="{{ route('login') }}" class="header-link">{{ $isApproved ? 'Sign in' : 'Return to sign in' }}</a>
 @endsection
 
 @push('scripts')
@@ -62,9 +59,8 @@
 @endpush
 
 @section('content')
-@if($isBuyer)
 <section
-    class="buyer-pending"
+    class="login-page pending-status-page"
     aria-labelledby="pending-title"
     data-application-status
     data-final="{{ $isFinal ? '1' : '0' }}"
@@ -72,16 +68,22 @@
     @if($statusUrl) data-status-url="{{ $statusUrl }}" @endif
 >
     <div class="pending-receipt">
-        <span class="pending-check" aria-hidden="true">{{ $isApproved ? '✓' : ($isRejected ? '!' : '…') }}</span>
-        <p class="pending-eyebrow">{{ $roleLabel }} registration</p>
+        <span class="pending-check {{ $statusClass }}" aria-hidden="true">
+            {{ $isApproved ? '✓' : ($state === 'rejected' ? '!' : ($state === 'unavailable' ? '?' : '…')) }}
+        </span>
+        <p class="pending-eyebrow">{{ $roleLabel }} · {{ $kicker }}</p>
         <h1 id="pending-title">{{ $heading }}</h1>
-        <p class="pending-intro">Thanks, {{ $applicant }}. {{ $message }}</p>
+        <p class="pending-intro">{{ $message }}</p>
 
         <dl class="pending-details">
             <div><dt>Applicant</dt><dd>{{ $applicant }}</dd></div>
             @if($company)<div><dt>Business</dt><dd>{{ $company }}</dd></div>@endif
             <div><dt>Application status</dt><dd><span class="pending-status {{ $statusClass }}">{{ $statusLabel }}</span></dd></div>
-            <div><dt>Reviewed by</dt><dd>{{ $authority }}</dd></div>
+            @if($isHistoricalBuyerApplication)
+                <div><dt>Record</dt><dd>Historical application; not in the active Admin queue</dd></div>
+            @else
+                <div><dt>Approval authority</dt><dd>{{ $authority }}</dd></div>
+            @endif
             @if(!empty($review['submitted_at']))<div><dt>Submitted</dt><dd>{{ $review['submitted_at'] }}</dd></div>@endif
             @if(!empty($review['application_no']))<div><dt>Application</dt><dd>{{ $review['application_no'] }}</dd></div>@endif
         </dl>
@@ -93,30 +95,7 @@
             </div>
         @endif
 
-        <ol class="pending-timeline" aria-label="Application progress">
-            <li class="is-complete"><span aria-hidden="true">✓</span><div><strong>Application submitted</strong><p>{{ $isHistoricalBuyerApplication ? 'This historical record and its submitted documents remain on file.' : 'Your details and identity documents have been received.' }}</p></div></li>
-            <li class="{{ $timelineReviewState }}" @if($timelineReviewState === 'is-current') aria-current="step" @endif><span aria-hidden="true">2</span><div><strong>{{ $isHistoricalBuyerApplication ? 'Historical application status' : ($isApproved || $isRejected ? 'Application reviewed' : ($needsRevision ? 'Update needed' : 'Under review')) }}</strong><p>{{ $isHistoricalBuyerApplication ? 'Its existing status is preserved, but it is not in an active Admin registration queue.' : $authority.' checks your application against Bearly requirements.' }}</p></div></li>
-            <li class="{{ $timelineDecisionState }}" @if($timelineDecisionState === 'is-upcoming') aria-current="step" @endif><span aria-hidden="true">3</span><div><strong>{{ $isHistoricalBuyerApplication ? 'Contact Support' : ($isApproved ? 'Account approved' : ($isRejected ? 'Application not approved' : 'Decision')) }}</strong><p>{{ $isHistoricalBuyerApplication ? 'No automatic status change was applied. Contact Support about access to this existing account.' : ($isApproved ? 'Your account is active and ready to use.' : ($isRejected ? 'Contact Support if you need help understanding the decision.' : 'Dashboard access becomes available only after approval.')) }}</p></div></li>
-        </ol>
-
-        <div class="pending-next">
-            <h2>What happens next?</h2>
-            <p>
-                @if($isApproved)
-                    Your {{ strtolower($roleLabel) }} account is active. Sign in with your registered email and password to continue.
-                @elseif($isRejected)
-                    This application was not approved. You can return to sign in or contact Bearly Support for guidance.
-                @elseif($isHistoricalBuyerApplication)
-                    This historical Buyer application remains unchanged and is outside the active Admin queues. Contact Bearly Support about account access.
-                @elseif($needsRevision)
-                    Review the note above and contact Bearly Support with the requested correction. Do not submit a duplicate account.
-                @else
-                    You can close this page and return later. Keep this page open to let the status update automatically.
-                @endif
-            </p>
-        </div>
-
-        @if(!$isFinal && $statusUrl && ! $isHistoricalBuyerApplication)
+        @if(!$isFinal && $statusUrl)
             <p class="pending-live" data-application-live aria-live="polite">Checking for a review decision automatically.</p>
         @endif
 
@@ -128,61 +107,4 @@
         <p class="pending-note">Need help? <a href="{{ route('contact') }}">Contact Bearly</a></p>
     </div>
 </section>
-@else
-<section
-    class="login-page"
-    data-application-status
-    data-final="{{ $isFinal ? '1' : '0' }}"
-    data-poll-interval="12000"
-    @if($statusUrl) data-status-url="{{ $statusUrl }}" @endif
->
-    <div class="login-intro">
-        <p class="pending-eyebrow">{{ $roleLabel }} registration</p>
-        <h1>{{ $heading }}</h1>
-        <p>Your Bearly account stays locked until the correct reviewing authority approves it.</p>
-    </div>
-    <div class="login-stage">
-        <div class="login-form">
-            <div class="approval-callout">
-                <div>
-                    <strong><span class="pending-status {{ $statusClass }}">{{ $statusLabel }}</span></strong>
-                    <p>{{ $message }}</p>
-                </div>
-            </div>
-
-            <div class="application-summary">
-                <div class="review-groups">
-                    <section class="review-group">
-                        <dl>
-                            <div><dt>Applicant</dt><dd>{{ $applicant }}</dd></div>
-                            @if($company)<div><dt>Business</dt><dd>{{ $company }}</dd></div>@endif
-                            <div><dt>Reviewed by</dt><dd>{{ $authority }}</dd></div>
-                            @if(!empty($review['submitted_at']))<div><dt>Submitted</dt><dd>{{ $review['submitted_at'] }}</dd></div>@endif
-                            @if(!empty($review['application_no']))<div><dt>Application</dt><dd>{{ $review['application_no'] }}</dd></div>@endif
-                        </dl>
-                    </section>
-                </div>
-            </div>
-
-            @if($reviewNote)
-                <div class="pending-review-note" role="note">
-                    <strong>{{ $needsRevision ? 'What needs updating' : 'Decision note' }}</strong>
-                    <p>{{ $reviewNote }}</p>
-                </div>
-            @endif
-
-            @if(!$isFinal && $statusUrl)
-                <p class="pending-live" data-application-live aria-live="polite">Checking for a review decision automatically.</p>
-            @endif
-
-            @if($isApproved)
-                <a class="sign-in-button" href="{{ route('login') }}">Proceed to Sign In</a>
-            @else
-                <a class="sign-in-button" href="{{ route('login') }}">Return to sign in</a>
-            @endif
-            <p class="pending-note">Need help? <a href="{{ route('contact') }}">Contact Bearly</a></p>
-        </div>
-    </div>
-</section>
-@endif
 @endsection

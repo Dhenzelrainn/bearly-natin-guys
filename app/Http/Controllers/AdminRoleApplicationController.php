@@ -57,6 +57,8 @@ class AdminRoleApplicationController extends Controller
             Storage::disk('local')->path($path),
             [
                 'Content-Disposition' => 'inline; filename="'.basename($path).'"',
+                'Cache-Control' => 'private, no-store, max-age=0',
+                'Pragma' => 'no-cache',
                 'X-Content-Type-Options' => 'nosniff',
             ]
         );

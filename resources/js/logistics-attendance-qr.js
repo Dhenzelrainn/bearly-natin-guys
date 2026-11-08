@@ -1,33 +1,207 @@
 import QRCode from 'qrcode';
 
-function setupAttendanceQrStation() {
-    const roster = document.querySelector('[data-attendance-roster]');
+function formatPhtTime(value) {
+    const date = new Date(value || '');
+    if (Number.isNaN(date.getTime())) return '';
 
-    if (roster) {
-        const cutoffAt = Date.parse(roster.dataset.cutoffAt || '');
-        const syncAbsenceActions = () => {
-            const phtDate = new Intl.DateTimeFormat('en-CA', {
-                timeZone: 'Asia/Manila',
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-            }).format(new Date());
-            const canMarkAbsent = phtDate === roster.dataset.workDate
-                && Number.isFinite(cutoffAt)
-                && Date.now() >= cutoffAt;
+    return new Intl.DateTimeFormat('en-PH', {
+        timeZone: 'Asia/Manila',
+        hour: 'numeric',
+        minute: '2-digit',
+    }).format(date);
+}
 
-            roster.querySelectorAll('[data-attendance-absence-action]').forEach((form) => {
-                form.hidden = !canMarkAbsent;
-            });
-            roster.querySelectorAll('[data-attendance-cutoff-hint]').forEach((hint) => {
-                hint.hidden = canMarkAbsent;
-            });
-        };
+function setAttendanceTimeCell(cell, value) {
+    cell.replaceChildren();
 
-        syncAbsenceActions();
-        window.setInterval(syncAbsenceActions, 15000);
+    if (!value) {
+        const empty = document.createElement('span');
+        empty.className = 'attendance-muted';
+        empty.textContent = '—';
+        cell.append(empty);
+        return;
     }
 
+    const time = document.createElement('time');
+    time.dateTime = value;
+    time.textContent = `${formatPhtTime(value)} PHT`;
+    cell.append(time);
+}
+
+function addAttendanceState(cell, label, className, detail = '') {
+    const badge = document.createElement('span');
+    badge.className = `attendance-state ${className}`;
+    badge.textContent = label;
+    cell.append(badge);
+
+    if (detail) {
+        addAttendanceDetail(cell, detail);
+    }
+}
+
+function addAttendanceDetail(cell, text) {
+    const description = document.createElement('small');
+    description.className = 'attendance-state-detail';
+    description.textContent = text;
+    cell.append(description);
+}
+
+function updateAttendanceStateCell(cell, rider) {
+    cell.replaceChildren();
+
+    if (rider.absence) {
+        const markedAt = formatPhtTime(rider.absence.marked_at);
+        addAttendanceState(cell, 'Absent', 'is-absent');
+        addAttendanceDetail(
+            cell,
+            `Marked by ${rider.absence.marked_by}${markedAt ? ` at ${markedAt} PHT` : ''}`,
+        );
+
+        if (rider.late_check_in_at) {
+            addAttendanceState(cell, 'Late check-in', 'is-late');
+            addAttendanceDetail(cell, `Scanned at ${formatPhtTime(rider.late_check_in_at)} PHT`);
+        }
+
+        return;
+    }
+
+    if (rider.status === 'checked_in') {
+        addAttendanceState(cell, 'Checked in', 'is-present');
+        return;
+    }
+
+    if (rider.status === 'checked_out') {
+        addAttendanceState(
+            cell,
+            'Checked out',
+            'is-finished',
+            rider.check_out_at ? `${formatPhtTime(rider.check_out_at)} PHT` : '',
+        );
+        return;
+    }
+
+    addAttendanceState(cell, 'Not checked in', 'is-pending');
+}
+
+function updateAttendanceActionCell(cell, rider) {
+    if (rider.absence) {
+        const recorded = document.createElement('span');
+        recorded.className = 'attendance-muted';
+        recorded.textContent = 'Recorded';
+        cell.replaceChildren(recorded);
+        return;
+    }
+
+    if (rider.check_in_at) {
+        const empty = document.createElement('span');
+        empty.className = 'attendance-muted';
+        empty.textContent = '—';
+        cell.replaceChildren(empty);
+    }
+}
+
+function setupAttendanceRosterUpdates() {
+    let updating = false;
+
+    const syncAbsenceActions = () => {
+        const roster = document.querySelector('[data-attendance-roster]');
+        if (!roster) return;
+
+        const canMarkAbsent = roster.dataset.canMarkAbsent === 'true';
+        roster.querySelectorAll('[data-attendance-absence-action]').forEach((form) => {
+            form.hidden = !canMarkAbsent;
+        });
+        roster.querySelectorAll('[data-attendance-cutoff-hint]').forEach((hint) => {
+            hint.hidden = canMarkAbsent;
+        });
+    };
+
+    const refreshRoster = async () => {
+        const roster = document.querySelector('[data-attendance-roster]');
+        if (!roster || document.hidden || updating) return;
+
+        updating = true;
+
+        try {
+            const response = await fetch(roster.dataset.updatesUrl, {
+                credentials: 'same-origin',
+                cache: 'no-store',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            const payload = await response.json().catch(() => ({}));
+            const attendance = payload.data;
+
+            if (!response.ok || !Array.isArray(attendance?.riders)) {
+                throw new Error(payload.message || 'Attendance updates are temporarily unavailable.');
+            }
+
+            if (attendance.date !== roster.dataset.workDate) {
+                window.location.reload();
+                return;
+            }
+
+            const currentRiderIds = [...roster.querySelectorAll('[data-attendance-rider-row]')]
+                .map((row) => row.dataset.attendanceRiderRow)
+                .sort();
+            const updatedRiderIds = attendance.riders
+                .map((rider) => String(rider.id))
+                .sort();
+
+            if (currentRiderIds.join(',') !== updatedRiderIds.join(',')) {
+                window.location.reload();
+                return;
+            }
+
+            attendance.riders.forEach((rider) => {
+                const row = roster.querySelector(`[data-attendance-rider-row="${Number(rider.id)}"]`);
+                if (!row) return;
+
+                setAttendanceTimeCell(row.querySelector('[data-attendance-time-in]'), rider.check_in_at);
+                updateAttendanceStateCell(row.querySelector('[data-attendance-state]'), rider);
+                updateAttendanceActionCell(row.querySelector('[data-attendance-action]'), rider);
+            });
+
+            roster.querySelector('[data-attendance-checked-in-count]').textContent = String(attendance.checked_in_count);
+            roster.querySelector('[data-attendance-roster-count]').textContent = String(attendance.roster_count);
+            roster.querySelector('[data-attendance-absent-count]').textContent = String(attendance.absent_count);
+            roster.dataset.cutoffAt = attendance.cutoff_at;
+            roster.dataset.canMarkAbsent = attendance.can_mark_absent ? 'true' : 'false';
+
+            const updateStatus = roster.querySelector('[data-attendance-roster-live-status]');
+            if (updateStatus) {
+                const updatedAt = formatPhtTime(attendance.updated_at);
+                updateStatus.textContent = updatedAt
+                    ? `Updated ${updatedAt} PHT · refreshes automatically.`
+                    : 'Attendance refreshes automatically while this page is open.';
+                updateStatus.classList.remove('is-error');
+            }
+
+            syncAbsenceActions();
+        } catch {
+            const updateStatus = document.querySelector('[data-attendance-roster-live-status]');
+            if (updateStatus) {
+                updateStatus.textContent = 'Live attendance refresh is temporarily unavailable.';
+                updateStatus.classList.add('is-error');
+            }
+        } finally {
+            updating = false;
+        }
+    };
+
+    if (document.querySelector('[data-attendance-roster]')) {
+        syncAbsenceActions();
+        void refreshRoster();
+        window.setInterval(refreshRoster, 5_000);
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) void refreshRoster();
+        });
+    }
+}
+
+function setupAttendanceQrStation() {
     const station = document.querySelector('[data-logistics-attendance-qr]');
     if (!station) return;
 
@@ -106,4 +280,7 @@ function setupAttendanceQrStation() {
     issue();
 }
 
-document.addEventListener('DOMContentLoaded', setupAttendanceQrStation);
+document.addEventListener('DOMContentLoaded', () => {
+    setupAttendanceRosterUpdates();
+    setupAttendanceQrStation();
+});

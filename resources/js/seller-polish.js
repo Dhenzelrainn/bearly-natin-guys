@@ -8,6 +8,11 @@ import {
     packageValuesForVariant,
     packageVariantsForSubmission,
 } from './variant-package-utils.js';
+import {
+    splitVariantValues,
+    variantCombinationLabels,
+    variantCombinationSummary,
+} from './seller-variant-utils.js';
 import { setupSellerProductDraft } from './seller-product-draft.js';
 
 const initializeSellerPolish = () => {
@@ -140,6 +145,9 @@ const initializeSellerPolish = () => {
         const optionTwoName = productEditor.querySelector('[data-variant-option-two-name]');
         const optionTwoValues = productEditor.querySelector('[data-variant-option-two-values]');
         const totalStockInput = productEditor.querySelector('[data-product-total-stock]');
+        const totalStockLabel = productEditor.querySelector('[data-product-total-stock-label]');
+        const totalStockRequired = productEditor.querySelector('[data-product-total-stock-required]');
+        const totalStockHelp = productEditor.querySelector('[data-product-total-stock-help]');
         const globalThresholdControl = productEditor.querySelector('[data-product-global-threshold]');
         const globalThresholdInput = globalThresholdControl?.querySelector('input[name="low_stock_threshold"]');
         const singlePriceControl = productEditor.querySelector('[data-single-price-control]');
@@ -152,6 +160,7 @@ const initializeSellerPolish = () => {
         const tableWrap = variantMatrix.querySelector('[data-variant-table-wrap]');
         const emptyState = variantMatrix.querySelector('[data-variant-empty]');
         const totalNode = variantMatrix.querySelector('[data-variant-total]');
+        const combinationSummaryNode = variantMatrix.querySelector('[data-variant-combination-summary]');
         const generateButton = variantMatrix.querySelector('[data-generate-variants]');
         const existingScript = productEditor.querySelector('[data-existing-variants]');
         const productSkuInput = productEditor.querySelector('[data-product-sku]');
@@ -245,11 +254,7 @@ const initializeSellerPolish = () => {
             .filter((item) => !removedProductImageIds.has(String(item.image_id || ''))
                 && !removedDraftImageIds.has(String(item.draft_image_id || '')));
 
-        const splitValues = (input) => (input?.value || '')
-            .split(',')
-            .map((value) => value.trim())
-            .filter(Boolean)
-            .filter((value, index, list) => list.indexOf(value) === index);
+        const splitValues = (input) => splitVariantValues(input?.value || '');
 
         const currentProductMode = () => productModeChoices.find((input) => input.checked)?.value
             || productModeValue?.value
@@ -945,14 +950,18 @@ const initializeSellerPolish = () => {
         });
 
         const combinationLabels = () => {
-            const first = splitValues(optionOneValues);
-            const second = splitValues(optionTwoValues);
+            return variantCombinationLabels(optionOneValues?.value || '', optionTwoValues?.value || '');
+        };
 
-            if (!first.length && !second.length) return [];
-            if (first.length && !second.length) return first;
-            if (!first.length && second.length) return second;
+        const updateVariantCombinationSummary = () => {
+            if (!combinationSummaryNode) return;
 
-            return first.flatMap((one) => second.map((two) => `${one} / ${two}`));
+            combinationSummaryNode.textContent = variantCombinationSummary(
+                optionOneName?.value || '',
+                optionOneValues?.value || '',
+                optionTwoName?.value || '',
+                optionTwoValues?.value || '',
+            );
         };
 
         const updateVariantTotal = () => {
@@ -977,6 +986,14 @@ const initializeSellerPolish = () => {
                     totalStockInput.removeAttribute('title');
                 }
             }
+
+            if (totalStockLabel) totalStockLabel.textContent = hasVariants ? 'Total Stock (calculated)' : 'Total Stock';
+            if (totalStockRequired) totalStockRequired.hidden = hasVariants;
+            if (totalStockHelp) {
+                totalStockHelp.textContent = hasVariants
+                    ? 'Calculated from the stock quantities in the variant rows below.'
+                    : 'Enter the total number of units available for this product.';
+            }
         };
 
         const syncProductSkuControl = () => {
@@ -995,9 +1012,10 @@ const initializeSellerPolish = () => {
                 }
 
                 productSkuInput.hidden = true;
-                productSkuLabel.textContent = 'SKU management';
+                productSkuLabel.textContent = 'Variant SKU management';
                 productSkuManaged.hidden = false;
-                productSkuHelp.textContent = 'Each size/color combination has its own SKU in Variant Inventory below.';
+                productSkuManaged.querySelector('strong').textContent = 'One SKU per variant';
+                productSkuHelp.textContent = 'Enter a SKU in each variant row below, or leave it blank to auto-generate when you save.';
             } else {
                 if (productSkuInput.hidden) {
                     productSkuInput.value = productSkuValue;
@@ -1215,6 +1233,7 @@ const initializeSellerPolish = () => {
             syncPackageModeUI();
             renderVariantColorImageUploads(variants);
             updateVariantTotal();
+            updateVariantCombinationSummary();
             syncProductSkuControl();
             renderProductMediaPreview();
             syncBuyerProductPreview();
@@ -1954,6 +1973,7 @@ const initializeSellerPolish = () => {
         });
         [optionOneName, optionOneValues, optionTwoName, optionTwoValues].forEach((input) => {
             input?.addEventListener('input', () => {
+                updateVariantCombinationSummary();
                 renderVariantColorImageUploads(readRenderedVariants());
                 renderProductMediaPreview();
                 syncBuyerProductPreview();

@@ -381,6 +381,32 @@ class SellerStoreProvisioningTest extends TestCase
         }
     }
 
+    public function test_seller_can_upload_two_megabyte_store_cover_and_promo_banner(): void
+    {
+        Storage::fake('public');
+        $seller = $this->approvedSeller('Two Megabyte Appearance Seller');
+
+        $this->actingAs($seller)
+            ->post(route('seller.store.appearance.save'), [
+                'promo_banner_form' => '1',
+                'cover_photo' => UploadedFile::fake()->create('store-cover.jpg', 2048, 'image/jpeg'),
+                'promo_banners' => [
+                    UploadedFile::fake()->create('store-promo.jpg', 2048, 'image/jpeg'),
+                ],
+            ])
+            ->assertRedirect(route('seller.store.appearance'))
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success', 'Store appearance saved successfully.');
+
+        $store = $seller->fresh('sellerProfile.store')->sellerProfile->store;
+        $promoBanner = $store->promotionalBanners()->sole();
+
+        $this->assertNotEmpty($store->banner_path);
+        $this->assertNotEmpty($promoBanner->image_path);
+        Storage::disk('public')->assertExists($store->banner_path);
+        Storage::disk('public')->assertExists($promoBanner->image_path);
+    }
+
     public function test_store_appearance_rejects_invalid_uploads_and_non_http_banner_links(): void
     {
         $seller = $this->approvedSeller('Appearance Validation Seller');

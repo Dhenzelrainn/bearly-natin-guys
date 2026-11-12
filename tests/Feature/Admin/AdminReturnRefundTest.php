@@ -794,6 +794,39 @@ class AdminReturnRefundTest extends TestCase
             ->assertSee('REF-TEST-001');
     }
 
+    public function test_seller_return_list_and_details_show_buyer_name_without_contact_or_full_address(): void
+    {
+        $buyerName = 'Returns Privacy Buyer';
+        $buyerEmail = 'returns.private@example.test';
+        $buyerPhone = '09179998888';
+        $streetAddress = '987 Return Privacy Street';
+
+        $this->buyer->update([
+            'name' => $buyerName,
+            'email' => $buyerEmail,
+            'phone' => $buyerPhone,
+        ]);
+        $this->returnRequest->order->update([
+            'recipient_name' => 'Different Shipping Recipient',
+            'recipient_phone' => $buyerPhone,
+            'address_line' => $streetAddress,
+        ]);
+
+        foreach ([
+            route('seller.orders.returns'),
+            route('seller.orders.returns.show', $this->returnRequest->return_no),
+        ] as $url) {
+            $this->actingAs($this->seller)
+                ->get($url)
+                ->assertOk()
+                ->assertSee($buyerName)
+                ->assertDontSee($buyerEmail)
+                ->assertDontSee($buyerPhone)
+                ->assertDontSee($streetAddress)
+                ->assertDontSee('Different Shipping Recipient');
+        }
+    }
+
     public function test_seller_return_status_version_is_private_and_changes_when_a_case_updates(): void
     {
         $before = $this->actingAs($this->seller)

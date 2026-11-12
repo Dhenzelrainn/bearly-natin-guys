@@ -82,7 +82,8 @@ function orderHTML(o){
       const cases=(sellerOrder.return_cases||[]).map(returnCase=>`<a class="order-btn" href="${purchaseEsc(returnCase.url)}">Case ${purchaseEsc(returnCase.number)} · ${purchaseEsc(String(returnCase.status||'').replaceAll('_',' '))}</a>`).join('');
       const request=sellerOrder.return_url?`<a class="order-btn" href="${purchaseEsc(sellerOrder.return_url)}">Return / refund · ${purchaseEsc(sellerOrder.store||'Seller')}</a>`:'';
       const dispute=sellerOrder.dispute_url?`<a class="order-btn" href="${purchaseEsc(sellerOrder.dispute_url)}">${purchaseEsc(sellerOrder.dispute_label||'Report a problem')}</a>`:'';
-      return cases+request+dispute;
+      const offPlatform=sellerOrder.off_platform_report_url?`<a class="order-btn" href="${purchaseEsc(sellerOrder.off_platform_report_url)}">${purchaseEsc(sellerOrder.off_platform_report_label||'Report off-platform solicitation')}</a>`:'';
+      return cases+request+dispute+offPlatform;
     }).join('');
    const status=o.status||'', label=purchaseEsc(o.statusLabel||status||'Order update');
     return `<article class="order-card"><div class="order-card-head"><div class="order-meta"><div class="order-shop"><span class="material-symbols-outlined" aria-hidden="true">storefront</span><strong>${purchaseEsc(o.shop||'Seller')}</strong></div><span class="order-id">Order #${purchaseEsc(o.id||'')}</span><span class="order-date">Placed on ${purchaseEsc(placedDate(o))}</span></div><span class="order-status">${label}</span></div>${sellerProgress?`<div class="order-seller-progress" aria-label="Progress by Seller Order">${sellerProgress}</div>`:''}${items}<div class="order-card-foot"><div class="order-actions">${actionButtons(o)}${returnLinks}</div></div></article>`;

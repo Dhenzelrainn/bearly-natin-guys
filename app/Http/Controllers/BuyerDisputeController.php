@@ -6,6 +6,7 @@ use App\Services\BuyerDisputeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class BuyerDisputeController extends Controller
@@ -16,21 +17,31 @@ class BuyerDisputeController extends Controller
 
     public function create(Request $request, int $sellerOrder): View|RedirectResponse
     {
+        $request->validate([
+            'type' => ['nullable', Rule::in(['order_issue', 'off_platform_solicitation'])],
+        ]);
+        $caseType = (string) $request->query('type', 'order_issue');
         $order = $this->disputes->buyerOrder($request->user(), $sellerOrder);
 
-        if ($order->activeDispute) {
-            return redirect()->route('buyer.disputes.show', $order->activeDispute);
+        $activeCase = $caseType === 'off_platform_solicitation'
+            ? $order->activePolicyReport
+            : $order->activeDispute;
+
+        if ($activeCase) {
+            return redirect()->route('buyer.disputes.show', $activeCase);
         }
 
         return view('buyer.disputes.create', [
             'sellerOrder' => $order,
             'returnRequest' => $order->returnRequests->first(),
+            'caseType' => $caseType,
         ]);
     }
 
     public function store(Request $request, int $sellerOrder): RedirectResponse|JsonResponse
     {
         $validated = $request->validate([
+            'type' => ['sometimes', Rule::in(['order_issue', 'off_platform_solicitation'])],
             'subject' => ['required', 'string', 'min:3', 'max:180'],
             'description' => ['required', 'string', 'min:10', 'max:3000'],
             'evidence' => ['nullable', 'array', 'max:5'],
@@ -53,6 +64,7 @@ class BuyerDisputeController extends Controller
             $validated['subject'],
             $validated['description'],
             array_values($request->file('evidence', [])),
+            $validated['type'] ?? 'order_issue',
         );
 
         if ($request->expectsJson()) {

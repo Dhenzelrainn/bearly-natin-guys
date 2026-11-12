@@ -616,6 +616,10 @@ class AdminController extends Controller
                     ->title()
                     ->toString();
 
+                $caseTypeLabel = $dispute->type === 'off_platform_solicitation'
+                    ? 'Off-platform solicitation report'
+                    : 'Order issue';
+
                 $status = match ($dispute->status) {
                     'open' => 'Open',
                     'under_review' => 'Under Review',
@@ -732,6 +736,10 @@ class AdminController extends Controller
 
                     'subject' => $dispute->subject,
 
+                    'type' => $dispute->type,
+
+                    'type_label' => $caseTypeLabel,
+
                     'buyer' => $buyer?->name
                         ?? (
                             $dispute->opener?->role === 'buyer'
@@ -764,7 +772,7 @@ class AdminController extends Controller
 
                     'logistics_user_id' => $logistics?->id,
 
-                    'amount' => $dispute->amount_minor !== null
+                    'amount' => $dispute->type === 'order_issue' && $dispute->amount_minor !== null
                         ? '₱'.number_format(
                             $dispute->amount_minor / 100,
                             2

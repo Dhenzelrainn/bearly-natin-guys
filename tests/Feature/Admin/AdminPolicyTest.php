@@ -76,6 +76,36 @@ class AdminPolicyTest extends TestCase
         );
     }
 
+    public function test_admin_can_create_the_reviewable_seller_conduct_policy_draft_without_auto_publishing(): void
+    {
+        $admin = $this->adminFixture();
+
+        $this->actingAs($admin)
+            ->from(route('admin.policies'))
+            ->post(route('admin.policies.seller-conduct-draft'))
+            ->assertRedirect(route('admin.policies'))
+            ->assertSessionHas('success');
+
+        $policy = Policy::query()->where('code', 'SELLER-CONDUCT-OFF-PLATFORM')->firstOrFail();
+        $version = $policy->versions()->firstOrFail();
+
+        $this->assertSame('Seller Compliance', $policy->category);
+        $this->assertSame('draft', $policy->status);
+        $this->assertSame('draft', $version->status);
+        $this->assertNull($version->published_at);
+        $this->assertStringContainsString('A missing or delayed shipment scan is a review signal, not proof', $version->body);
+        $this->assertStringContainsString('third-party courier may be used only when Bearly has approved and integrated', $version->body);
+
+        $this->actingAs($admin)
+            ->from(route('admin.policies'))
+            ->post(route('admin.policies.seller-conduct-draft'))
+            ->assertRedirect(route('admin.policies'))
+            ->assertSessionHas('warning');
+
+        $this->assertSame(1, Policy::query()->where('code', 'SELLER-CONDUCT-OFF-PLATFORM')->count());
+        $this->assertSame(1, $policy->versions()->count());
+    }
+
     public function test_admin_can_publish_a_policy_immediately_on_creation(): void
     {
         $this->actingAs($this->adminFixture())

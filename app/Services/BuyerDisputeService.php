@@ -43,7 +43,7 @@ class BuyerDisputeService
     public function buyerOrder(User $buyer, int $sellerOrderId): SellerOrder
     {
         return $this->ownedSellerOrder($buyer, $sellerOrderId)
-            ->with([...$this->contextRelations(), 'activeDispute'])
+            ->with([...$this->contextRelations(), 'activeDispute', 'activePolicyReport'])
             ->firstOrFail();
     }
 
@@ -53,7 +53,14 @@ class BuyerDisputeService
         string $subject,
         string $description,
         array $evidenceFiles = [],
+        string $type = 'order_issue',
     ): Dispute {
+        if (! in_array($type, ['order_issue', 'off_platform_solicitation'], true)) {
+            throw ValidationException::withMessages([
+                'type' => 'Choose a supported case type.',
+            ]);
+        }
+
         $storedPaths = [];
 
         try {
@@ -63,6 +70,7 @@ class BuyerDisputeService
                 $subject,
                 $description,
                 $evidenceFiles,
+                $type,
                 &$storedPaths,
             ): Dispute {
                 $sellerOrder = $this->ownedSellerOrder($buyer, $sellerOrderId)
@@ -71,6 +79,7 @@ class BuyerDisputeService
                     ->firstOrFail();
 
                 if ($sellerOrder->disputes()
+                    ->where('type', $type)
                     ->whereNotIn('status', ['resolved', 'closed'])
                     ->lockForUpdate()
                     ->exists()) {
@@ -92,6 +101,7 @@ class BuyerDisputeService
 
                 $dispute = Dispute::query()->create([
                     'dispute_no' => $this->generateDisputeNumber(),
+                    'type' => $type,
                     'seller_order_id' => $sellerOrder->id,
                     'return_request_id' => $returnRequest?->id,
                     'shipment_id' => $shipment?->id,
@@ -100,7 +110,7 @@ class BuyerDisputeService
                     'description' => trim($description),
                     'priority' => 'normal',
                     'status' => 'open',
-                    'amount_minor' => (int) $sellerOrder->total_minor,
+                    'amount_minor' => $type === 'order_issue' ? (int) $sellerOrder->total_minor : null,
                     'assigned_to' => null,
                     'opened_at' => $now,
                     'response_due_at' => null,
@@ -112,12 +122,21 @@ class BuyerDisputeService
                 $participants = collect([
                     ['user' => $buyer, 'role' => 'buyer'],
                     ['user' => $seller, 'role' => 'seller'],
-                    ['user' => $logistics, 'role' => 'logistics'],
-                    ['user' => $rider, 'role' => 'rider'],
                 ])
                     ->filter(fn (array $participant): bool => $participant['user'] instanceof User)
                     ->unique(fn (array $participant): int => (int) $participant['user']->id)
                     ->values();
+
+                if ($type === 'order_issue') {
+                    $participants = $participants
+                        ->concat([
+                            ['user' => $logistics, 'role' => 'logistics'],
+                            ['user' => $rider, 'role' => 'rider'],
+                        ])
+                        ->filter(fn (array $participant): bool => $participant['user'] instanceof User)
+                        ->unique(fn (array $participant): int => (int) $participant['user']->id)
+                        ->values();
+                }
 
                 foreach ($participants as $participant) {
                     $dispute->participants()->attach($participant['user']->id, [

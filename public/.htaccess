@@ -23,3 +23,15 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 </IfModule>
+
+# Keep Apache mod_php limits aligned with the Store Appearance upload rules.
+# PHP-FPM/CGI reads the equivalent values from public/.user.ini.
+<IfModule mod_php.c>
+    php_value upload_max_filesize 25M
+    php_value post_max_size 64M
+</IfModule>
+
+<IfModule php_module>
+    php_value upload_max_filesize 25M
+    php_value post_max_size 64M
+</IfModule>

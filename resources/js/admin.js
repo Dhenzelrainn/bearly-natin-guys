@@ -5013,6 +5013,11 @@ import {
             );
 
             setDisputeText(
+                '[data-dispute-type]',
+                dispute.type_label || 'Order issue'
+            );
+
+            setDisputeText(
                 '[data-dispute-status]',
                 dispute.status
             );
@@ -5747,6 +5752,12 @@ import {
                         resolveModal.querySelector(
                             '[data-resolution-outcome]'
                         );
+
+                    outcome?.querySelectorAll('option[data-case-type]').forEach((option) => {
+                        const isRelevant = option.dataset.caseType === (dispute.type || 'order_issue');
+                        option.hidden = !isRelevant;
+                        option.disabled = !isRelevant;
+                    });
 
                     const note =
                         resolveModal.querySelector(

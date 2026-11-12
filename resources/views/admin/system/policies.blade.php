@@ -50,6 +50,25 @@
     </div>
 </section>
 
+<section class="panel" aria-label="Seller conduct policy setup">
+    <div class="panel-heading panel-heading-wrap">
+        <div>
+            <span class="eyebrow">Seller Compliance</span>
+            <h2>Off-platform transaction safeguards</h2>
+            <p class="muted">The recommended policy starts as a draft. It will not affect Sellers until an Admin reviews and publishes it.</p>
+        </div>
+        @unless ($hasSellerConductPolicy)
+            <form method="POST" action="{{ route('admin.policies.seller-conduct-draft') }}">
+                @csrf
+                <button class="button button-secondary" type="submit">
+                    <i data-lucide="file-plus-2" aria-hidden="true"></i>
+                    Create Seller Conduct draft
+                </button>
+            </form>
+        @endunless
+    </div>
+</section>
+
 
 <section class="panel">
 
@@ -440,65 +459,55 @@
             </div>
 
 
-            <div class="modal-footer decision-footer">
-
+            <div class="modal-footer policy-detail-footer" role="group" aria-label="Policy actions">
                 @if ($policy['status_value'] !== 'archived')
-                    <button
-                        type="button"
-                        class="button button-secondary"
-                        data-close-modal
-                        data-open-modal="policy-edit-{{ $policy['id'] }}"
+                    <form
+                        class="policy-detail-archive-form"
+                        method="POST"
+                        action="{{ route('admin.policies.archive', $policy['id']) }}"
+                        onsubmit="return confirm('Archive {{ $policy['code'] }}? Its versions stay preserved in the policy history.')"
                     >
-                        <i data-lucide="pencil"></i>
-                        New Version
-                    </button>
-                @endif
-
-                <button type="button" class="button button-ghost" data-close-modal>
-                    Close
-                </button>
-
-            </div>
-
-
-            @if ($policy['status_value'] !== 'archived' && ($policy['latest']['status_value'] ?? null) === 'draft')
-
-                <form
-                    method="POST"
-                    action="{{ route('admin.policies.publish', $policy['id']) }}"
-                    onsubmit="return confirm('Publish version {{ $policy['latest']['version'] }} of {{ $policy['code'] }}? Previously published versions will be archived.')"
-                >
-                    @csrf
-
-                    <div class="modal-footer">
-                        <button class="button button-primary" type="submit">
-                            <i data-lucide="send"></i>
-                            Publish {{ $policy['latest']['version'] }}
-                        </button>
-                    </div>
-                </form>
-
-            @endif
-
-
-            @if ($policy['status_value'] !== 'archived')
-
-                <form
-                    method="POST"
-                    action="{{ route('admin.policies.archive', $policy['id']) }}"
-                    onsubmit="return confirm('Archive {{ $policy['code'] }}? Its versions stay preserved in the policy history.')"
-                >
-                    @csrf
-
-                    <div class="modal-footer">
+                        @csrf
                         <button class="button button-danger-soft" type="submit">
-                            <i data-lucide="archive"></i>
+                            <i data-lucide="archive" aria-hidden="true"></i>
                             Archive Policy
                         </button>
-                    </div>
-                </form>
+                    </form>
+                @endif
 
-            @endif
+                <div class="policy-detail-actions">
+                    @if ($policy['status_value'] !== 'archived' && ($policy['latest']['status_value'] ?? null) === 'draft')
+                        <form
+                            class="policy-detail-publish-form"
+                            method="POST"
+                            action="{{ route('admin.policies.publish', $policy['id']) }}"
+                            onsubmit="return confirm('Publish version {{ $policy['latest']['version'] }} of {{ $policy['code'] }}? Previously published versions will be archived.')"
+                        >
+                            @csrf
+                            <button class="button button-primary" type="submit">
+                                <i data-lucide="send" aria-hidden="true"></i>
+                                Publish {{ $policy['latest']['version'] }}
+                            </button>
+                        </form>
+                    @endif
+
+                    @if ($policy['status_value'] !== 'archived')
+                        <button
+                            type="button"
+                            class="button button-secondary"
+                            data-close-modal
+                            data-open-modal="policy-edit-{{ $policy['id'] }}"
+                        >
+                            <i data-lucide="pencil" aria-hidden="true"></i>
+                            New Version
+                        </button>
+                    @endif
+
+                    <button type="button" class="button button-ghost" data-close-modal>
+                        Close
+                    </button>
+                </div>
+            </div>
 
         </section>
 

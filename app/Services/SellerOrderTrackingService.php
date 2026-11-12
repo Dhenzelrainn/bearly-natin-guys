@@ -185,7 +185,9 @@ class SellerOrderTrackingService
         $sellerHistory = $sellerOrder->statusHistory->map(fn ($entry): array => [
             'status' => $this->canonicalSellerStatus((string) $entry->to_status),
             'label' => $this->sellerStatusLabel((string) $entry->to_status),
-            'actor' => $entry->actor?->name ?? 'Former user',
+            'actor' => $entry->actor?->role === 'buyer'
+                ? 'Buyer'
+                : ($entry->actor?->name ?? 'Former user'),
             'source' => 'Seller Order',
             'reason' => $entry->reason,
             'occurred_at' => $entry->occurred_at?->toIso8601String(),

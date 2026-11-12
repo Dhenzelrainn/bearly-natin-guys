@@ -567,7 +567,7 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
             ->withSession(['_old_input' => ['product_mode' => 'single']])
             ->get(route('seller.products.edit', $product))
             ->assertOk()
-            ->assertSee('Managed per variant')
+            ->assertSee('One SKU per variant')
             ->assertSee('With Variants')
             ->assertSee('Small \/ Red', false)
             ->assertSee('Large \/ Black', false)
@@ -1414,6 +1414,34 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
 
         $this->assertDatabaseMissing('products', ['name' => 'Image Rollback Product']);
         $this->assertSame([], Storage::disk('public')->allFiles());
+    }
+
+    public function test_variant_product_form_explains_option_setup_and_calculated_stock(): void
+    {
+        $category = $this->category();
+        $seller = $this->seller($category);
+        Store::create([
+            'seller_profile_id' => $seller->sellerProfile->id,
+            'name' => 'Variant Instructions Store',
+            'slug' => 'variant-instructions-store',
+            'publication_status' => 'draft',
+        ]);
+
+        $this->actingAs($seller)
+            ->withSession(['_old_input' => ['product_mode' => 'with_variants']])
+            ->get('/seller/products/create')
+            ->assertOk()
+            ->assertSee('Buyers choose options like color or size. Each option combination has its own price, stock, and SKU.')
+            ->assertSee('Variant SKU management')
+            ->assertSee('One SKU per variant')
+            ->assertSee('Enter the option type—not the product name.')
+            ->assertSee('Use only for a second choice, like Size.')
+            ->assertSee('Color = Black, White + Size = Small, Medium creates 4 variants: Black / Small, Black / Medium, White / Small, and White / Medium.')
+            ->assertSee('If buyers choose only one option type, such as color, enter all choices in Option 1 and leave Option 2 blank.')
+            ->assertSee('Add choices above to see how many variants will be created.')
+            ->assertSee('role="status" aria-live="polite"', false)
+            ->assertSee('Total Stock (calculated)')
+            ->assertSee('Calculated from the stock quantities in the variant rows below.');
     }
 
     public function test_single_product_mode_persists_one_default_variant_and_keeps_type_on_edit(): void

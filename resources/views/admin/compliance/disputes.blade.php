@@ -152,6 +152,8 @@
                         {{ $dispute['subject'] }}
                     </strong>
 
+                    <small>{{ $dispute['type_label'] ?? 'Order issue' }}</small>
+
 
                     <small>
                         {{ $dispute['buyer'] }}
@@ -220,6 +222,8 @@
                     <h2 data-dispute-subject>
                         {{ $active['subject'] }}
                     </h2>
+
+                    <span class="section-kicker" data-dispute-type>{{ $active['type_label'] ?? 'Order issue' }}</span>
 
 
                     <p>
@@ -784,20 +788,28 @@
                         Select outcome
                     </option>
 
-                    <option value="buyer_favored">
+                    <option value="buyer_favored" data-case-type="order_issue">
                         Buyer favored
                     </option>
 
-                    <option value="seller_favored">
+                    <option value="seller_favored" data-case-type="order_issue">
                         Seller favored
                     </option>
 
-                    <option value="partial_refund_approved">
+                    <option value="partial_refund_approved" data-case-type="order_issue">
                         Partial refund approved
                     </option>
 
-                    <option value="replacement_arranged">
+                    <option value="replacement_arranged" data-case-type="order_issue">
                         Replacement arranged
+                    </option>
+
+                    <option value="policy_violation_found" data-case-type="off_platform_solicitation">
+                        Policy violation found
+                    </option>
+
+                    <option value="no_violation_found" data-case-type="off_platform_solicitation">
+                        No policy violation found
                     </option>
 
                 </select>
@@ -870,6 +882,8 @@
                 'database_id' => $dispute['database_id'] ?? null,
                 'id' => $dispute['id'],
                 'subject' => $dispute['subject'],
+                'type' => $dispute['type'] ?? 'order_issue',
+                'type_label' => $dispute['type_label'] ?? 'Order issue',
                 'buyer' => $dispute['buyer'],
                  'seller' => $dispute['seller'],
                  'courier' => $dispute['courier'],

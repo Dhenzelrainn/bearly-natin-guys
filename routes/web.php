@@ -64,6 +64,7 @@ use App\Http\Controllers\SellerStoreVoucherController;
 use App\Http\Controllers\SellerWalletController;
 use App\Http\Controllers\SellerWaybillController;
 use App\Http\Controllers\SellerWorkflowController;
+use App\Http\Controllers\SellerPolicyController;
 use App\Http\Controllers\ShippingRateController;
 use App\Http\Controllers\WaybillScanController;
 use Illuminate\Support\Facades\Route;
@@ -131,6 +132,20 @@ Route::middleware('guest')->group(function () {
     Route::post('/login', [BearlyAuthController::class, 'login'])
         ->name('login.submit');
 
+    Route::post('/login/recent/{userId}', [BearlyAuthController::class, 'loginRememberedAccount'])
+        ->whereNumber('userId')
+        ->middleware('throttle:30,1')
+        ->name('login.recent');
+
+    Route::post('/login/recent/{userId}/forget', [BearlyAuthController::class, 'forgetRememberedAccount'])
+        ->whereNumber('userId')
+        ->middleware('throttle:30,1')
+        ->name('login.recent.forget');
+
+    Route::post('/login/recent/clear', [BearlyAuthController::class, 'clearRememberedAccounts'])
+        ->middleware('throttle:10,1')
+        ->name('login.recent.clear');
+
     Route::get('/register', [BearlyAuthController::class, 'showRegister'])
         ->name('register');
 
@@ -139,6 +154,10 @@ Route::middleware('guest')->group(function () {
 
     Route::get('/auth/google', [BearlyAuthController::class, 'redirectToGoogle'])
         ->name('google.redirect');
+
+    Route::post('/auth/google', [BearlyAuthController::class, 'redirectToGoogle'])
+        ->middleware('throttle:10,1')
+        ->name('google.remembered.redirect');
 
     Route::get('/auth/google/callback', [BearlyAuthController::class, 'handleGoogleCallback'])
         ->name('google.callback');
@@ -886,6 +905,10 @@ Route::prefix('admin')
         Route::get('/fulfillment', [AdminFulfillmentController::class, 'index'])
             ->name('fulfillment');
 
+        Route::get('/fulfillment/waybills/{waybill}/pdf', [AdminFulfillmentController::class, 'downloadWaybillPdf'])
+            ->whereNumber('waybill')
+            ->name('fulfillment.waybills.pdf');
+
         Route::get('/fulfillment/delivery-proofs/{deliveryProof}', [DeliveryProofController::class, 'show'])
             ->whereNumber('deliveryProof')
             ->name('fulfillment.delivery-proofs.show');
@@ -1002,6 +1025,9 @@ Route::prefix('admin')
         Route::get('/policies', [AdminPolicyController::class, 'index'])
             ->name('policies');
 
+        Route::post('/policies/seller-conduct-draft', [AdminPolicyController::class, 'createSellerConductDraft'])
+            ->name('policies.seller-conduct-draft');
+
         Route::get('/shipping-policy-approvals', [AdminShippingPolicyApprovalController::class, 'index'])
             ->name('shipping-policy-approvals.index');
 
@@ -1084,9 +1110,15 @@ Route::prefix('admin')
 
 Route::prefix('seller')
     ->name('seller.')
-    ->middleware(['auth', 'role:seller'])
+    ->middleware(['auth', 'role:seller', 'seller.policy.acknowledged'])
     ->group(function () {
         Route::redirect('/', '/seller/dashboard');
+
+        Route::get('/policies/current', [SellerPolicyController::class, 'show'])
+            ->name('policies.current');
+
+        Route::post('/policies/current/accept', [SellerPolicyController::class, 'accept'])
+            ->name('policies.accept');
 
         Route::get('/dashboard', [SellerWorkflowController::class, 'dashboard'])
             ->name('dashboard');

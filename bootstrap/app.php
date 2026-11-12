@@ -3,6 +3,7 @@
 use App\Http\Middleware\EnsureLocalRiderWorkType;
 use App\Http\Middleware\EnsureUserHasRole;
 use App\Http\Middleware\PreventBackCache;
+use App\Models\RememberedAccount;
 use App\Services\AnnouncementPublishingService;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
@@ -32,6 +33,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('drafts:prune-expired')
             ->dailyAt('03:00')
             ->withoutOverlapping();
+
+        $schedule->command('model:prune', ['--model' => RememberedAccount::class])
+            ->dailyAt('03:30')
+            ->withoutOverlapping();
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
@@ -41,6 +46,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => EnsureUserHasRole::class,
             'local-rider' => EnsureLocalRiderWorkType::class,
+            'seller.policy.acknowledged' => \App\Http\Middleware\EnsureSellerConductPolicyAcknowledged::class,
         ]);
         
         $middleware->trustProxies(

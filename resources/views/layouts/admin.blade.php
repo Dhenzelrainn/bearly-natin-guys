@@ -451,6 +451,11 @@ $adminNavGroups = [
                 'route' => 'admin.reports',
                 'icon' => 'chart-column',
             ],
+            [
+                'label' => 'Fulfillment',
+                'route' => 'admin.fulfillment',
+                'icon' => 'truck',
+            ],
         ],
     ],
 

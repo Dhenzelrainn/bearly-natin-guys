@@ -98,6 +98,73 @@ class BuyerDisputeTest extends TestCase
             ->assertSee($logistics->user->name);
     }
 
+    public function test_buyer_can_file_a_private_off_platform_solicitation_report_while_an_order_issue_is_open(): void
+    {
+        Storage::fake('local');
+
+        $buyer = $this->buyer('off-platform-owner');
+        [$seller, $store] = $this->seller('off-platform');
+        $logistics = $this->logistics('off-platform');
+        $sellerOrder = $this->sellerOrder($this->order($buyer, 'off-platform'), $store, 'processing');
+        Shipment::query()->create([
+            'shipment_no' => 'SHP-OFF-PLATFORM-'.Str::upper(Str::random(8)),
+            'seller_order_id' => $sellerOrder->id,
+            'logistics_profile_id' => $logistics->id,
+            'purpose' => 'outbound',
+            'status' => 'ready_for_pickup',
+        ]);
+
+        $this->actingAs($buyer)->post(route('buyer.disputes.store', $sellerOrder), [
+            'subject' => 'Order question',
+            'description' => 'I need help understanding the order status before it ships.',
+        ])->assertRedirect();
+
+        $orderIssue = Dispute::query()->where('type', 'order_issue')->firstOrFail();
+        $reportUrl = route('buyer.disputes.create', [
+            'sellerOrder' => $sellerOrder->id,
+            'type' => 'off_platform_solicitation',
+        ]);
+
+        $this->get($reportUrl)
+            ->assertOk()
+            ->assertSee('Report off-platform solicitation')
+            ->assertSee('does not automatically suspend or penalize the Seller');
+
+        $response = $this->post(route('buyer.disputes.store', $sellerOrder), [
+            'type' => 'off_platform_solicitation',
+            'subject' => 'Seller requested direct payment',
+            'description' => 'The Seller asked me to cancel this Bearly order and send payment directly.',
+            'evidence' => [UploadedFile::fake()->create('direct-payment-request.pdf', 30, 'application/pdf')],
+        ]);
+
+        $report = Dispute::query()->where('type', 'off_platform_solicitation')->firstOrFail();
+        $response->assertRedirect(route('buyer.disputes.show', $report));
+
+        $this->assertNull($report->amount_minor);
+        $this->assertSame($sellerOrder->id, $report->seller_order_id);
+        $this->assertSame($buyer->id, $report->opened_by);
+        $this->assertSame(2, $sellerOrder->fresh()->disputes()->whereNotIn('status', ['resolved', 'closed'])->count());
+        $this->assertSame($orderIssue->id, $sellerOrder->fresh()->activeDispute->id);
+        $this->assertSame($report->id, $sellerOrder->fresh()->activePolicyReport->id);
+
+        $participantRoles = $report->participants()->get()
+            ->map(fn (User $participant): string => (string) $participant->pivot->participant_role)
+            ->sort()
+            ->values()
+            ->all();
+        $this->assertSame(['buyer', 'seller'], $participantRoles);
+
+        $evidence = $report->evidence()->firstOrFail();
+        Storage::disk('local')->assertExists($evidence->file_path);
+
+        $admin = $this->admin('off-platform-review');
+        $this->actingAs($admin)
+            ->get(route('admin.disputes'))
+            ->assertOk()
+            ->assertSee($report->dispute_no)
+            ->assertSee('Off-platform solicitation report');
+    }
+
     public function test_foreign_orders_and_client_supplied_context_or_participants_are_rejected(): void
     {
         $buyer = $this->buyer('owner');

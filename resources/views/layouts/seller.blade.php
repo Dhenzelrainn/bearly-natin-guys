@@ -87,6 +87,9 @@
             <a href="{{ route('notifications.center') }}" class="seller-nav-link {{ request()->routeIs('notifications.center') ? 'is-active' : '' }}" title="Notifications">
                 <i class="seller-ui-icon" data-lucide="bell" aria-hidden="true"></i><span>Notifications</span>
             </a>
+            <a href="{{ route('seller.policies.current') }}" class="seller-nav-link {{ request()->routeIs('seller.policies.current') ? 'is-active' : '' }}" title="Seller Policies" @if (request()->routeIs('seller.policies.current')) aria-current="page" @endif>
+                <i class="seller-ui-icon" data-lucide="shield-check" aria-hidden="true"></i><span>Seller Policies</span>
+            </a>
             @foreach ($sellerNavGroups as $group)
                 <section class="seller-nav-group {{ ($group['active'] ?? false) ? 'is-active' : '' }}" data-seller-nav-group="{{ $group['key'] }}">
                     @php($groupLanding = $group['children'][0] ?? [])

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Seller;
 
 use App\Models\Address;
+use App\Models\AuditLog;
 use App\Models\DispatchBatch;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
@@ -12,6 +13,7 @@ use App\Models\PickupAssignment;
 use App\Models\PickupRequest;
 use App\Models\RiderProfile;
 use App\Models\SellerOrder;
+use App\Models\SellerOrderStatusHistory;
 use App\Models\SellerProfile;
 use App\Models\Shipment;
 use App\Models\SortingCenter;
@@ -62,10 +64,10 @@ class SellerShipmentTrackingTest extends TestCase
         $this->actingAs($seller)
             ->get(route('seller.fulfillment.waybills'))
             ->assertOk()
-            ->assertSee('Seller Order / Recipient')
+            ->assertSee('Seller Order / Buyer')
             ->assertSee('Seller Orders')
             ->assertSee('1 linked order')
-            ->assertSee('Recipient')
+            ->assertSee('Buyer')
             ->assertSee('SO-WAYBILL-IMAGE')
             ->assertSee('<dt>Waybill Number</dt>', false)
             ->assertSee('<dt>Label Status</dt>', false)
@@ -113,6 +115,10 @@ class SellerShipmentTrackingTest extends TestCase
             'province' => 'Laguna',
             'postal_code' => '4000',
         ]);
+        $record['sellerOrder']->order->buyer->update([
+            'name' => 'Private Waybill Search Buyer',
+            'email' => 'private.waybill@example.test',
+        ]);
         OrderItem::query()->create([
             'seller_order_id' => $record['sellerOrder']->id,
             'product_name' => 'Wireless Headphones',
@@ -151,11 +157,8 @@ class SellerShipmentTrackingTest extends TestCase
             'BRLY-SEARCH-DETAILS',
             'BARCODE-SEARCH-DETAILS',
             'SO-SEARCH-DETAILS',
-            'Dhenzel Search Recipient',
-            '09179990000',
-            '12 Search Way',
-            'San Rafael',
             'San Pablo City',
+            'Laguna',
             'HEADSET-BLK-001',
             'Wireless Headphones',
             'Black Large',
@@ -172,6 +175,135 @@ class SellerShipmentTrackingTest extends TestCase
                 ->assertSee('SO-SEARCH-DETAILS')
                 ->assertDontSee('SO-UNRELATED');
         }
+
+        foreach ([
+            'Private Waybill Search Buyer',
+            'private.waybill@example.test',
+            'Dhenzel Search Recipient',
+            '09179990000',
+            '12 Search Way',
+            'San Rafael',
+            '4000',
+        ] as $privateTerm) {
+            $this->get(route('seller.fulfillment.waybills', ['search' => $privateTerm]))
+                ->assertOk()
+                ->assertDontSee('SO-SEARCH-DETAILS');
+        }
+    }
+
+    public function test_manage_orders_returns_and_waybill_rows_show_buyer_name_but_tracking_hides_identity_and_contact_data(): void
+    {
+        [$seller, , $store] = $this->sellerFixture('Privacy Seller', 'privacy-seller');
+        $record = $this->makeShipment($store, 'PRIVACY', 'out_for_delivery');
+        $buyer = $record['sellerOrder']->order->buyer;
+        $buyer->update([
+            'name' => 'Unique Buyer Account Name',
+            'email' => 'private.buyer@example.test',
+        ]);
+        SellerOrderStatusHistory::query()->create([
+            'seller_order_id' => $record['sellerOrder']->id,
+            'from_status' => 'delivered',
+            'to_status' => 'completed',
+            'actor_user_id' => $buyer->id,
+            'reason' => 'Buyer confirmed receipt.',
+            'occurred_at' => now(),
+        ]);
+        $record['sellerOrder']->order->update([
+            'recipient_name' => 'Unique Private Recipient',
+            'recipient_phone' => '+639178888888',
+            'address_line' => '987 Private Residence Road',
+            'barangay' => 'Private Barangay',
+            'postal_code' => '9876',
+        ]);
+
+        $this->actingAs($seller)
+            ->get(route('seller.orders'))
+            ->assertOk()
+            ->assertSee('Unique Buyer Account Name')
+            ->assertDontSee('Unique Private Recipient')
+            ->assertDontSee('+639178888888')
+            ->assertDontSee('987 Private Residence Road')
+            ->assertDontSee('Private Barangay')
+            ->assertDontSee('private.buyer@example.test');
+
+        $this->get(route('seller.fulfillment.tracking'))
+            ->assertOk()
+            ->assertSee('Buyer')
+            ->assertDontSee('Unique Buyer Account Name')
+            ->assertDontSee('Unique Private Recipient')
+            ->assertDontSee('+639178888888')
+            ->assertDontSee('Private Barangay')
+            ->assertDontSee('John Doe');
+
+        $this->get(route('seller.fulfillment.waybills'))
+            ->assertOk()
+            ->assertSee('Unique Buyer Account Name')
+            ->assertDontSee('Unique Private Recipient')
+            ->assertDontSee('+639178888888')
+            ->assertDontSee('987 Private Residence Road')
+            ->assertDontSee('Private Barangay')
+            ->assertDontSee('private.buyer@example.test');
+
+        foreach (['Unique Buyer Account Name', 'private.buyer@example.test'] as $privateTerm) {
+            $this->get(route('seller.fulfillment.waybills', ['search' => $privateTerm]))
+                ->assertOk()
+                ->assertDontSee('SO-PRIVACY');
+        }
+    }
+
+    public function test_admin_waybill_pdf_access_is_audited_and_never_cached(): void
+    {
+        [$seller, , $store] = $this->sellerFixture('Audited Waybill Seller', 'audited-waybill-seller');
+        $record = $this->makeShipment($store, 'ADMIN-PDF', 'at_sorting_center');
+        $admin = User::factory()->create(['role' => 'admin', 'status' => 'active']);
+
+        $response = $this->actingAs($admin)
+            ->get(route('admin.fulfillment.waybills.pdf', $record['waybill']));
+
+        $response->assertOk()
+            ->assertHeader('Content-Type', 'application/pdf')
+            ->assertHeader('Cache-Control', 'no-store, private');
+
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_user_id' => $admin->id,
+            'action' => 'admin_waybill.pdf_generated',
+            'module' => 'fulfillment',
+            'auditable_id' => $record['waybill']->id,
+        ]);
+
+        $this->actingAs($seller)
+            ->get(route('admin.fulfillment.waybills.pdf', $record['waybill']))
+            ->assertForbidden();
+    }
+
+    public function test_admin_fulfillment_flags_an_expired_scheduled_pickup_without_applying_automatic_action(): void
+    {
+        [$seller, , $store] = $this->sellerFixture('Review Signal Seller', 'review-signal-seller');
+        $record = $this->makeShipment($store, 'REVIEW-SIGNAL', 'ready_for_pickup');
+        $sellerOrderStatus = $record['sellerOrder']->status;
+        $pickup = $this->pickupRequest(
+            $store,
+            $record['shipment']->logisticsProfile,
+            'PU-REVIEW-SIGNAL',
+        );
+        $pickup->update([
+            'status' => 'scheduled',
+            'window_end' => now()->subMinute(),
+        ]);
+        $pickup->parcels()->attach($record['parcel']->id);
+        $admin = User::factory()->create(['role' => 'admin', 'status' => 'active']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.fulfillment'))
+            ->assertOk()
+            ->assertSee('Expired pickup windows')
+            ->assertSee('Scheduled pickup window passed without a pickup scan')
+            ->assertSee('A missing scan alone is not proof of misconduct.')
+            ->assertSee(route('admin.fulfillment.waybills.pdf', $record['waybill']), false);
+
+        $this->assertSame('ready_for_pickup', $record['shipment']->fresh()->status);
+        $this->assertSame($sellerOrderStatus, $record['sellerOrder']->fresh()->status);
+        $this->assertSame(0, AuditLog::query()->where('action', 'seller.status_changed')->count());
     }
 
     public function test_tracking_page_is_seller_scoped_and_excludes_return_and_pre_handover_shipments(): void
@@ -190,7 +322,8 @@ class SellerShipmentTrackingTest extends TestCase
             ->get(route('seller.fulfillment.tracking'))
             ->assertOk()
             ->assertSee('BRLY-ALPHA')
-            ->assertSee('Customer ALPHA')
+            ->assertSee('Buyer')
+            ->assertDontSee('Customer ALPHA')
             ->assertSee('San Pablo City, Laguna')
             ->assertSee('At Sorting Center')
             ->assertDontSee('BRLY-BETA')
@@ -333,7 +466,7 @@ class SellerShipmentTrackingTest extends TestCase
             ->assertSee('data-lucide="calendar-days"', false);
     }
 
-    public function test_authoritative_riders_come_from_pickup_assignments_and_dispatch_batches(): void
+    public function test_tracking_exposes_assignment_roles_without_rider_identity(): void
     {
         [$seller, , $store] = $this->sellerFixture('Rider Seller', 'rider-seller');
         $logistics = $this->logisticsProfile('Bearly Logistics');
@@ -388,9 +521,11 @@ class SellerShipmentTrackingTest extends TestCase
         $this->actingAs($seller)
             ->get(route('seller.fulfillment.tracking'))
             ->assertOk()
-            ->assertSee('Paolo Reyes')
+            ->assertSee('Assigned rider')
             ->assertSee('Pickup rider')
-            ->assertSee('John Ramos')
+            ->assertSee('Delivery rider')
+            ->assertDontSee('Paolo Reyes')
+            ->assertDontSee('John Ramos')
             ->assertSee('Delivery rider')
             ->assertDontSee('Ghost Rider')
             ->assertDontSee('Pickup Only');

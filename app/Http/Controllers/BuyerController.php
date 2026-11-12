@@ -267,6 +267,7 @@ class BuyerController extends Controller
                 'sellerOrders.shipments.events',
                 'sellerOrders.returnRequests',
                 'sellerOrders.activeDispute',
+                'sellerOrders.activePolicyReport',
             ])
             ->latest('id')
             ->get()
@@ -505,6 +506,15 @@ class BuyerController extends Controller
                     ? 'View dispute '.(string) $sellerOrder->activeDispute->dispute_no
                     : 'Report a problem',
                 'active_dispute_no' => $sellerOrder->activeDispute?->dispute_no,
+                'off_platform_report_url' => $sellerOrder->activePolicyReport
+                    ? route('buyer.disputes.show', $sellerOrder->activePolicyReport)
+                    : route('buyer.disputes.create', [
+                        'sellerOrder' => $sellerOrder->id,
+                        'type' => 'off_platform_solicitation',
+                    ]),
+                'off_platform_report_label' => $sellerOrder->activePolicyReport
+                    ? 'View report '.(string) $sellerOrder->activePolicyReport->dispute_no
+                    : 'Report off-platform solicitation',
                 'return_url' => $sellerOrder->status === SellerOrderStatus::Completed->value
                     ? route('buyer.returns.create', $sellerOrder->id)
                     : null,

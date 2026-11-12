@@ -171,7 +171,6 @@
                         data-order-transition-action="{{ $order['transition_action'] ?? '' }}"
                         data-order-transition-url="{{ $order['transition_url'] }}"
                         data-order-date-copy="{{ $order['order_date'] ?? $order['date'] ?? $order['date_key'] ?? '' }}"
-                        data-order-address="{{ $order['address'] ?? $order['shipping_address'] ?? '' }}"
                         data-order-sku="{{ $order['sku'] ?? '' }}"
                         data-order-product-image="{{ $order['product_image'] ?? $order['image'] ?? '' }}"
                         data-order-items-json="{{ json_encode($order['item_rows'] ?? $order['order_items'] ?? []) }}"
@@ -308,10 +307,7 @@
                         <b data-bearly-order-payment>—</b>
                     </strong>
                 </div>
-                <div class="bearly-action-address-cell" data-bearly-address-cell>
-                    <span data-bearly-address-label>Shipping Address</span>
-                    <strong data-bearly-order-address>—</strong>
-                </div>
+                <div><span>Order status</span><strong data-bearly-order-status>—</strong></div>
                 <div><span>Total Amount</span><strong data-bearly-order-total>—</strong></div>
             </section>
 

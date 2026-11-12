@@ -7627,6 +7627,52 @@ table {
     }
 }
 
+.admin-body .modal-card .policy-detail-footer {
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.admin-body .modal-card .policy-detail-footer form {
+    margin: 0;
+}
+
+.admin-body .modal-card .policy-detail-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.admin-body .modal-card .policy-detail-actions form {
+    margin: 0;
+}
+
+@media (max-width: 680px) {
+    .admin-body .modal-card .policy-detail-footer {
+        align-items: stretch;
+        flex-direction: column-reverse;
+        gap: 10px;
+    }
+
+    .admin-body .modal-card .policy-detail-footer > form,
+    .admin-body .modal-card .policy-detail-actions,
+    .admin-body .modal-card .policy-detail-actions form {
+        width: 100%;
+    }
+
+    .admin-body .modal-card .policy-detail-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .admin-body .modal-card .policy-detail-footer .button {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
 .shipping-rate-table-wrap {
     overflow-x: auto;
     margin: 0 0 14px;

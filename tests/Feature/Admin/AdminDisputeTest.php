@@ -278,6 +278,45 @@ class AdminDisputeTest extends TestCase
         );
     }
 
+    public function test_off_platform_report_resolution_accepts_policy_findings_only_and_never_applies_financial_action(): void
+    {
+        $this->dispute->update([
+            'type' => 'off_platform_solicitation',
+            'amount_minor' => null,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.disputes'))
+            ->assertOk()
+            ->assertSee('Off-platform solicitation report')
+            ->assertSee('Policy violation found')
+            ->assertSee('No policy violation found');
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.disputes.resolve', $this->dispute), [
+                'outcome' => 'partial_refund_approved',
+                'note' => 'This policy report cannot create a refund.',
+            ])
+            ->assertUnprocessable();
+
+        $this->assertSame('open', $this->dispute->fresh()->status);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.disputes.resolve', $this->dispute), [
+                'outcome' => 'policy_violation_found',
+                'note' => 'The evidence supports a policy concern; any further action requires separate documented review.',
+            ])
+            ->assertOk();
+
+        $this->assertSame('resolved', $this->dispute->fresh()->status);
+        $this->assertNull($this->dispute->fresh()->amount_minor);
+        $this->assertDatabaseHas('dispute_events', [
+            'dispute_id' => $this->dispute->id,
+            'event_type' => 'resolved',
+            'metadata->outcome' => 'policy_violation_found',
+        ]);
+    }
+
     public function test_resolution_event_stores_selected_outcome_in_metadata(): void
     {
         $this

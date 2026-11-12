@@ -115,7 +115,7 @@
                 <thead>
                     <tr>
                         <th>Tracking / Order</th>
-                        <th>Customer / Destination</th>
+                    <th>Buyer / Destination</th>
                         <th>Rider</th>
                         <th>Latest update</th>
                         <th>ETA</th>
@@ -154,7 +154,7 @@
                             </td>
 
                             <td class="tracking-rider-cell">
-                                <span>{{ $item['rider_name'] ?? 'Awaiting assignment' }}</span>
+                <span>{{ $item['rider_name'] ?? 'Awaiting assignment' }}</span>
                                 <small>{{ $item['rider_role'] ?? '—' }}</small>
                             </td>
 

@@ -1464,6 +1464,27 @@ Immutable per-Seller-Order/payment due and cash allocation for one aggregate COD
 - `products_store_id_product_status_index` (store_id,product_status) — index.
 - `products_store_id_slug_unique` (store_id,slug) — unique.
 
+## `remembered_accounts` (added by `2026_11_09_000002_create_remembered_accounts_table`)
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `user_id` | `bigint unsigned` | NO | — | MUL |
+| `token_hash` | `varchar(64)` | NO | — | UNI |
+| `expires_at` | `timestamp` | NO | — |  |
+| `last_used_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `user_id` → `users.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `remembered_accounts_token_hash_unique` (token_hash) — unique.
+- `remembered_accounts_user_id_expires_at_index` (user_id,expires_at) — index.
+
 ## `refunds`
 
 | Column | MySQL type | Null | Default | Key |

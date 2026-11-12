@@ -72,7 +72,7 @@
                             <header class="waybill-overview-heading">
                                 <i data-lucide="briefcase-business" aria-hidden="true"></i>
                                 <span aria-hidden="true"></span>
-                                <h3 id="waybill-overview-title-{{ $item['id'] }}">Seller Order / Recipient</h3>
+                                <h3 id="waybill-overview-title-{{ $item['id'] }}">Seller Order / Buyer</h3>
                             </header>
 
                             <div class="waybill-overview-body">
@@ -128,7 +128,7 @@
 
                                     <div class="waybill-recipient-card">
                                         <i data-lucide="user-round" aria-hidden="true"></i>
-                                        <span><small>Recipient</small><strong>{{ $item['customer'] }}</strong></span>
+                                        <span><small>Buyer</small><strong>{{ $item['customer'] }}</strong></span>
                                     </div>
                                 </div>
                             </div>

@@ -302,21 +302,30 @@ class SellerWorkflowController extends Controller
         BuyerCatalogService $catalog,
         SellerOrderTrackingService $tracking,
         bool $includeShipmentGroups = false,
+        bool $includeBuyerName = false,
     ): array {
         $storeId = $request->user()->sellerProfile?->store?->id;
         if (! $storeId) {
             return [];
         }
 
+        $orderColumns = $includeBuyerName ? 'order:id,buyer_id' : 'order:id';
+        $relationships = [
+            $orderColumns,
+            'order.payments:id,order_id,method,status',
+            'items.product.images.variant',
+            'items.variant',
+            'statusHistory.actor',
+            'shipments.events',
+        ];
+
+        if ($includeBuyerName) {
+            $relationships[] = 'order.buyer:id,name';
+        }
+
         $query = SellerOrder::query()
             ->where('store_id', $storeId)
-            ->with([
-                'order.payments',
-                'items.product.images.variant',
-                'items.variant',
-                'statusHistory.actor',
-                'shipments.events',
-            ]);
+            ->with($relationships);
 
         if ($includeShipmentGroups) {
             $query->with('shipments.sellerOrders:id,store_id');
@@ -325,7 +334,7 @@ class SellerWorkflowController extends Controller
         return $query
             ->latest('created_at')
             ->get()
-            ->map(function (SellerOrder $sellerOrder) use ($catalog, $tracking, $storeId, $includeShipmentGroups): array {
+            ->map(function (SellerOrder $sellerOrder) use ($catalog, $tracking, $storeId, $includeShipmentGroups, $includeBuyerName): array {
                 $order = $sellerOrder->order;
                 $status = (string) $sellerOrder->status;
                 $trackingState = $tracking->snapshot($sellerOrder);
@@ -374,19 +383,12 @@ class SellerWorkflowController extends Controller
                         'image' => $this->sellerOrderImageUrl($imagePath, $imageDisk),
                     ];
                 })->values();
-                $address = $order ? implode(', ', array_filter([
-                    $order->recipient_name,
-                    $order->address_line,
-                    $order->barangay,
-                    $order->city_municipality,
-                    $order->province,
-                    $order->postal_code,
-                ])) : '';
                 $createdAt = $sellerOrder->created_at;
                 $dateKey = $createdAt?->isToday() ? 'today' : 'upcoming';
                 $deadline = $createdAt
                     ? ($createdAt->isToday() ? 'Today · '.$createdAt->format('g:i A') : $createdAt->format('M j, Y'))
                     : '—';
+                $buyerName = trim((string) ($order?->buyer?->name ?? ''));
 
                 return [
                     'seller_order_id' => (int) $sellerOrder->id,
@@ -395,7 +397,7 @@ class SellerWorkflowController extends Controller
                         ? (string) ($outboundShipment->shipment_no ?: 'Shipment #'.$outboundShipment->id)
                         : null,
                     'id' => '#'.$sellerOrder->seller_order_no,
-                    'customer' => (string) ($order?->recipient_name ?? 'Buyer'),
+                    'customer' => $includeBuyerName && $buyerName !== '' ? $buyerName : 'Buyer',
                     'items' => $quantity.' '.($quantity === 1 ? 'item' : 'items'),
                     'item_detail' => $itemDetail ?: 'Order items',
                     'item_rows' => $itemRows->all(),
@@ -433,7 +435,6 @@ class SellerWorkflowController extends Controller
                         ? route('seller.orders.packing', ['sellerOrder' => $sellerOrder->id])
                         : null,
                     'order_date' => $createdAt?->format('M j, Y g:i A') ?? '',
-                    'address' => $address,
                     'sku' => $items->count() === 1 ? (string) $items->first()->sku : '',
                     'product_image' => (string) ($itemRows->first()['image'] ?? ''),
                 ];
@@ -630,7 +631,13 @@ class SellerWorkflowController extends Controller
         BuyerCatalogService $catalog,
         SellerOrderTrackingService $tracking,
     ): View {
-        $orders = $this->persistedOrdersData($request, $catalog, $tracking, includeShipmentGroups: true);
+        $orders = $this->persistedOrdersData(
+            $request,
+            $catalog,
+            $tracking,
+            includeShipmentGroups: true,
+            includeBuyerName: true,
+        );
         $orderDisplayGroups = collect($orders)
             ->groupBy(fn (array $order): string => ! empty($order['shipment_group_id'])
                 ? 'shipment-'.$order['shipment_group_id']
@@ -1040,14 +1047,13 @@ class SellerWorkflowController extends Controller
                 ->whereDoesntHave('shipments.parcels.pickupRequests', fn ($query) => $query
                     ->whereIn('pickup_requests.status', ['requested', 'verified', 'scheduled']))
                 ->with([
-                    'order',
                     'shipments' => fn ($query) => $query
                         ->where('purpose', 'outbound')
                         ->with([
                             'waybill',
                             'parcels',
                             'logisticsProfile.user',
-                            'sellerOrders.order',
+                            'sellerOrders.order:id,status,city_municipality,province',
                             'sellerOrders.items',
                         ]),
                 ])
@@ -1339,18 +1345,18 @@ class SellerWorkflowController extends Controller
             ->whereHas('sellerOrders', fn ($query) => $query->where('store_id', $storeId))
             ->with([
                 'waybill',
-                'sellerOrder.order.buyer',
+                'sellerOrder.order:id,city_municipality,province',
                 'sellerOrder.items.product.images.variant',
                 'sellerOrder.items.variant',
-                'sellerOrders.order.buyer',
+                'sellerOrders.order:id,order_no,city_municipality,province',
                 'sellerOrders.items.product.images.variant',
                 'sellerOrders.items.variant',
-                'parcels.pickupRequests.latestAssignment.riderProfile.user',
+                'parcels.pickupRequests.latestAssignment.riderProfile',
                 'parcels.dispatchBatches' => fn ($query) => $query
                     ->where('dispatch_batches.status', '!=', 'cancelled')
                     ->orderByDesc('dispatch_batches.dispatched_at')
                     ->orderByDesc('dispatch_batches.id'),
-                'parcels.dispatchBatches.riderProfile.user',
+                'parcels.dispatchBatches.riderProfile',
                 'events' => fn ($query) => $query->orderBy('occurred_at')->orderBy('id'),
             ])
             ->orderByDesc('updated_at')
@@ -1456,7 +1462,7 @@ class SellerWorkflowController extends Controller
         $orderLabel = $includedSellerOrders->isNotEmpty()
             ? $includedSellerOrders->pluck('seller_order_no')->map(fn ($number): string => '#'.$number)->implode(' · ')
             : ($sellerOrder ? '#'.$sellerOrder->seller_order_no : 'Order unavailable');
-        $customer = (string) ($order?->recipient_name ?: $order?->buyer?->name ?: 'Recipient');
+        $customer = 'Buyer';
         $destination = implode(', ', array_filter([
             $order?->city_municipality,
             $order?->province,
@@ -1538,10 +1544,8 @@ class SellerWorkflowController extends Controller
             ->sortByDesc('id')
             ->first();
 
-        $deliveryRider = $deliveryBatch?->riderProfile?->user?->name;
-
-        if ($deliveryRider) {
-            return ['name' => $deliveryRider, 'role' => 'Delivery rider'];
+        if ($deliveryBatch?->riderProfile) {
+            return ['name' => 'Assigned rider', 'role' => 'Delivery rider'];
         }
 
         $pickupAssignment = $shipment->parcels
@@ -1553,10 +1557,8 @@ class SellerWorkflowController extends Controller
             ->sortByDesc('id')
             ->first();
 
-        $pickupRider = $pickupAssignment?->riderProfile?->user?->name;
-
-        if ($pickupRider) {
-            return ['name' => $pickupRider, 'role' => 'Pickup rider'];
+        if ($pickupAssignment?->riderProfile) {
+            return ['name' => 'Assigned rider', 'role' => 'Pickup rider'];
         }
 
         return ['name' => null, 'role' => null];
@@ -1586,7 +1588,7 @@ class SellerWorkflowController extends Controller
 
         $returnRequests = ReturnRequest::query()
             ->where('store_id', $store->id)
-            ->with(['order', 'buyer', 'sellerOrder', 'items.orderItem.product.images.variant', 'items.orderItem.variant', 'evidence', 'events.actor', 'refunds.commissions', 'refunds.sellerTransactions', 'refunds.sellerRecovery.events.sellerPayout', 'returnShipment.waybill', 'returnShipment.events', 'returnShipment.shippingSettlement'])
+            ->with(['order:id,order_no', 'buyer:id,name', 'sellerOrder', 'items.orderItem.product.images.variant', 'items.orderItem.variant', 'evidence', 'events.actor', 'refunds.commissions', 'refunds.sellerTransactions', 'refunds.sellerRecovery.events.sellerPayout', 'returnShipment.waybill', 'returnShipment.events', 'returnShipment.shippingSettlement'])
             ->latest('submitted_at')
             ->latest('id')
             ->get();
@@ -1659,7 +1661,7 @@ class SellerWorkflowController extends Controller
         $returnRequest = ReturnRequest::query()
             ->where('store_id', $store->id)
             ->where('return_no', strtoupper($caseId))
-            ->with(['order', 'buyer', 'sellerOrder', 'items.orderItem.product.images.variant', 'items.orderItem.variant', 'evidence', 'events.actor', 'refunds.commissions', 'refunds.sellerTransactions', 'refunds.sellerRecovery.events.sellerPayout', 'returnShipment.waybill', 'returnShipment.events', 'returnShipment.shippingSettlement'])
+            ->with(['order:id,order_no', 'buyer:id,name', 'sellerOrder', 'items.orderItem.product.images.variant', 'items.orderItem.variant', 'evidence', 'events.actor', 'refunds.commissions', 'refunds.sellerTransactions', 'refunds.sellerRecovery.events.sellerPayout', 'returnShipment.waybill', 'returnShipment.events', 'returnShipment.shippingSettlement'])
             ->firstOrFail();
         $case = $this->returnCaseData($returnRequest, $catalog);
 
@@ -1831,7 +1833,7 @@ class SellerWorkflowController extends Controller
             'id' => $case->return_no,
             'order' => $case->order?->order_no ?? 'Order unavailable',
             'seller_order' => $case->sellerOrder?->seller_order_no ?? '—',
-            'customer' => $case->buyer?->name ?? 'Buyer unavailable',
+            'customer' => trim((string) ($case->buyer?->name ?? '')) ?: 'Buyer',
             'product' => $productNames ? implode('; ', $productNames) : 'Purchased item unavailable',
             'items' => $items->map(fn ($item): array => [
                 'id' => (int) $item->id,

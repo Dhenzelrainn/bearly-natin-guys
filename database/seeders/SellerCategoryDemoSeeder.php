@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Address;
 use App\Models\Category;
 use App\Models\Role;
 use App\Models\SellerProfile;
@@ -14,6 +15,26 @@ use RuntimeException;
 
 class SellerCategoryDemoSeeder extends Seeder
 {
+    /**
+     * Deliberately synthetic location for local/testing-only Seller demo accounts.
+     * The recognized city code lets existing Seller pickup workflows resolve it.
+     *
+     * @var array<string, string|null>
+     */
+    private const DEMO_PICKUP_ADDRESS = [
+        'house_number' => '1',
+        'street' => 'Bearly Demo Seller Street',
+        'barangay' => 'Balibago',
+        'region' => 'Region IV-A (CALABARZON)',
+        'psgc_region_code' => '0400000000',
+        'city_municipality' => 'City of Santa Rosa',
+        'province' => 'Laguna',
+        'postal_code' => '4026',
+        'psgc_province_code' => '0403400000',
+        'psgc_city_code' => '0403428000',
+        'psgc_barangay_code' => null,
+    ];
+
     /**
      * Reserved local/testing demo credentials for categories currently without
      * a Seller. Never use these accounts or passwords in a production database.
@@ -64,12 +85,21 @@ class SellerCategoryDemoSeeder extends Seeder
             foreach (self::DEMO_PASSWORDS as $slug => $password) {
                 /** @var Category $category */
                 $category = $categories->get($slug);
+                $email = 'seller.demo.'.$slug.'@bearly.test';
 
                 if (SellerProfile::query()->whereApprovedCategoryId($category->id)->exists()) {
+                    $demoUser = User::query()->where('email', $email)->first();
+                    $demoProfile = $demoUser?->sellerProfile()->first();
+
+                    if ($demoUser
+                        && $demoProfile
+                        && (int) $demoProfile->approved_category_id === (int) $category->id) {
+                        $this->ensureDemoPickupAddress($demoUser, $demoProfile);
+                    }
+
                     continue;
                 }
 
-                $email = 'seller.demo.'.$slug.'@bearly.test';
                 if (User::withTrashed()->where('email', $email)->exists()) {
                     throw new RuntimeException(
                         "Reserved demo email [{$email}] is already in use; no demo accounts were created."
@@ -89,6 +119,12 @@ class SellerCategoryDemoSeeder extends Seeder
                     'email' => $email,
                     'email_verified_at' => $now,
                     'role' => 'seller',
+                    'region' => self::DEMO_PICKUP_ADDRESS['region'],
+                    'region_code' => self::DEMO_PICKUP_ADDRESS['psgc_region_code'],
+                    'province' => self::DEMO_PICKUP_ADDRESS['province'],
+                    'city' => self::DEMO_PICKUP_ADDRESS['city_municipality'],
+                    'barangay' => self::DEMO_PICKUP_ADDRESS['barangay'],
+                    'street_address' => self::DEMO_PICKUP_ADDRESS['house_number'].' '.self::DEMO_PICKUP_ADDRESS['street'],
                     'business_name' => $businessName,
                     'business_category' => $category->name,
                     'status' => 'active',
@@ -107,6 +143,8 @@ class SellerCategoryDemoSeeder extends Seeder
                     'approved_category_id' => $category->id,
                     'approved_at' => $now,
                 ]);
+
+                $this->ensureDemoPickupAddress($user, $profile);
 
                 // Reuse the normal Seller Store factory path. It creates a draft
                 // Store and its default Store-only sections, without bypassing
@@ -139,6 +177,61 @@ class SellerCategoryDemoSeeder extends Seeder
                 $this->command?->line('Password: '.$credential['password']);
                 $this->command?->line('Store status: draft');
             }
+        }
+    }
+
+    private function ensureDemoPickupAddress(User $user, SellerProfile $profile): void
+    {
+        $this->fillMissingDemoLocationIdentity($user);
+
+        $address = $profile->pickup_address_id
+            ? Address::query()
+                ->whereKey($profile->pickup_address_id)
+                ->where('user_id', $user->id)
+                ->first()
+            : null;
+
+        $address ??= Address::query()
+            ->where('user_id', $user->id)
+            ->where('label', 'Pickup')
+            ->latest('id')
+            ->first();
+
+        $address ??= Address::query()->create([
+            'user_id' => $user->id,
+            'label' => 'Pickup',
+            'recipient_name' => $user->name,
+            'phone' => $user->contact_number ?: $user->phone ?: 'Not provided',
+            ...self::DEMO_PICKUP_ADDRESS,
+            'is_default_shipping' => false,
+            'is_default_pickup' => true,
+        ]);
+
+        if ((int) $profile->pickup_address_id !== (int) $address->id) {
+            $profile->forceFill(['pickup_address_id' => $address->id])->save();
+        }
+    }
+
+    private function fillMissingDemoLocationIdentity(User $user): void
+    {
+        $location = [
+            'region' => self::DEMO_PICKUP_ADDRESS['region'],
+            'region_code' => self::DEMO_PICKUP_ADDRESS['psgc_region_code'],
+            'province' => self::DEMO_PICKUP_ADDRESS['province'],
+            'city' => self::DEMO_PICKUP_ADDRESS['city_municipality'],
+            'barangay' => self::DEMO_PICKUP_ADDRESS['barangay'],
+            'street_address' => self::DEMO_PICKUP_ADDRESS['house_number'].' '.self::DEMO_PICKUP_ADDRESS['street'],
+        ];
+        $missing = [];
+
+        foreach ($location as $field => $value) {
+            if (blank($user->{$field})) {
+                $missing[$field] = $value;
+            }
+        }
+
+        if ($missing !== []) {
+            $user->forceFill($missing)->save();
         }
     }
 }

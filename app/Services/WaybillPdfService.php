@@ -81,7 +81,11 @@ class WaybillPdfService
     ): array
     {
         $shipment = $waybill->shipment;
-        $shipment->loadMissing('sellerOrders.order');
+        $shipment->loadMissing([
+            'sellerOrder.order:id,order_no,recipient_name,address_line,barangay,city_municipality,province,postal_code',
+            'sellerOrder.store',
+            'sellerOrders.order:id,order_no',
+        ]);
         $sellerOrder = $shipment->sellerOrder;
         $order = $sellerOrder->order;
         $store = $sellerOrder->store;
@@ -123,8 +127,7 @@ class WaybillPdfService
             'logo_data_uri' => $logoDataUri,
             'sender_address' => $this->address($origin) ?: 'Seller pickup address on file',
             'sender_phone' => (string) ($origin?->phone ?: $store->contact_phone ?: '—'),
-            'recipient_name' => (string) ($order->recipient_name ?: $order->buyer?->name ?: 'Recipient'),
-            'recipient_phone' => (string) ($order->recipient_phone ?: '—'),
+            'recipient_name' => (string) ($order->recipient_name ?: 'Recipient'),
             'recipient_address' => implode(', ', array_filter([
                 $order->address_line,
                 $order->barangay,

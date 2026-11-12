@@ -13,6 +13,7 @@ use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
 use App\Services\PostalCodeLookup;
 use App\Services\PsgcAddressService;
+use App\Services\RememberedAccountService;
 use App\Services\RegistrationDraftService;
 use App\Services\RegistrationLifecycleService;
 use Illuminate\Auth\Events\PasswordReset;
@@ -34,9 +35,16 @@ use Throwable;
 
 class BearlyAuthController extends Controller
 {
-    public function showLogin(): View
+    public function showLogin(Request $request, RememberedAccountService $rememberedAccounts): View
     {
-        return view('auth.login');
+        $recentAccounts = $rememberedAccounts->accounts($request);
+
+        return view('auth.login', [
+            'recentAccounts' => $recentAccounts,
+            'showLoginForm' => $recentAccounts->isEmpty()
+                || $request->boolean('another')
+                || $request->session()->has('errors'),
+        ]);
     }
 
     public function showRegister(Request $request, RegistrationDraftService $drafts): View
@@ -66,7 +74,11 @@ class BearlyAuthController extends Controller
             ->values();
     }
 
-    public function login(Request $request, AuditService $audit): RedirectResponse
+    public function login(
+        Request $request,
+        AuditService $audit,
+        RememberedAccountService $rememberedAccounts,
+    ): RedirectResponse
     {
         $credentials = $request->validate([
             'email' => ['required', 'email'],
@@ -97,7 +109,7 @@ class BearlyAuthController extends Controller
             );
 
             return back()
-                ->withInput($request->only('email'))
+                ->withInput($request->only('email', 'remember'))
                 ->withErrors([
                     'email' => "Too many sign-in attempts. Try again in {$seconds} seconds.",
                 ]);
@@ -105,13 +117,13 @@ class BearlyAuthController extends Controller
 
         if (! Auth::attempt(
             ['email' => $email, 'password' => $credentials['password']],
-            $request->boolean('remember')
+            false,
         )) {
             RateLimiter::hit($emailRateKey, 60);
             RateLimiter::hit($ipRateKey, 60);
 
             return back()
-                ->withInput($request->only('email'))
+                ->withInput($request->only('email', 'remember'))
                 ->withErrors([
                     'email' => 'Invalid email or password.',
                 ]);
@@ -160,33 +172,103 @@ class BearlyAuthController extends Controller
         app(RegistrationLifecycleService::class)
             ->syncActiveRole($user);
 
+        if ($request->boolean('remember')) {
+            $rememberedAccounts->remember($request, $user);
+        } else {
+            $rememberedAccounts->forgetUser($request, (int) $user->id);
+        }
+
         $request->session()->put('bearly_auth_channel', 'web_password');
 
         $audit->recordAuthentication($user, 'signed_in', 'web_password', $request);
 
-        $routes = [
-            UserRole::Admin->value => 'admin.dashboard',
-            UserRole::Buyer->value => 'home',
-            UserRole::Seller->value => 'seller.dashboard',
-            UserRole::Logistics->value => 'logistics.dashboard',
-            UserRole::Rider->value => 'rider.dashboard',
-            UserRole::Guest->value => 'shop.home',
-        ];
-
-        $route = $routes[$user->role] ?? null;
-
-        return $route && app('router')->has($route)
-            ? redirect()->route($route)
-            : redirect('/');
+        return $this->redirectAuthenticatedUser($user);
     }
 
-    public function redirectToGoogle()
+    public function loginRememberedAccount(
+        Request $request,
+        int $userId,
+        RememberedAccountService $rememberedAccounts,
+        AuditService $audit,
+    ): RedirectResponse {
+        $user = $rememberedAccounts->authenticate($request, $userId);
+
+        if (! $user) {
+            return redirect()
+                ->route('login')
+                ->withErrors(['email' => 'That saved account is no longer available. Sign in another way.']);
+        }
+
+        Auth::login($user);
+        $request->session()->regenerate();
+
+        app(RegistrationLifecycleService::class)
+            ->syncActiveRole($user);
+
+        $user->forceFill(['last_login_at' => now()])->save();
+        $request->session()->put('bearly_auth_channel', 'remembered_account');
+        $audit->recordAuthentication($user, 'signed_in', 'remembered_account', $request);
+
+        return $this->redirectAuthenticatedUser($user);
+    }
+
+    public function forgetRememberedAccount(
+        Request $request,
+        int $userId,
+        RememberedAccountService $rememberedAccounts,
+        AuditService $audit,
+    ): RedirectResponse {
+        if ($rememberedAccounts->forgetAccount($request, $userId)) {
+            $user = User::query()->find($userId);
+            $audit->record(
+                action: 'auth.remembered_account_removed',
+                module: 'Authentication',
+                subject: $user,
+                description: 'A remembered account credential was removed from this browser.',
+                newValues: ['event' => 'remembered_account_removed'],
+                request: $request,
+                actor: $user,
+            );
+        }
+
+        return redirect()->route('login')->with('status', 'Saved account removed from this browser.');
+    }
+
+    public function clearRememberedAccounts(
+        Request $request,
+        RememberedAccountService $rememberedAccounts,
+        AuditService $audit,
+    ): RedirectResponse {
+        $removed = $rememberedAccounts->clear($request);
+
+        if ($removed > 0) {
+            $audit->record(
+                action: 'auth.remembered_accounts_cleared',
+                module: 'Authentication',
+                description: 'Remembered account credentials were cleared from this browser.',
+                newValues: ['accounts_removed' => $removed],
+                request: $request,
+            );
+        }
+
+        return redirect()->route('login')->with('status', 'Saved accounts cleared from this browser.');
+    }
+
+    public function redirectToGoogle(Request $request): RedirectResponse
     {
+        $request->session()->put('google_remember_account', $request->boolean('remember'));
+
         return Socialite::driver('google')->redirect();
     }
 
-    public function handleGoogleCallback(Request $request, AuditService $audit): RedirectResponse
+    public function handleGoogleCallback(
+        Request $request,
+        AuditService $audit,
+        RememberedAccountService $rememberedAccounts,
+    ): RedirectResponse
     {
+        $rememberAccount = (bool) $request->session()->pull('google_remember_account', false);
+
         try {
             $googleUser = Socialite::driver('google')->user();
         } catch (Throwable $e) {
@@ -291,20 +373,13 @@ class BearlyAuthController extends Controller
 
             $audit->recordAuthentication($user, 'signed_in', 'google', $request);
 
-            $routes = [
-                UserRole::Admin->value => 'admin.dashboard',
-                UserRole::Buyer->value => 'home',
-                UserRole::Seller->value => 'seller.dashboard',
-                UserRole::Logistics->value => 'logistics.dashboard',
-                UserRole::Rider->value => 'rider.dashboard',
-                UserRole::Guest->value => 'shop.home',
-            ];
+            if ($rememberAccount) {
+                $rememberedAccounts->remember($request, $user);
+            } else {
+                $rememberedAccounts->forgetUser($request, (int) $user->id);
+            }
 
-            $route = $routes[$user->role] ?? null;
-
-            return $route && app('router')->has($route)
-                ? redirect()->route($route)
-                : redirect('/');
+            return $this->redirectAuthenticatedUser($user);
         }
 
         $fullName = trim((string) $googleUser->getName());
@@ -763,7 +838,7 @@ class BearlyAuthController extends Controller
             $audit->recordAuthentication(
                 $user,
                 'signed_out',
-                in_array($channel, ['web_password', 'google'], true) ? $channel : 'web_session',
+                in_array($channel, ['web_password', 'google', 'remembered_account'], true) ? $channel : 'web_session',
                 $request,
             );
         }
@@ -772,7 +847,27 @@ class BearlyAuthController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('login');
+        return redirect()
+            ->route('login')
+            ->with('status', 'You are signed out. Any saved accounts remain available for one-tap sign-in on this browser.');
+    }
+
+    private function redirectAuthenticatedUser(User $user): RedirectResponse
+    {
+        $routes = [
+            UserRole::Admin->value => 'admin.dashboard',
+            UserRole::Buyer->value => 'home',
+            UserRole::Seller->value => 'seller.dashboard',
+            UserRole::Logistics->value => 'logistics.dashboard',
+            UserRole::Rider->value => 'rider.dashboard',
+            UserRole::Guest->value => 'shop.home',
+        ];
+
+        $route = $routes[$user->role] ?? null;
+
+        return $route && app('router')->has($route)
+            ? redirect()->route($route)
+            : redirect('/');
     }
 
     private function redirectForStatus(string $status): RedirectResponse

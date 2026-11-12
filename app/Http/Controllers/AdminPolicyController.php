@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AuditLog;
 use App\Models\Policy;
 use App\Models\PolicyVersion;
+use App\Services\SellerPolicyAcknowledgmentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -40,7 +41,53 @@ class AdminPolicyController extends Controller
             'topNotifications' => [],
             'policies' => $policies,
             'categories' => self::CATEGORIES,
+            'hasSellerConductPolicy' => Policy::query()
+                ->where('code', SellerPolicyAcknowledgmentService::REQUIRED_POLICY_CODE)
+                ->exists(),
         ]);
+    }
+
+    public function createSellerConductDraft(Request $request): RedirectResponse
+    {
+        $policy = DB::transaction(function () use ($request): ?Policy {
+            if (Policy::query()
+                ->where('code', SellerPolicyAcknowledgmentService::REQUIRED_POLICY_CODE)
+                ->lockForUpdate()
+                ->exists()) {
+                return null;
+            }
+
+            $policy = Policy::query()->create([
+                'code' => SellerPolicyAcknowledgmentService::REQUIRED_POLICY_CODE,
+                'title' => 'Seller Conduct & Off-Platform Transactions',
+                'category' => 'Seller Compliance',
+                'scope' => 'platform',
+                'scope_key' => null,
+                'status' => 'draft',
+            ]);
+
+            $version = $policy->versions()->create([
+                'version' => 'v1.0',
+                'summary' => 'Use Bearly-controlled order, payment, COD, and shipment workflows. This draft requires Admin review and publication before acknowledgment is required.',
+                'body' => self::sellerConductPolicyDraft(),
+                'status' => 'draft',
+                'created_by' => $request->user()->id,
+            ]);
+
+            $this->audit($request, $policy, 'policy.created', null, [
+                'policy' => $policy->only(['code', 'title', 'category', 'status']),
+                'version' => $version->only(['version', 'status']),
+            ]);
+
+            return $policy;
+        }, attempts: 3);
+
+        return back()->with(
+            $policy ? 'success' : 'warning',
+            $policy
+                ? 'A Seller Conduct policy draft was created. Review its wording and publish it when approved.'
+                : 'The Seller Conduct policy already exists. Review its current version in the policy list.',
+        );
     }
 
     public function store(Request $request): RedirectResponse
@@ -264,6 +311,23 @@ class AdminPolicyController extends Controller
     private function newPolicyCode(): string
     {
         return 'POL-'.now()->format('Ymd').'-'.Str::upper(Str::random(8));
+    }
+
+    private static function sellerConductPolicyDraft(): string
+    {
+        return <<<'POLICY'
+1. Bearly orders must remain Bearly transactions. A Seller must not ask or encourage a Buyer to cancel, replace, or complete a Bearly order through a direct payment or other off-platform transaction.
+
+2. Buyer contact and delivery information may be used only for the authorized fulfillment of the related Bearly order. Do not request, copy, retain, disclose, or use that information to solicit a Buyer or arrange an outside transaction.
+
+3. Use Bearly's order, payment, COD reconciliation, pickup, Waybill, and shipment-tracking workflows. Do not represent an external courier or an off-platform COD collection as a Bearly-approved delivery. A third-party courier may be used only when Bearly has approved and integrated the service for the applicable workflow.
+
+4. A Buyer may report an off-platform solicitation through the order's Bearly case workflow and may attach supporting evidence. Admin will review the report and relevant order, payment, pickup, Waybill, and shipment records, and may request responses from the involved participants.
+
+5. A missing or delayed shipment scan is a review signal, not proof of misconduct. Bearly will not automatically penalize a Seller solely because a scan is absent. Any finding or further action requires documented human review under the applicable Platform Policies.
+
+This draft is provided for Admin review. It becomes an active Seller requirement only after an Admin publishes it through Platform Policies.
+POLICY;
     }
 
     private function statusLabel(string $status): string

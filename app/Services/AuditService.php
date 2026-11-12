@@ -84,6 +84,7 @@ class AuditService
 
         return match ($channel) {
             'google' => 'Successful sign-in with Google.',
+            'remembered_account' => 'Successful sign-in with a remembered account on this browser.',
             'mobile_api' => 'Successful mobile app sign-in; an API token was issued.',
             default => 'Successful sign-in with email and password.',
         };

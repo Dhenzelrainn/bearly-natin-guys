@@ -36,7 +36,7 @@
 
     <header class="buyer-dispute-heading">
         <span class="section-kicker">Seller Order {{ $sellerOrder->seller_order_no }}</span>
-        <h1>Report a problem</h1>
+        <h1>{{ $caseType === 'off_platform_solicitation' ? 'Report off-platform solicitation' : 'Report a problem' }}</h1>
         <p>Tell Bearly what happened. An Admin will review the case with the Buyer, Seller, and any connected delivery participants.</p>
     </header>
 
@@ -49,18 +49,23 @@
 
     <form class="buyer-dispute-form" method="post" action="{{ route('buyer.disputes.store', $sellerOrder->id) }}" enctype="multipart/form-data">
         @csrf
+        <input type="hidden" name="type" value="{{ $caseType }}">
         <section class="buyer-dispute-card">
             <div class="buyer-dispute-section-heading">
                 <span class="material-symbols-outlined" aria-hidden="true">support_agent</span>
                 <div><h2>Describe the issue</h2><p>Use specific details that help the Admin review the order and any delivery history.</p></div>
             </div>
 
+            @if ($caseType === 'off_platform_solicitation')
+                <div class="buyer-dispute-info" role="note"><span class="material-symbols-outlined" aria-hidden="true">shield</span><p>Include what was requested and when it happened. Attach messages or other supporting evidence if available. A report starts an Admin review; it does not automatically suspend or penalize the Seller.</p></div>
+            @endif
+
             <label for="dispute-subject">Subject
-                <input id="dispute-subject" name="subject" type="text" maxlength="180" value="{{ old('subject') }}" required placeholder="Example: Item arrived damaged">
+                <input id="dispute-subject" name="subject" type="text" maxlength="180" value="{{ old('subject', $caseType === 'off_platform_solicitation' ? 'Off-platform transaction solicitation' : '') }}" required placeholder="Example: Item arrived damaged">
             </label>
 
             <label for="dispute-description">What happened?
-                <textarea id="dispute-description" name="description" rows="7" maxlength="3000" required placeholder="Describe the problem, what you expected, and what you are asking Bearly to review.">{{ old('description') }}</textarea>
+                <textarea id="dispute-description" name="description" rows="7" maxlength="3000" required placeholder="{{ $caseType === 'off_platform_solicitation' ? 'Describe the request, when it happened, and how it relates to this Bearly order.' : 'Describe the problem, what you expected, and what you are asking Bearly to review.' }}">{{ old('description') }}</textarea>
                 <small>Do not include passwords, payment PINs, or other private credentials.</small>
             </label>
 
@@ -71,7 +76,7 @@
             </label>
         </section>
 
-        <aside class="buyer-dispute-info"><span class="material-symbols-outlined" aria-hidden="true">info</span><p>This is a general dispute intake and does not start a return, refund, replacement, payout, or order-status change. Any administrative outcome is recorded in the case workspace.</p></aside>
+        <aside class="buyer-dispute-info"><span class="material-symbols-outlined" aria-hidden="true">info</span><p>This report does not automatically start a return, refund, replacement, payout, suspension, or order-status change. An Admin records the review outcome in the case workspace.</p></aside>
         <div class="buyer-dispute-actions"><a class="buyer-dispute-secondary" href="{{ route('buyer.profile') }}#purchases">Cancel</a><button class="buyer-dispute-primary" type="submit">Submit dispute</button></div>
     </form>
 </main>

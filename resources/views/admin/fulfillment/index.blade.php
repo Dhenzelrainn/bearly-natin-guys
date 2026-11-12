@@ -13,6 +13,7 @@
             ['key' => 'transit', 'label' => 'In transit / delivery', 'icon' => 'truck'],
             ['key' => 'delivered', 'label' => 'Delivered', 'icon' => 'package-check'],
             ['key' => 'failed', 'label' => 'Exceptions', 'icon' => 'triangle-alert'],
+            ['key' => 'tracking_review', 'label' => 'Expired pickup windows', 'icon' => 'scan-search'],
         ];
 
         $overrideStatuses = [
@@ -31,7 +32,7 @@
         <div>
             <span class="eyebrow">Operations monitoring</span>
             <h1>Shipment fulfillment</h1>
-            <p>Review persisted shipment status and the latest recorded scan. Administrative status overrides require a reason and are written to shipment history.</p>
+            <p>Review shipment history, pickup appointments, Waybills, and delivery proofs. Tracking cues are advisory only: a missing scan is not proof of Seller misconduct, and no automatic penalty is applied.</p>
         </div>
 
         <div class="hero-context-stat">
@@ -75,6 +76,7 @@
                         <th>Waybill</th>
                         <th>Status</th>
                         <th>Latest scan</th>
+                        <th>Tracking review</th>
                         <th>Admin override</th>
                     </tr>
                 </thead>
@@ -103,7 +105,22 @@
                             </td>
                             <td>{{ $sellerOrder?->store?->name ?: 'Store unavailable' }}</td>
                             <td>{{ $order?->recipient_name ?: ($order?->buyer?->name ?: 'Recipient unavailable') }}</td>
-                            <td>{{ $shipment->waybill?->waybill_no ?: 'Not generated' }}</td>
+                            <td>
+                                @if ($shipment->waybill)
+                                    <strong>{{ $shipment->waybill->waybill_no }}</strong>
+                                    @if ($shipment->purpose === 'outbound' && ! $shipment->waybill->voided_at && $shipment->waybill->status !== 'voided')
+                                        <a
+                                            class="button button-ghost button-small"
+                                            href="{{ route('admin.fulfillment.waybills.pdf', $shipment->waybill) }}"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            aria-label="Open audited Waybill PDF for {{ $shipment->waybill->waybill_no }}"
+                                        >View Waybill PDF</a>
+                                    @endif
+                                @else
+                                    Not generated
+                                @endif
+                            </td>
                             <td>
                                 <span class="status-badge badge-warning">
                                     {{ str($shipment->status)->replace('_', ' ')->title() }}
@@ -132,6 +149,14 @@
                                         View delivery proof{{ $deliveryProofs->count() > 1 ? ' · '.$loop->iteration : '' }}
                                     </a>
                                 @endforeach
+                            </td>
+                            <td>
+                                @if ($shipment->tracking_review_signal)
+                                    <span class="status-badge badge-warning">{{ $shipment->tracking_review_signal['label'] }}</span>
+                                    <small class="table-subline">{{ $shipment->tracking_review_signal['detail'] }}</small>
+                                @else
+                                    <span class="muted">No current review cue</span>
+                                @endif
                             </td>
                             <td>
                                 <form
@@ -174,7 +199,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7">
+                            <td colspan="8">
                                 <div class="table-empty">
                                     <i data-lucide="package-open"></i>
                                     <strong>No shipments recorded</strong>

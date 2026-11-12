@@ -54,11 +54,12 @@ class SellerWaybillController extends Controller
 
         $waybills = (clone $owned)
             ->with([
-                'shipment.sellerOrder.order.buyer',
+                'shipment.sellerOrder.order:id,buyer_id,order_no,city_municipality,province',
+                'shipment.sellerOrder.order.buyer:id,name',
                 'shipment.sellerOrder.store',
                 'shipment.sellerOrder.items.product.images.variant',
                 'shipment.sellerOrder.items.variant',
-                'shipment.sellerOrders.order',
+                'shipment.sellerOrders.order:id,order_no',
                 'shipment.sellerOrders.items.product.images.variant',
                 'shipment.sellerOrders.items.variant',
                 'shipment.logisticsProfile',
@@ -130,9 +131,9 @@ class SellerWaybillController extends Controller
             $waybills = $this->ownedWaybills($storeId)
                 ->whereIn('waybills.id', $ids)
                 ->with([
-                    'shipment.sellerOrder.order.buyer',
+                    'shipment.sellerOrder.order:id,order_no,recipient_name,address_line,barangay,city_municipality,province,postal_code',
                     'shipment.sellerOrder.store',
-                    'shipment.sellerOrders.order',
+                    'shipment.sellerOrders.order:id,order_no',
                     'shipment.originAddress' => fn ($query) => $query->withTrashed(),
                     'parcels',
                 ])
@@ -269,18 +270,11 @@ class SellerWaybillController extends Controller
                                         ->orWhereHas('order', function (Builder $orders) use ($like): void {
                                             $orders->where(function (Builder $orderMatch) use ($like): void {
                                                 $orderMatch->where('order_no', 'like', $like)
-                                                    ->orWhere('recipient_name', 'like', $like)
-                                                    ->orWhere('recipient_phone', 'like', $like)
-                                                    ->orWhere('address_line', 'like', $like)
-                                                    ->orWhere('barangay', 'like', $like)
-                                                    ->orWhere('city_municipality', 'like', $like)
-                                                    ->orWhere('province', 'like', $like)
-                                                    ->orWhere('postal_code', 'like', $like)
-                                                    ->orWhere('status', 'like', $like)
-                                                    ->orWhere('payment_status', 'like', $like);
-                                            })->orWhereHas('buyer', fn (Builder $buyers) => $buyers
-                                                ->where('name', 'like', $like)
-                                                ->orWhere('email', 'like', $like));
+                                                     ->orWhere('city_municipality', 'like', $like)
+                                                     ->orWhere('province', 'like', $like)
+                                                     ->orWhere('status', 'like', $like)
+                                                     ->orWhere('payment_status', 'like', $like);
+                                            });
                                         })
                                         ->orWhereHas('items', fn (Builder $items) => $items
                                             ->where('product_name', 'like', $like)
@@ -420,7 +414,7 @@ class SellerWaybillController extends Controller
                 ->all(),
             'seller_order_count' => $includedSellerOrders->count(),
             'marketplace_orders' => $includedSellerOrders->map(fn ($included): string => (string) ($included->order?->order_no ?? ''))->filter()->unique()->implode(' · '),
-            'customer' => (string) ($order->recipient_name ?: $order->buyer?->name ?: 'Recipient'),
+            'customer' => trim((string) ($order?->buyer?->name ?? '')) ?: 'Buyer',
             'products' => $includedItems
                 ->map(fn ($item): array => [
                     'name' => (string) ($item->product_name ?: $item->product?->name ?: 'Product'),

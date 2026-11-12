@@ -91,7 +91,6 @@
             <div class="section-body">
                 <div class="recipient">{{ $label['recipient_name'] }}</div>
                 <div class="address">{{ $label['recipient_address'] }}</div>
-                <div class="contact">Contact: {{ $label['recipient_phone'] }}</div>
             </div>
         </section>
 

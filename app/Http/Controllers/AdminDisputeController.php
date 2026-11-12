@@ -429,16 +429,17 @@ class AdminDisputeController extends Controller
         Request $request,
         Dispute $dispute
     ): JsonResponse {
+        $allowedOutcomes = $dispute->type === 'off_platform_solicitation'
+            ? ['policy_violation_found', 'no_violation_found']
+            : [
+                'buyer_favored',
+                'seller_favored',
+                'partial_refund_approved',
+                'replacement_arranged',
+            ];
+
         $validated = $request->validate([
-            'outcome' => [
-                'required',
-                Rule::in([
-                    'buyer_favored',
-                    'seller_favored',
-                    'partial_refund_approved',
-                    'replacement_arranged',
-                ]),
-            ],
+            'outcome' => ['required', Rule::in($allowedOutcomes)],
 
             'note' => [
                 'required',
@@ -475,6 +476,8 @@ class AdminDisputeController extends Controller
                 'seller_favored' => 'Seller favored',
                 'partial_refund_approved' => 'Partial refund approved',
                 'replacement_arranged' => 'Replacement arranged',
+                'policy_violation_found' => 'Policy violation found after review',
+                'no_violation_found' => 'No policy violation found after review',
             };
 
             $dispute->update([

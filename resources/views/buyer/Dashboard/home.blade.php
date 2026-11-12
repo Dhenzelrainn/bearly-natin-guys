@@ -159,7 +159,13 @@ $usingLiveCatalog = true;
 
 
 <div class="sidebar-categories-card">
-<div class="sidebar-title"><strong>Shop by category</strong><button id="menu-close" class="icon-button" aria-label="Close categories"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
+<div class="sidebar-title">
+    <strong>Shop by category</strong>
+    <button id="sidebar-collapse" class="sidebar-collapse-button" type="button" aria-label="Hide categories and deals" aria-controls="sidebar" aria-expanded="true" title="Hide categories and deals" hidden>
+        <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
+    </button>
+    <button id="menu-close" class="icon-button" type="button" aria-label="Close categories"><span class="material-symbols-outlined" aria-hidden="true">close</span></button>
+</div>
 
 <nav id="category-nav" aria-label="Shop by category"></nav>
 
@@ -196,6 +202,9 @@ $usingLiveCatalog = true;
 
 <main id="main" tabindex="-1">
 
+<button id="sidebar-expand" class="sidebar-expand-button" type="button" aria-label="Show categories and deals" aria-controls="sidebar" aria-expanded="false" title="Show categories and deals" hidden>
+    <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+</button>
 
 
 <div id="editorial">

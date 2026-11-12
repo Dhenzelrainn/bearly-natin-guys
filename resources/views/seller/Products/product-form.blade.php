@@ -585,17 +585,17 @@
                         <input type="hidden" name="product_mode" value="{{ $productMode }}" data-product-mode-value>
                         <div class="product-mode-current">
                             <strong>{{ $productMode === 'single' ? 'Single Product' : 'With Variants' }}</strong>
-                            <small>{{ $productMode === 'single' ? 'One SKU, price, and stock balance.' : 'Separate SKU, price, and stock for each option combination.' }}</small>
+                            <small>{{ $productMode === 'single' ? 'No buyer options. Set one price and one stock quantity.' : 'Buyers choose options like color or size. Each option combination has its own price, stock, and SKU.' }}</small>
                         </div>
                     @else
                         <div class="product-mode-options">
                         <label class="product-mode-option {{ $productMode === 'single' ? 'is-selected' : '' }}" data-product-mode-card="single">
                             <input type="radio" name="product_mode" value="single" data-product-mode-choice @checked($productMode === 'single')>
-                            <span><strong>Single Product</strong><small>One SKU, price, and stock balance.</small></span>
+                            <span><strong>Single Product</strong><small>No buyer options. Set one price and one stock quantity.</small></span>
                         </label>
                         <label class="product-mode-option {{ $productMode === 'with_variants' ? 'is-selected' : '' }}" data-product-mode-card="with_variants">
                             <input type="radio" name="product_mode" value="with_variants" data-product-mode-choice @checked($productMode === 'with_variants')>
-                            <span><strong>With Variants</strong><small>Separate SKU, price, and stock for each option combination.</small></span>
+                            <span><strong>With Variants</strong><small>Buyers choose options like color or size. Each option combination has its own price, stock, and SKU.</small></span>
                         </label>
                         </div>
                     @endif
@@ -604,7 +604,7 @@
                 </div>
                 <div class="product-form-grid product-inventory-grid">
                     <label class="seller-field product-sku-field" data-product-sku-control>
-                        <span data-product-sku-label>{{ $hasVariantMatrix ? 'SKU management' : 'Product SKU' }}</span>
+                        <span data-product-sku-label>{{ $hasVariantMatrix ? 'Variant SKU management' : 'Product SKU' }}</span>
                         <input
                             name="sku"
                             value="{{ old('sku', $product['sku']) }}"
@@ -615,12 +615,21 @@
                         >
                         <span class="product-sku-managed-value" data-product-sku-managed @unless ($hasVariantMatrix) hidden @endunless>
                             <i data-lucide="git-branch"></i>
-                            <strong>Managed per variant</strong>
+                            <strong>One SKU per variant</strong>
                         </span>
-                        <small data-product-sku-help>{{ $hasVariantMatrix ? 'Each size/color combination has its own SKU in Variant Inventory below.' : 'Used when this product has no variants.' }}</small>
+                        <small data-product-sku-help>{{ $hasVariantMatrix ? 'Enter a SKU in each variant row below, or leave it blank to auto-generate when you save.' : 'Used when this product has no variants.' }}</small>
                         @error('sku')<small class="field-error">{{ $message }}</small>@enderror
                     </label>
-                    <label class="seller-field"><span>Total Stock <em>*</em></span><input type="number" name="stock" value="{{ old('stock', $product['stock']) }}" min="{{ (int) ($product['reserved_stock'] ?? 0) }}" data-product-total-stock required><small>Reserved: {{ (int) ($product['reserved_stock'] ?? 0) }} unit(s). On-hand stock cannot be set below this amount.</small>@error('stock')<small class="field-error">{{ $message }}</small>@enderror</label>
+                    <label class="seller-field">
+                        <span>
+                            <span data-product-total-stock-label>{{ $hasVariantMatrix ? 'Total Stock (calculated)' : 'Total Stock' }}</span>
+                            <em data-product-total-stock-required @if ($hasVariantMatrix) hidden @endif>*</em>
+                        </span>
+                        <input type="number" name="stock" value="{{ old('stock', $product['stock']) }}" min="{{ (int) ($product['reserved_stock'] ?? 0) }}" data-product-total-stock required>
+                        <small data-product-total-stock-help>{{ $hasVariantMatrix ? 'Calculated from the stock quantities in the variant rows below.' : 'Enter the total number of units available for this product.' }}</small>
+                        <small>Reserved: {{ (int) ($product['reserved_stock'] ?? 0) }} unit(s). Total stock cannot be lower than this amount.</small>
+                        @error('stock')<small class="field-error">{{ $message }}</small>@enderror
+                    </label>
                     <label class="seller-field" data-product-global-threshold @if ($hasVariantMatrix) hidden @endif>
                         <span>Low-stock Alert At @unless ($isEdit)<em>*</em>@endunless</span>
                         <input
@@ -672,28 +681,36 @@
                 <div data-variant-configuration @unless ($hasVariantMatrix) hidden @endunless>
                     <div class="variation-groups">
                         <div class="variation-group">
-                            <div><strong>Option Group 1</strong><small>Example: Size</small></div>
-                            <label class="seller-field"><span>Option Name</span><input name="option_one_name" value="{{ old('option_one_name', $product['option_one_name']) }}" placeholder="e.g. Size" data-variant-option-one-name></label>
-                            <label class="seller-field"><span>Available Values</span><input name="option_one_values" value="{{ old('option_one_values', $product['option_one_values']) }}" placeholder="e.g. Small, Medium, Large" data-variant-option-one-values><small>Separate each value with a comma.</small></label>
+                            <div><strong>Option 1</strong><small>Use this for one choice, such as Color or Size.</small></div>
+                            <label class="seller-field"><span>What can buyers choose?</span><input name="option_one_name" value="{{ old('option_one_name', $product['option_one_name']) }}" placeholder="e.g. Color" data-variant-option-one-name><small>Enter the option type—not the product name.</small></label>
+                            <label class="seller-field"><span>Choices buyers can select</span><input name="option_one_values" value="{{ old('option_one_values', $product['option_one_values']) }}" placeholder="e.g. Black, White" data-variant-option-one-values><small>Separate choices with commas.</small></label>
                         </div>
                         <div class="variation-group">
-                            <div><strong>Option Group 2</strong><small>Example: Color, Material, or Storage</small></div>
-                            <label class="seller-field"><span>Option Name</span><input name="option_two_name" value="{{ old('option_two_name', $product['option_two_name']) }}" placeholder="e.g. Color" data-variant-option-two-name></label>
-                            <label class="seller-field"><span>Available Values</span><input name="option_two_values" value="{{ old('option_two_values', $product['option_two_values']) }}" placeholder="e.g. Black, White, Olive" data-variant-option-two-values><small>Optional and adaptable to your approved product category.</small></label>
+                            <div><strong>Option 2 (optional)</strong><small>Use only for a second choice, like Size.</small></div>
+                            <label class="seller-field"><span>What can buyers choose?</span><input name="option_two_name" value="{{ old('option_two_name', $product['option_two_name']) }}" placeholder="e.g. Size" data-variant-option-two-name><small>Enter the option type—not the product name.</small></label>
+                            <label class="seller-field"><span>Choices buyers can select</span><input name="option_two_values" value="{{ old('option_two_values', $product['option_two_values']) }}" placeholder="e.g. Small, Medium" data-variant-option-two-values><small>Use this only for a second choice. Leave it blank if buyers choose only one option type.</small></label>
                         </div>
+                    </div>
+
+                    <div class="variant-setup-guide">
+                        <strong>How variants are created</strong>
+                        <p>Bearly combines every choice in Option 1 with every choice in Option 2.</p>
+                        <p><strong>Example:</strong> Color = Black, White + Size = Small, Medium creates 4 variants: Black / Small, Black / Medium, White / Small, and White / Medium.</p>
+                        <p>If buyers choose only one option type, such as color, enter all choices in Option 1 and leave Option 2 blank.</p>
                     </div>
 
                     <section class="variant-matrix-card" data-variant-matrix>
                     <div class="variant-matrix-heading">
                         <div class="variant-matrix-heading-copy">
                             <span class="section-kicker">Variant inventory</span>
-                            <h4>Stock and alert per variation</h4>
-                            <p>Manage stock and shipping details for each SKU. Existing variants stay when you add values.</p>
+                            <h4>Set price and stock for each variant</h4>
+                            <p>Each row is one option combination. Existing variant details stay when you add choices.</p>
                         </div>
                         <button class="seller-secondary-button" type="button" data-generate-variants>
                             <i data-lucide="git-branch-plus"></i> Generate variants
                         </button>
                     </div>
+                    <p class="variant-combination-summary" data-variant-combination-summary role="status" aria-live="polite">Add choices above to see how many variants will be created.</p>
 
                     <section class="variant-package-manager" aria-label="Variant package details">
                         <div class="variant-package-shared-panel">
@@ -751,8 +768,8 @@
 
                     <div class="variant-matrix-empty" data-variant-empty>
                         <i data-lucide="rows-3"></i>
-                        <strong>No variant rows yet</strong>
-                        <span>Add option values above, then generate variants. If the product has no variants, keep using Total Stock.</span>
+                        <strong>No variants generated yet</strong>
+                        <span>Add choices above, then select “Generate variants.” You’ll set the price and stock for each variant below.</span>
                     </div>
 
                     <div class="variant-matrix-table-wrap" data-variant-table-wrap hidden>

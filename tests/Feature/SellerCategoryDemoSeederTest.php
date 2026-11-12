@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Address;
 use App\Models\Category;
 use App\Models\SellerProfile;
 use App\Models\Store;
@@ -42,7 +43,7 @@ class SellerCategoryDemoSeederTest extends TestCase
 
         $profiles = SellerProfile::query()
             ->whereIn('approved_category_id', $categories->pluck('id'))
-            ->with(['approvedCategory', 'store', 'user.roles'])
+            ->with(['approvedCategory', 'pickupAddress', 'store', 'user.roles'])
             ->get();
 
         $this->assertCount(count(self::DEMO_PASSWORDS), $profiles);
@@ -57,6 +58,17 @@ class SellerCategoryDemoSeederTest extends TestCase
             $this->assertNotNull($profile);
             $this->assertSame($category->name, $profile->approvedCategory->name);
             $this->assertNotNull($profile->approved_at);
+            $this->assertNotNull($profile->pickupAddress);
+            $this->assertSame((int) $profile->user_id, (int) $profile->pickupAddress->user_id);
+            $this->assertSame('Pickup', $profile->pickupAddress->label);
+            $this->assertTrue($profile->pickupAddress->is_default_pickup);
+            $this->assertSame('City of Santa Rosa', $profile->pickupAddress->city_municipality);
+            $this->assertSame('Laguna', $profile->pickupAddress->province);
+            $this->assertSame('0403428000', $profile->pickupAddress->psgc_city_code);
+            $this->assertSame(1, Address::query()
+                ->where('user_id', $profile->user_id)
+                ->where('label', 'Pickup')
+                ->count());
             $this->assertSame('draft', $profile->store->publication_status);
             $this->assertSame('active', $profile->user->status);
             $this->assertNotNull($profile->user->email_verified_at);
@@ -64,6 +76,40 @@ class SellerCategoryDemoSeederTest extends TestCase
             $this->assertTrue(Hash::check($password, $profile->user->password));
             $this->assertSame('seller.demo.'.$slug.'@bearly.test', $profile->user->email);
         }
+
+        $this->actingAs($profiles->firstOrFail()->user)
+            ->get(route('seller.store'))
+            ->assertOk()
+            ->assertSee('City of Santa Rosa, Laguna')
+            ->assertDontSee('Pickup address not set');
+    }
+
+    public function test_it_backfills_a_missing_pickup_address_for_an_existing_reserved_demo_seller(): void
+    {
+        $this->seed(DatabaseSeeder::class);
+        $this->seed(SellerCategoryDemoSeeder::class);
+
+        $user = User::query()
+            ->where('email', 'seller.demo.jewelry-and-watches@bearly.test')
+            ->firstOrFail();
+        $profile = SellerProfile::query()->where('user_id', $user->id)->firstOrFail();
+        $profile->update(['pickup_address_id' => null]);
+        Address::query()
+            ->where('user_id', $user->id)
+            ->where('label', 'Pickup')
+            ->delete();
+
+        $this->seed(SellerCategoryDemoSeeder::class);
+
+        $profile->refresh();
+        $this->assertNotNull($profile->pickup_address_id);
+        $this->assertSame((int) $user->id, (int) $profile->pickupAddress->user_id);
+        $this->assertSame('City of Santa Rosa', $profile->pickupAddress->city_municipality);
+        $this->assertSame(1, Address::query()
+            ->where('user_id', $user->id)
+            ->where('label', 'Pickup')
+            ->count());
+        $this->assertSame(1, Store::query()->where('seller_profile_id', $profile->id)->count());
     }
 
     public function test_it_skips_categories_that_already_have_a_seller(): void

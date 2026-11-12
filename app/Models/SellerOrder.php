@@ -63,8 +63,17 @@ class SellerOrder extends Model
     public function activeDispute()
     {
         return $this->hasOne(Dispute::class)
-            ->whereNotIn('status', ['resolved', 'closed'])
-            ->latestOfMany();
+            ->ofMany(['id' => 'MAX'], fn ($query) => $query
+                ->where('type', 'order_issue')
+                ->whereNotIn('status', ['resolved', 'closed']));
+    }
+
+    public function activePolicyReport()
+    {
+        return $this->hasOne(Dispute::class)
+            ->ofMany(['id' => 'MAX'], fn ($query) => $query
+                ->where('type', 'off_platform_solicitation')
+                ->whereNotIn('status', ['resolved', 'closed']));
     }
 
     public function promotionAllocations()

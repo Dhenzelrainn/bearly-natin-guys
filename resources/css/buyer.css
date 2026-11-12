@@ -6804,6 +6804,65 @@ body:not(.bc).top-products-page .top-more-menu button.is-active{
     background:#fff4e4;
     color:#8b4f2d;
 }
+
+/* Buyer home desktop sidebar collapse; the mobile drawer keeps its X close control. */
+body:not(.bc).bh .sidebar-collapse-button,
+body:not(.bc).bh .sidebar-expand-button{
+    display:none;
+    place-items:center;
+    width:32px;
+    height:32px;
+    flex:0 0 32px;
+    padding:0;
+    border:0;
+    border-radius:5px;
+    background:transparent;
+    color:#795e4b;
+    cursor:pointer;
+    transition:color .16s ease;
+}
+body:not(.bc).bh .sidebar-collapse-button{
+    margin-left:auto;
+}
+body:not(.bc).bh .sidebar-collapse-button:hover,
+body:not(.bc).bh .sidebar-expand-button:hover{
+    color:#a45b20;
+}
+body:not(.bc).bh .sidebar-collapse-button:focus-visible,
+body:not(.bc).bh .sidebar-expand-button:focus-visible{
+    outline:2px solid #d88b12;
+    outline-offset:2px;
+}
+body:not(.bc).bh .sidebar-collapse-button .material-symbols-outlined,
+body:not(.bc).bh .sidebar-expand-button .material-symbols-outlined{
+    font-size:23px;
+    line-height:1;
+}
+body:not(.bc).bh .sidebar-expand-button{
+    margin:0 0 10px;
+}
+
+@media (min-width:981px){
+    body:not(.bc).bh .sidebar-collapse-button:not([hidden]),
+    body:not(.bc).bh .sidebar-expand-button:not([hidden]){
+        display:grid;
+    }
+    body:not(.bc).bh .shell.is-sidebar-collapsed{
+        grid-template-columns:minmax(0,1fr);
+    }
+    body:not(.bc).bh .shell.is-sidebar-collapsed > .sidebar{
+        display:none;
+    }
+}
+
+:root[data-theme="dark"] body.bh:not(.bc) .sidebar-collapse-button,
+:root[data-theme="dark"] body.bh:not(.bc) .sidebar-expand-button{
+    color:var(--theme-text);
+}
+:root[data-theme="dark"] body.bh:not(.bc) .sidebar-collapse-button:hover,
+:root[data-theme="dark"] body.bh:not(.bc) .sidebar-expand-button:hover{
+    color:var(--theme-accent);
+}
 body:not(.bc).top-products-page .top-rank{
     display:grid!important;
     left:8px;

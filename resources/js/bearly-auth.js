@@ -18,6 +18,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    const rememberAccount = document.querySelector('[data-remember-account]');
+    const googleRemember = document.querySelector('[data-google-remember]');
+
+    if (rememberAccount && googleRemember) {
+        const syncGoogleRememberChoice = () => {
+            googleRemember.value = rememberAccount.checked ? '1' : '0';
+        };
+
+        syncGoogleRememberChoice();
+        rememberAccount.addEventListener('change', syncGoogleRememberChoice);
+    }
+
     const registration = document.querySelector('[data-registration]');
     if (!registration) return;
 

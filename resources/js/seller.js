@@ -4229,9 +4229,7 @@ const setupBearlyOrderActionModal = () => {
     const orderDateLabel = q('[data-bearly-date-label]');
     const payment = q('[data-bearly-order-payment]');
     const total = q('[data-bearly-order-total]');
-    const address = q('[data-bearly-order-address]');
-    const addressCell = q('[data-bearly-address-cell]');
-    const addressLabel = q('[data-bearly-address-label]');
+    const orderStatus = q('[data-bearly-order-status]');
     const itemCount = q('[data-bearly-item-count]');
     const itemTitle = q('[data-bearly-items-title]');
     const items = q('[data-bearly-items]');
@@ -5173,21 +5171,10 @@ const setupBearlyOrderActionModal = () => {
             ? 'Individual totals shown below'
             : row.dataset.orderTotal || '—';
 
-        const shippingAddress = (row.dataset.orderAddress || '').trim();
-
-        if (['review', 'prepare', 'packing'].includes(config.type)) {
-            addressLabel.textContent = 'Order Status';
-            address.textContent =
-                row.dataset.orderStatusCopy ||
-                statusLabels[canonical] ||
-                '—';
-        } else {
-            addressLabel.textContent = 'Shipping Address';
-            address.textContent =
-                shippingAddress || 'Not available in preview';
-        }
-
-        addressCell.hidden = false;
+        orderStatus.textContent =
+            row.dataset.orderStatusCopy ||
+            statusLabels[canonical] ||
+            '—';
 
         if (shipmentRows?.length) {
             renderShipmentOrders(shipmentRows);

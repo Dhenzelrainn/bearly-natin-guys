@@ -67,6 +67,12 @@ This file is the shared contract for backend, UI, and database work. The executa
 | Return/refund | `return_requests`, `return_items`, `return_evidence`, `refunds` |
 | Case management | `disputes`, participants, evidence, events |
 
+## Browser remembered-account sign-in
+
+- Web password and Google sign-in may opt a successful active account into a browser-local Recent Accounts chooser. `remembered_accounts` stores the `user_id`, one-way hash of a random credential, expiry, and last-use time; the raw credential is held only in Laravel's encrypted, `HttpOnly`, `SameSite=Lax` cookie (Secure on HTTPS). Never store passwords, Laravel session IDs, or remembered credentials in JavaScript storage or audit logs.
+- A chooser submission must match both the selected account and its valid server-side credential, require an active non-deleted user, rotate the credential under a row lock, regenerate the Laravel session ID, and record a normal authentication audit. The credential expires after 30 days and stale rows are pruned daily. This web feature does not change mobile Sanctum login.
+- Remember me is explicit consent that this browser can one-tap sign in to the saved account, including after web logout. Warn against shared devices and allow removing one saved account or clearing all; password changes, account deactivation, and account deletion revoke that user's remembered credentials.
+
 ## Registration identity integrity
 
 - Buyer, Seller, Rider, and Logistics registration address selectors use the canonical `Region → Province → City/Municipality → Barangay` order. `/api/psgc/regions` and `/api/psgc/regions/{regionCode}/provinces` provide the Region-level cascade while the existing Province/City/Barangay endpoints remain in use. Submitted labels and codes are untrusted; `PsgcAddressService` canonicalizes the Region from the verified PSGC city code and rejects Region/city mismatches before persistence.
@@ -387,6 +393,14 @@ Input: authenticated Logistics user, unique `parcels.parcel_no` barcode (or a Wa
 - Logistics users access shipments whose current `logistics_profile_id` belongs to them; only the recorded destination account may accept a pending handoff. Historical origin-provider data does not grant current custody access.
 - Riders access only active assignments tied to their `rider_profile`.
 - Admin actions record the acting user and reason in action/event/audit tables.
+
+## Seller conduct, Buyer-data minimization, and fulfillment review
+
+- The `SELLER-CONDUCT-OFF-PLATFORM` platform policy is created as a draft and has no Seller access effect until an Admin publishes an effective version. Seller Center access then requires an append-only `policy_acceptances` record for that exact active `policy_version_id`; a later effective published version requires a new acknowledgment. Persist the accepting user, version, and timestamp and audit the acknowledgment.
+- Disputes use `type = order_issue` by default. `off_platform_solicitation` is a separate Buyer report on an owned Seller Order and may coexist with a different active order-issue dispute. Derive the Buyer/Seller participants from the order; do not accept participant IDs from the request. Evidence remains private on the local disk and available only through the existing authenticated, role-scoped evidence routes.
+- An off-platform report has no refund amount and can resolve only to `policy_violation_found` or `no_violation_found`. Those findings do not themselves initiate payment, COD, refund, order/shipment status, suspension, or other automatic punishment workflows. Every finding requires an Admin reason and audit/event history.
+- Seller Manage Orders, Returns list/detail, and Waybill list rows may show the Buyer account name for the authenticated Store's orders/cases; label it as Buyer because the delivery recipient can differ. Keep Buyer identity generic in tracking and never match Waybill searches by Buyer account/recipient name. Do not expose Buyer phone, email, or full address through Seller pages, payloads, tracking, or search. A Seller may use the recipient name and full delivery address only on the audited Bearly-generated Waybill label needed to prepare the parcel; that label must not expose the Buyer phone. Logistics/Rider delivery workflows retain their authorized delivery-contact access.
+- Admin Waybill PDF access is authenticated and audited because the label contains full delivery-address data. A missed scan or expired persisted pickup appointment is an advisory review cue only. It is not proof of Seller misconduct and must not automatically change Seller, order, payment, or shipment standing.
 
 ## Returns and refunds
 

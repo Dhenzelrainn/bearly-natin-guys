@@ -9,6 +9,7 @@ use App\Models\PromotionClaim;
 use App\Models\PromotionRedemption;
 use App\Models\PromotionRedemptionAllocation;
 use App\Models\SellerOrder;
+use App\Models\Store;
 use App\Models\StorePromotion;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
@@ -195,6 +196,52 @@ class PromotionService
             'claimed_count' => $platformRows->where('claimed', true)->count()
                 + $storeRows->where('claimed', true)->count(),
         ];
+    }
+
+    /**
+     * Public, claimable Store Vouchers for one storefront, including the
+     * current Buyer's claim state. Only the requested Store is queried.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    public function storefrontVouchers(Store $store, User $buyer): Collection
+    {
+        $vouchers = $this->activeStoreQuery()
+            ->where('store_id', $store->id)
+            ->where('is_claimable', true)
+            ->with(['store:id,name,slug,publication_status'])
+            ->withCount('products')
+            ->withCount(['redemptions as active_redemptions_count' => fn (Builder $query) => $query
+                ->whereIn('status', self::ACTIVE_REDEMPTION_STATUSES)])
+            ->orderBy('ends_on')
+            ->orderBy('ends_time')
+            ->orderBy('id')
+            ->get();
+
+        if ($vouchers->isEmpty()) {
+            return collect();
+        }
+
+        $claims = PromotionClaim::query()
+            ->where('buyer_id', $buyer->id)
+            ->whereIn('store_promotion_id', $vouchers->pluck('id'))
+            ->get()
+            ->keyBy('store_promotion_id');
+        $usage = $this->redemptionStatsFor($vouchers, $buyer, 'store');
+
+        return $vouchers
+            ->map(function (StorePromotion $promotion) use ($claims, $usage): array {
+                $stats = $usage[(int) $promotion->id] ?? [];
+
+                return $this->storeVoucherPayload(
+                    $promotion,
+                    $claims->get($promotion->id),
+                    (int) ($stats['buyer_count'] ?? 0),
+                    $stats,
+                );
+            })
+            ->filter(fn (array $voucher): bool => (bool) $voucher['claimed'] || (bool) $voucher['can_claim'])
+            ->values();
     }
 
     /**

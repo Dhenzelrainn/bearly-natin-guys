@@ -1,6 +1,7 @@
 /* BEARLY shared buyer JavaScript: homepage + legacy page + category V2. */
 import { toggleBuyerWishlist } from './buyer-wishlist';
 import { formatCampaignTimeRemaining } from './campaign-countdown';
+import { initStoreVouchers } from './store-vouchers.js';
 import {
     categoryResultsUrl,
     catalogPriceLimit,
@@ -5671,6 +5672,7 @@ if (typeof document !== 'undefined') {
     const initializeBuyerCampaignWidgets = () => {
         initBearlyHomeCampaigns();
         initCampaignCountdowns();
+        initStoreVouchers();
     };
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeBuyerCampaignWidgets);

@@ -1688,7 +1688,7 @@ class BuyerController extends Controller
         ]);
     }
 
-    public function showStore(Request $request, Store $store, BuyerCatalogService $catalog, ProductReviewService $reviews): View
+    public function showStore(Request $request, Store $store, BuyerCatalogService $catalog, ProductReviewService $reviews, PromotionService $promotions): View
     {
         abort_unless(
             Store::query()->visibleToBuyers()->whereKey($store->getKey())->exists(),
@@ -1754,6 +1754,7 @@ class BuyerController extends Controller
         $category = $store->sellerProfile?->approvedCategory?->name
             ?: $store->sellerProfile?->user?->business_category
             ?: 'Marketplace Seller';
+        $storeVouchers = $promotions->storefrontVouchers($store, $request->user());
         $productCards = $catalog->cards($products, $request->user(), true);
         $productCards = array_map(function (array $product) use ($productReviewSummaries): array {
             $product['review_summary'] = $productReviewSummaries[(int) $product['id']] ?? [
@@ -1774,6 +1775,7 @@ class BuyerController extends Controller
                 ? Storage::disk('public')->url($store->banner_path)
                 : null,
             'promoBanners' => $promoBanners,
+            'storeVouchers' => $storeVouchers,
             'storeSubcategories' => $storeSubcategories,
             'selectedSubcategoryId' => $selectedSubcategoryId,
             'publishedProductCount' => $publishedProductCount,

@@ -9481,6 +9481,57 @@ body:not(.bc).top-products-page .ranking-empty{margin-top:8px}
     color: var(--theme-text);
 }
 
+:root[data-theme="dark"] body.store-page .store-voucher {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.store-page .store-voucher[data-claimed="true"] {
+    border-left-color: #88c99a;
+}
+
+:root[data-theme="dark"] body.store-page .store-vouchers-header h2,
+:root[data-theme="dark"] body.store-page .store-voucher-copy strong {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.store-page .store-vouchers-header span,
+:root[data-theme="dark"] body.store-page .store-voucher-copy span {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.store-page .store-voucher-value {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.store-page .store-voucher-claim {
+    background: #6f4a2e;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.store-page .store-voucher-claim:hover:not(:disabled) {
+    background: #563823;
+}
+
+:root[data-theme="dark"] body.store-page .store-voucher-claim:disabled {
+    background: #3a312a;
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.store-page .store-voucher-claim:focus-visible {
+    outline-color: #efbd71;
+}
+
+:root[data-theme="dark"] body.store-page .store-voucher-state,
+:root[data-theme="dark"] body.store-page .store-voucher-feedback {
+    color: #88c99a;
+}
+
+:root[data-theme="dark"] body.store-page .store-voucher-feedback[data-tone="error"] {
+    color: #f0a58f;
+}
+
 /* Theme the empty image stages only; real banner/logo/product artwork is not
    filtered or recolored. */
 :root[data-theme="dark"] body.store-page .store-promo img,

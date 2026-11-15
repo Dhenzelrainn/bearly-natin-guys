@@ -25,7 +25,28 @@
         .store-meta-item > .material-symbols-outlined { color:#6f4a2e; font-size:20px; }
         .store-meta-item strong { display:block; margin-bottom:3px; color:#39251b; font-size:12px; }
         .store-meta-item span { font-size:13px; line-height:1.5; }
-        .store-promotions, .store-about, .store-policies, .store-products { margin-top:28px; }
+        .store-promotions, .store-about, .store-policies, .store-products, .store-vouchers { margin-top:28px; }
+        .store-vouchers-header { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:12px; }
+        .store-vouchers-header h2 { margin:0; color:#39251b; font-size:18px; }
+        .store-vouchers-header span { color:#75695d; font-size:12px; }
+        .store-voucher-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:10px; }
+        .store-voucher { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:10px; min-height:64px; padding:10px 12px; border:1px solid #e4d8ca; border-left:4px solid #b87511; border-radius:9px; background:#fffdfa; }
+        .store-voucher[data-claimed="true"] { border-left-color:#79966a; }
+        .store-voucher-value { display:flex; flex-direction:column; align-items:center; justify-content:center; min-width:54px; color:#6f4a2e; }
+        .store-voucher-value strong { font-size:16px; line-height:1.1; }
+        .store-voucher-value span { margin-top:2px; font-size:9px; font-weight:700; letter-spacing:.04em; }
+        .store-voucher-copy { min-width:0; }
+        .store-voucher-copy strong { display:block; overflow:hidden; color:#39251b; font-size:12px; line-height:1.3; text-overflow:ellipsis; white-space:nowrap; }
+        .store-voucher-copy span { display:block; margin-top:3px; color:#75695d; font-size:10px; line-height:1.35; }
+        .store-voucher-action { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
+        .store-voucher-claim { min-height:32px; padding:6px 10px; border:0; border-radius:7px; background:#6f4a2e; color:#fff; font:700 11px Poppins,sans-serif; cursor:pointer; }
+        .store-voucher-claim:hover:not(:disabled) { background:#563823; }
+        .store-voucher-claim:focus-visible { outline:2px solid #b87511; outline-offset:2px; }
+        .store-voucher-claim:disabled { background:#cfc5bb; cursor:not-allowed; }
+        .store-voucher-state { display:inline-flex; align-items:center; gap:3px; color:#52703d; font-size:10px; font-weight:700; white-space:nowrap; }
+        .store-voucher-state .material-symbols-outlined { font-size:14px; }
+        .store-voucher-feedback { margin:0; color:#52703d; font-size:9px; line-height:1.3; text-align:right; }
+        .store-voucher-feedback[data-tone="error"] { color:#a33a2b; }
         .store-promotions h2, .store-about h2, .store-policies h2, .store-products h2 { margin:0 0 14px; color:#39251b; }
         .store-promo-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
         .store-promo { overflow:hidden; border:1px solid #e4d8ca; border-radius:12px; background:#fffdfa; }
@@ -86,7 +107,7 @@
         .store-empty { padding:38px 20px; border:1px dashed #cdbba9; border-radius:16px; color:#75695d; text-align:center; background:#fffdfa; }
         @media (max-width:800px) { .store-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .store-identity { align-items:flex-start; padding:18px; } .store-shop-actions { margin-left:0; } .store-about { grid-template-columns:1fr; } .store-stats { margin-right:18px; margin-left:18px; } }
         @media (max-width:620px) { .store-meta, .store-promo-grid { grid-template-columns:1fr; } }
-        @media (max-width:520px) { .store-shell { width:min(100% - 20px,1180px); padding-top:20px; } .store-banner { min-height:150px; } .store-avatar { flex-basis:62px; width:62px; height:62px; margin-top:-44px; font-size:22px; } .store-identity { flex-wrap:wrap; } .store-identity h1 { font-size:25px; } .store-grid { gap:10px; } .store-product-copy { padding:10px; font-size:13px; } .store-stats { grid-template-columns:repeat(2,minmax(0,1fr)); margin:0 14px 16px; } .store-stats > div { min-height:64px; padding:10px 12px; } .store-stats strong { font-size:16px; } .store-toolbar { grid-template-columns:1fr; } }
+        @media (max-width:520px) { .store-shell { width:min(100% - 20px,1180px); padding-top:20px; } .store-banner { min-height:150px; } .store-avatar { flex-basis:62px; width:62px; height:62px; margin-top:-44px; font-size:22px; } .store-identity { flex-wrap:wrap; } .store-identity h1 { font-size:25px; } .store-grid { gap:10px; } .store-product-copy { padding:10px; font-size:13px; } .store-stats { grid-template-columns:repeat(2,minmax(0,1fr)); margin:0 14px 16px; } .store-stats > div { min-height:64px; padding:10px 12px; } .store-stats strong { font-size:16px; } .store-toolbar { grid-template-columns:1fr; } .store-voucher { grid-template-columns:auto minmax(0,1fr); } .store-voucher-action { grid-column:1/-1; flex-direction:row; align-items:center; justify-content:flex-end; } }
     </style>
 </head>
 <body class="bh store-page">
@@ -138,6 +159,39 @@
                 </div>
             @endif
         </section>
+
+        @if ($storeVouchers->isNotEmpty())
+            <section class="store-vouchers" aria-labelledby="store-vouchers-title" data-store-vouchers data-store-voucher-claim-url="{{ route('buyer.vouchers.claim') }}">
+                <div class="store-vouchers-header">
+                    <h2 id="store-vouchers-title">Store vouchers</h2>
+                    <span>Claim now and use at checkout</span>
+                </div>
+                <div class="store-voucher-grid">
+                    @foreach ($storeVouchers as $voucher)
+                        <article class="store-voucher" data-store-voucher data-store-voucher-id="{{ $voucher['id'] }}" @if ($voucher['claimed']) data-claimed="true" @endif>
+                            <div class="store-voucher-value">
+                                <strong>{{ $voucher['value_label'] }}</strong>
+                                <span>{{ $voucher['value_caption'] }}</span>
+                            </div>
+                            <div class="store-voucher-copy">
+                                <strong>{{ $voucher['name'] }}</strong>
+                                <span>{{ $voucher['minimum'] }} · Valid until {{ $voucher['expires'] }}</span>
+                            </div>
+                            <div class="store-voucher-action">
+                                @if ($voucher['claimed'])
+                                    <span class="store-voucher-state"><span class="material-symbols-outlined" aria-hidden="true">check_circle</span>{{ $voucher['claim_status'] === 'used' ? 'Used' : 'Claimed' }}</span>
+                                @elseif ($voucher['can_claim'])
+                                    <button type="button" class="store-voucher-claim" data-store-voucher-claim data-store-promotion-id="{{ $voucher['id'] }}">Claim</button>
+                                @else
+                                    <span class="store-voucher-state">Unavailable</span>
+                                @endif
+                                <p class="store-voucher-feedback" data-store-voucher-feedback role="status" aria-live="polite"></p>
+                            </div>
+                        </article>
+                    @endforeach
+                </div>
+            </section>
+        @endif
 
         @if (count($promoBanners))
             <section class="store-promotions" aria-labelledby="store-promotions-title">

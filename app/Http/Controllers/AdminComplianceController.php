@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\MarketplaceCategory;
 use App\Models\Product;
 use App\Models\ProductComplianceCheck;
 use App\Models\ProductViolation;
@@ -66,9 +67,9 @@ class AdminComplianceController extends Controller
                 'category',
                 'marketplaceSubcategory.marketplaceCategory',
                 'store' => fn ($query) => $query->withTrashed()->with('sellerProfile.approvedCategory'),
-                'images',
-                'currentImageCategoryCheck',
-            ])
+                    'images',
+                    'currentImageCategoryChecks',
+                ])
             ->get()
             ->keyBy('id');
 
@@ -110,6 +111,7 @@ class AdminComplianceController extends Controller
                         default => null,
                     },
                     'image_category_checked_at' => $check?->completed_at?->toIso8601String(),
+                    'image_reviews' => $product ? $imageChecks->imageReviewPayload($product) : [],
                 ];
             })
             ->values()
@@ -121,12 +123,18 @@ class AdminComplianceController extends Controller
         ]);
     }
 
-    public function categoryReviews(Request $request, ProductCategoryReviewService $reviewService): View
-    {
+    public function categoryReviews(
+        Request $request,
+        ProductCategoryReviewService $reviewService,
+    ): View {
         $filters = $request->validate([
             'search' => ['nullable', 'string', 'max:120'],
+            'marketplace_category_id' => ['nullable', 'integer', 'exists:marketplace_categories,id'],
         ]);
         $admin = $request->user();
+        $marketplaceCategoryId = isset($filters['marketplace_category_id'])
+            ? (int) $filters['marketplace_category_id']
+            : null;
 
         return view('admin.compliance.category-reviews', [
             'admin' => [
@@ -139,9 +147,37 @@ class AdminComplianceController extends Controller
                     ->implode(''),
             ],
             'topNotifications' => [],
-            'products' => $reviewService->paginateQueue($filters['search'] ?? null),
+            'products' => $reviewService->paginateQueue(
+                $filters['search'] ?? null,
+                $marketplaceCategoryId,
+            ),
+            'marketplaceCategories' => MarketplaceCategory::query()
+                ->orderBy('position')
+                ->orderBy('name')
+                ->get(['id', 'name']),
+            'selectedMarketplaceCategoryId' => $marketplaceCategoryId,
             'imageCheckEnabled' => (bool) config('services.gemini.product_image_check.enabled', false),
+            'imageSafetyEnforced' => (bool) config('services.gemini.product_image_check.enforce_on_publish', false),
         ]);
+    }
+
+    public function approveImageReview(
+        Request $request,
+        Product $product,
+        ProductCategoryReviewService $reviewService,
+    ): RedirectResponse {
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $reviewService->approvePendingImageReview(
+            $product,
+            $request->user(),
+            $data['reason'],
+            $request,
+        );
+
+        return back()->with('success', 'Image review recorded. The listing is now visible to Buyers.');
     }
 
     public function markCategoryAppropriate(

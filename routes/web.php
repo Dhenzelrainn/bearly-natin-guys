@@ -625,6 +625,10 @@ Route::prefix('admin')
             ->whereNumber('product')
             ->name('compliance.category-reviews.reviewed');
 
+        Route::post('/compliance/category-reviews/{product}/image-approved', [AdminComplianceController::class, 'approveImageReview'])
+            ->whereNumber('product')
+            ->name('compliance.category-reviews.image-approved');
+
         Route::post('/compliance/category-reviews/{product}/flag', [AdminComplianceController::class, 'flagCategoryForCorrection'])
             ->whereNumber('product')
             ->name('compliance.category-reviews.flag');
@@ -1101,6 +1105,10 @@ Route::prefix('admin')
 
         Route::get('/audit-logs', [AdminAuditLogController::class, 'index'])
             ->name('audit-logs');
+
+        Route::post('/audit-logs/{auditLog}/force-logout', [AdminAuditLogController::class, 'forceLogout'])
+            ->whereNumber('auditLog')
+            ->name('audit-logs.force-logout');
 
         /*
         |--------------------------------------------------------------------------

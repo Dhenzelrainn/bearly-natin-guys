@@ -2869,6 +2869,19 @@ body[data-module="logistics"] .cash-action-form[data-rider-payout-form] .finance
     outline-offset: 2px;
 }
 
+body[data-module="logistics"] .cash-action-form[data-rider-payout-form] [data-external-rider-payout-reference][hidden],
+body[data-module="logistics"] .cash-action-form[data-rider-payout-form] [data-generated-rider-cash-reference][hidden] {
+    display: none;
+}
+
+body[data-module="logistics"] .cash-action-form[data-rider-payout-form] [data-generated-rider-cash-reference] {
+    display: block;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.45;
+}
+
 body[data-module="logistics"] .cash-custody-table-wrap {
     width: 100%;
     max-width: 100%;
@@ -3470,10 +3483,16 @@ body[data-module="logistics"] .cash-custody-amount-card > svg {
     opacity: .65;
 }
 
+/* Let the amount card react to the actual column width. The middle
+   cash-custody column is often too narrow for both amounts side by side. */
+body[data-module="logistics"] .cash-custody-card-column:has(.cod-cash-amount-card) {
+    container-type: inline-size;
+}
+
 body[data-module="logistics"] .cod-cash-amount-card {
     display: grid;
     min-height: 116px;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     align-items: center;
     gap: 12px;
     margin-bottom: 10px;
@@ -3486,8 +3505,8 @@ body[data-module="logistics"] .cod-cash-amount-item {
 }
 
 body[data-module="logistics"] .cod-cash-amount-item + .cod-cash-amount-item {
-    padding-left: 12px;
-    border-left: 1px solid #eadfd2;
+    padding-top: 12px;
+    border-top: 1px solid #eadfd2;
 }
 
 body[data-module="logistics"] .cod-cash-amount-item > span {
@@ -3504,7 +3523,21 @@ body[data-module="logistics"] .cod-cash-amount-item > strong {
     font-size: clamp(16px, 1.35vw, 21px);
     line-height: 1.2;
     font-variant-numeric: tabular-nums;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+}
+
+/* Two columns only when the card has room for both full amounts. */
+@container (min-width: 360px) {
+    body[data-module="logistics"] .cod-cash-amount-card {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    body[data-module="logistics"] .cod-cash-amount-item + .cod-cash-amount-item {
+        padding-top: 0;
+        padding-left: 12px;
+        border-top: 0;
+        border-left: 1px solid #eadfd2;
+    }
 }
 
 body[data-module="logistics"] .cod-cash-difference-card {
@@ -4854,5 +4887,235 @@ body[data-module="logistics"] .delivery-timeline-list.is-empty .empty-state {
     body[data-module="logistics"] .delivery-timeline-close {
         min-width: 104px;
         min-height: 44px;
+    }
+}
+
+/* Keep Rider payout readiness and batch history compact and easy to scan. */
+body[data-module="logistics"] .rider-payout-queue,
+body[data-module="logistics"] .rider-payout-history {
+    min-width: 0;
+    margin-top: 18px;
+}
+
+body[data-module="logistics"] .rider-payout-queue > .panel-header,
+body[data-module="logistics"] .rider-payout-history > .panel-header {
+    align-items: flex-start;
+    padding: 16px 20px 14px;
+}
+
+body[data-module="logistics"] .rider-payout-queue > .panel-header h2,
+body[data-module="logistics"] .rider-payout-history > .panel-header h2 {
+    margin: 0;
+    color: var(--theme-text);
+    font-size: 17px;
+    line-height: 1.35;
+}
+
+body[data-module="logistics"] .rider-payout-queue > .panel-header p,
+body[data-module="logistics"] .rider-payout-history > .panel-header p {
+    max-width: 84ch;
+    margin: 5px 0 0;
+    color: var(--theme-muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+body[data-module="logistics"] .rider-payout-empty {
+    display: grid;
+    gap: 3px;
+    margin: 14px 18px 18px;
+    padding: 12px 14px;
+    border: 1px solid var(--theme-border);
+    border-radius: 9px;
+    background: var(--theme-surface-soft);
+    color: var(--theme-muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+body[data-module="logistics"] .rider-payout-empty > strong {
+    color: var(--theme-text);
+    font-size: 13px;
+}
+
+body[data-module="logistics"] .rider-payout-empty > p {
+    margin: 0;
+}
+
+body[data-module="logistics"] .rider-payout-candidates {
+    margin: 0 18px 18px;
+}
+
+body[data-module="logistics"] .rider-payout-candidate-table {
+    min-width: 780px;
+}
+
+body[data-module="logistics"] .rider-payout-candidate-table th:last-child {
+    width: 34%;
+}
+
+body[data-module="logistics"] .rider-payout-history-list {
+    min-width: 0;
+    padding: 0 20px 2px;
+}
+
+body[data-module="logistics"] .rider-payout-batch-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 0.58fr);
+    align-items: start;
+    gap: 24px;
+    min-width: 0;
+    padding: 16px 0;
+    border-top: 1px solid var(--theme-border);
+}
+
+body[data-module="logistics"] .rider-payout-batch-main,
+body[data-module="logistics"] .rider-payout-batch-actions,
+body[data-module="logistics"] .rider-payout-batch-identity {
+    min-width: 0;
+}
+
+body[data-module="logistics"] .rider-payout-batch-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+body[data-module="logistics"] .rider-payout-batch-number {
+    display: block;
+    color: var(--theme-text);
+    font-size: 14px;
+    overflow-wrap: anywhere;
+}
+
+body[data-module="logistics"] .rider-payout-batch-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 14px;
+    margin: 5px 0 0;
+    color: var(--theme-muted);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+body[data-module="logistics"] .rider-payout-batch-meta strong {
+    color: var(--theme-text);
+    font-variant-numeric: tabular-nums;
+}
+
+body[data-module="logistics"] .rider-payout-batch-status {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+body[data-module="logistics"] .rider-payout-review-note {
+    display: block;
+    margin: 8px 0 0;
+    color: var(--theme-muted);
+    font-size: 11px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+body[data-module="logistics"] .rider-payout-batch-timestamps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin: 8px 0 0;
+    color: var(--theme-muted);
+    font-size: 11px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+body[data-module="logistics"] .rider-payout-earnings-details {
+    margin-top: 10px;
+}
+
+body[data-module="logistics"] .rider-payout-earnings-details summary {
+    width: fit-content;
+    color: var(--theme-text);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+body[data-module="logistics"] .rider-payout-earnings-details summary:focus-visible {
+    border-radius: 3px;
+    outline: 2px solid var(--gold);
+    outline-offset: 3px;
+}
+
+body[data-module="logistics"] .rider-payout-earnings-details ul {
+    display: grid;
+    gap: 6px;
+    margin: 8px 0 0;
+    padding-left: 20px;
+    color: var(--theme-muted);
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+body[data-module="logistics"] .rider-payout-batch-actions {
+    display: grid;
+    justify-items: start;
+    align-content: start;
+    gap: 10px;
+}
+
+body[data-module="logistics"] .rider-payout-batch-actions > p {
+    margin: 0;
+    color: var(--theme-muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+body[data-module="logistics"] .rider-payout-batch-actions > form {
+    max-width: 100%;
+}
+
+body[data-module="logistics"] .rider-payout-empty-history {
+    margin: 0 0 16px;
+}
+
+@media (max-width: 760px) {
+    body[data-module="logistics"] .rider-payout-queue,
+    body[data-module="logistics"] .rider-payout-history {
+        margin-top: 14px;
+    }
+
+    body[data-module="logistics"] .rider-payout-queue > .panel-header,
+    body[data-module="logistics"] .rider-payout-history > .panel-header {
+        padding: 15px 16px 13px;
+    }
+
+    body[data-module="logistics"] .rider-payout-empty {
+        margin: 12px 16px 16px;
+    }
+
+    body[data-module="logistics"] .rider-payout-candidates {
+        margin: 0 16px 16px;
+    }
+
+    body[data-module="logistics"] .rider-payout-history-list {
+        padding-inline: 16px;
+    }
+
+    body[data-module="logistics"] .rider-payout-batch-row {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 14px;
+    }
+
+    body[data-module="logistics"] .rider-payout-batch-actions,
+    body[data-module="logistics"] .rider-payout-batch-actions .cash-action-form {
+        width: 100%;
+        min-width: 0;
+    }
+
+    body[data-module="logistics"] .rider-payout-batch-actions .button {
+        width: 100%;
     }
 }

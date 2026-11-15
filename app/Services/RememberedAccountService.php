@@ -53,12 +53,29 @@ class RememberedAccountService
     public function remember(Request $request, User $user): void
     {
         [$entries] = $this->resolveEntries($request);
+        $browserEntries = $entries;
         $existing = collect($entries)->firstWhere('user_id', (int) $user->id);
+        $expectedSessionVersion = (int) $user->auth_session_version;
         $token = bin2hex(random_bytes(32));
         $tokenHash = hash('sha256', $token);
         $expiresAt = now()->addDays(self::TTL_DAYS);
 
-        $entries = DB::transaction(function () use ($entries, $existing, $expiresAt, $request, $token, $tokenHash, $user): array {
+        $entries = DB::transaction(function () use ($entries, $existing, $expectedSessionVersion, $expiresAt, $token, $tokenHash, $user): ?array {
+            // Lock the user before remembered-account rows, matching the
+            // all-device revocation lock order. A sign-in that began before a
+            // force logout must not recreate a saved credential afterward.
+            $currentUser = User::query()
+                ->lockForUpdate()
+                ->find($user->getKey());
+
+            if (
+                ! $currentUser
+                || $currentUser->status !== 'active'
+                || (int) $currentUser->auth_session_version !== $expectedSessionVersion
+            ) {
+                return null;
+            }
+
             $record = null;
 
             if ($existing) {
@@ -106,6 +123,16 @@ class RememberedAccountService
             return $entries;
         }, attempts: 3);
 
+        if ($entries === null) {
+            $browserEntries = array_values(array_filter(
+                $browserEntries,
+                fn (array $entry): bool => $entry['user_id'] !== (int) $user->id,
+            ));
+            $this->queueCookie($request, $browserEntries);
+
+            return;
+        }
+
         $this->queueCookie($request, $entries);
     }
 
@@ -123,7 +150,31 @@ class RememberedAccountService
         $tokenHash = hash('sha256', $token);
         $expiresAt = now()->addDays(self::TTL_DAYS);
 
+        // Do not lock a guessed User ID for a request that has no valid
+        // remembered credential. Recheck under the row lock below to handle
+        // expiration or revocation races after this non-locking preflight.
+        $hasValidCredential = RememberedAccount::query()
+            ->where('user_id', $userId)
+            ->where('token_hash', $oldTokenHash)
+            ->where('expires_at', '>', now())
+            ->exists();
+
+        if (! $hasValidCredential) {
+            $entries = array_values(array_filter(
+                $entries,
+                fn (array $candidate): bool => $candidate['user_id'] !== $userId,
+            ));
+            $this->queueCookie($request, $entries);
+
+            return null;
+        }
+
         $user = DB::transaction(function () use ($expiresAt, $oldTokenHash, $tokenHash, $userId): ?User {
+            $user = User::query()
+                ->whereKey($userId)
+                ->lockForUpdate()
+                ->first();
+
             $record = RememberedAccount::query()
                 ->where('user_id', $userId)
                 ->where('token_hash', $oldTokenHash)
@@ -134,8 +185,6 @@ class RememberedAccountService
             if (! $record) {
                 return null;
             }
-
-            $user = User::query()->whereKey($userId)->lockForUpdate()->first();
 
             if (! $user || $user->status !== 'active') {
                 $record->delete();

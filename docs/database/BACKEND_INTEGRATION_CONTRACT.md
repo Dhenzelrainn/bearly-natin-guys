@@ -63,7 +63,7 @@ This file is the shared contract for backend, UI, and database work. The executa
 | Immutable tracking history | `shipment_events` |
 | Rider account status and operational custody | Owning `logistics_profiles`, approved `rider_profiles`, `users.status`, `pickup_assignments`, and the affected operational job tables |
 | Product moderation | `product_compliance_checks`, matches, `product_violations`, `violation_actions` |
-| Advisory product-image/category consistency | `product_image_category_checks`; separate from text compliance and enforcement history |
+| Per-image category/policy scan and optional publish gate | `product_image_category_checks`; enforcement findings link to `product_violations` and remain separate from text compliance matches |
 | Return/refund | `return_requests`, `return_items`, `return_evidence`, `refunds` |
 | Case management | `disputes`, participants, evidence, events |
 
@@ -72,6 +72,12 @@ This file is the shared contract for backend, UI, and database work. The executa
 - Web password and Google sign-in may opt a successful active account into a browser-local Recent Accounts chooser. `remembered_accounts` stores the `user_id`, one-way hash of a random credential, expiry, and last-use time; the raw credential is held only in Laravel's encrypted, `HttpOnly`, `SameSite=Lax` cookie (Secure on HTTPS). Never store passwords, Laravel session IDs, or remembered credentials in JavaScript storage or audit logs.
 - A chooser submission must match both the selected account and its valid server-side credential, require an active non-deleted user, rotate the credential under a row lock, regenerate the Laravel session ID, and record a normal authentication audit. The credential expires after 30 days and stale rows are pruned daily. This web feature does not change mobile Sanctum login.
 - Remember me is explicit consent that this browser can one-tap sign in to the saved account, including after web logout. Warn against shared devices and allow removing one saved account or clearing all; password changes, account deactivation, and account deletion revoke that user's remembered credentials.
+
+## Admin all-device authentication revocation
+
+- The Admin force-logout action is available only from an authentication audit entry that identifies a User. In one transaction, it increments `users.auth_session_version`, rotates Laravel's `remember_token`, deletes all of that user's Sanctum tokens and `remembered_accounts`, and appends an `auth.force_signed_out` audit row attributed to the acting Admin.
+- Web requests validate the session's stored auth version, independent of `SESSION_DRIVER`; stale or unmarked sessions are invalidated after the user's version advances. Before a user's first revocation, legacy unstamped sessions may be stamped at version `0`, avoiding a rollout-wide sign-out. Successful web password, remembered-account, and Google sign-ins stamp the current version.
+- Mobile sign-in re-locks and revalidates the User/version after password verification before issuing a Sanctum token. If a force logout advances the version in between, token issuance is rejected with `409`; if token issuance wins the lock first, the subsequent revocation deletes that token before committing.
 
 ## Registration identity integrity
 
@@ -201,7 +207,8 @@ Use constants or PHP backed enums in application code, while columns remain stri
 | Application | `draft`, `submitted`, `under_review`, `needs_revision`, `approved`, `rejected`, `withdrawn` |
 | Product | `draft`, `pending_review`, `active`, `flagged`, `blocked`, `archived` |
 | Compliance check | `queued`, `running`, `passed`, `flagged`, `blocked`, `failed` |
-| Advisory product-image/category check | `pending`, `match`, `possible_mismatch`, `uncertain`, `unavailable` |
+| Per-image category verdict | `pending`, `match`, `possible_mismatch`, `uncertain`, `unavailable` |
+| Per-image safety verdict | `pending`, `clear`, `possible_violation`, `prohibited`, `uncertain`, `unavailable` |
 | Violation | `flagged`, `under_review`, `confirmed`, `dismissed`, `corrective_action`, `resolved` |
 | Order | `pending_payment`, `paid`, `processing`, `partially_fulfilled`, `fulfilled`, `cancelled`, `closed` |
 | Seller order | `pending`, `accepted`, `packing`, `ready_for_pickup`, `handed_to_logistics`, `completed`, `cancelled` |
@@ -284,11 +291,13 @@ Input: persisted `Product`, scan trigger (`create`, `update`, `manual`, `report`
 
 Output: `ProductComplianceCheck` with zero or more matches and violations. Active rules scan product names/descriptions; category matching uses configured term rules, not image recognition or an inferred category model. Critical prohibited rules block/hide the product; high-severity rules hold it for review. Actionable automated violations and active in-app `seller_warnings` are deduplicated per product/rule. A later clean scan resolves automated violations/warnings and records a `violation_actions` history entry; an unchanged Admin-dismissed false positive is not reopened. Flagged/blocked products are not buyer-visible. Admin decisions require a reason and append `violation_actions` transactionally. Supported decisions are `dismiss`, `confirm`, `request_correction`, `remove_product`, and `warn_seller`; removal blocks the listing without deleting its product record, and dismissal preserves false-positive history. A final decision cannot be applied twice to the same violation. Seller account suspension/escalation is a separate workflow and is not implied by product moderation.
 
-### Advisory product-image/category consistency
+### Product image category and safety checks
 
-- `product_image_category_checks` is separate from text compliance checks, matches, violations, and Seller warnings. It stores image SHA-256 and listing/category snapshots plus provider/model/prompt version and short validated output; it never stores image bytes or raw API payloads.
-- The asynchronous primary-image check runs only after the Seller product-save transaction commits. It is disabled by default and must remain disabled until the Project Owner accepts the applicable Gemini data-use terms. Provider failure is `unavailable`, never `match`; stale image/listing results are not current.
-- `match`, `possible_mismatch`, and `uncertain` are advisory observations only. They never block/hide products, change product or compliance status, create violations, or issue Seller warnings. Admin remains solely responsible for any audited manual category-review action.
+- `product_image_category_checks` stores one current result per persisted `product_images` row (primary, gallery, and variant images), including the source SHA-256 and listing/category snapshot, provider/model/prompt version, separate category and safety verdicts, exact matched active-rule codes, and short validated descriptions/reasons. It never stores image bytes or raw provider payloads. `product_violations.product_image_category_check_id` links an enforcement finding to its image evidence; text compliance matches remain separate.
+- Image transfer is disabled by default through `GEMINI_PRODUCT_IMAGE_CHECK_ENABLED`; the independent `GEMINI_PRODUCT_IMAGE_ENFORCE_ON_PUBLISH` switch also defaults to `false`. Do not enable either or transfer images in another environment without Project Owner approval of the applicable provider/data-use terms. Image jobs run only after the Seller save transaction commits, on `product-image-checks`; workers must also listen to `default` for normal application jobs.
+- When enforcement is opted in, a publish-requested Product with a clear, current text scan remains `pending_review` / `pending_scan` until every current persisted image has a completed, source-current result. Only category `match` plus safety `clear` for every image, together with a current clear text scan and no unresolved Product Violation, may make the Product active/Buyer-visible. A possible category or policy finding creates an idempotent, auditable Product Violation and keeps the Product hidden; only an unmistakable image finding for an explicitly configured active critical `block` rule blocks the Product automatically. Ambiguous policy/category evidence and any unavailable result remain hidden for Admin review.
+- Image-only results never issue Seller warnings or account penalties. Admin decisions require a reason and retain `violation_actions` history. An Admin may manually release an unpublished image-held Product only through the audited image-review action, after inspecting every current image and confirming a current clear text-compliance check; approval records the listing/image snapshot and invalidates prior automated image checks. An open violation or blocked/stale text check cannot be bypassed.
+- With enforcement disabled, the existing primary-image category check remains advisory: it does not change Product/compliance status or create violations. Provider failure is `unavailable`, never `match`; changed image/listing sources are not treated as current. A safe image result is not a guarantee that an image is legal or harmless.
 
 ### Checkout
 

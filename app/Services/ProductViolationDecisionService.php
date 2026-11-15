@@ -90,11 +90,26 @@ class ProductViolationDecisionService
                     ->exists();
 
                 if (! $hasOtherOpenViolations) {
+                    $manualCategoryFlag = $lockedViolation->violation_type === 'category_correction'
+                        ? $lockedViolation->actions()
+                            ->where('action_type', 'manual_category_flag')
+                            ->latest('id')
+                            ->first()
+                        : null;
+                    $wasPendingImageReview = ($manualCategoryFlag?->metadata['was_pending_image_review'] ?? false) === true;
+                    $unpublishedImageHold = $lockedViolation->product_image_category_check_id !== null
+                        || $wasPendingImageReview;
+                    $unpublishedImageHold = $unpublishedImageHold
+                        && $product->published_at === null
+                        && $product->removed_at === null;
+
                     $product->update([
-                        'compliance_status' => 'clear',
-                        'product_status' => $product->removed_at === null && $product->published_at
-                            ? 'active'
-                            : $product->product_status,
+                        'compliance_status' => $unpublishedImageHold ? 'pending_scan' : 'clear',
+                        'product_status' => $unpublishedImageHold
+                            ? 'pending_review'
+                            : ($product->removed_at === null && $product->published_at
+                                ? 'active'
+                                : $product->product_status),
                     ]);
                 }
 

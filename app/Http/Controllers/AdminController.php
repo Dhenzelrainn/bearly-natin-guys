@@ -874,8 +874,9 @@ class AdminController extends Controller
                 'product.category',
                 'product.marketplaceSubcategory.marketplaceCategory',
                 'product.images',
-                'product.currentImageCategoryCheck',
+                'product.currentImageCategoryChecks',
                 'check',
+                'imageCheck.productImage',
                 'rule',
                 'sellerProfile.approvedCategory',
                 'sellerProfile.warnings' => fn ($query) => $query->where('status', 'active'),
@@ -933,6 +934,13 @@ class AdminController extends Controller
                 $product = $violation->product;
                 $sellerProfile = $violation->sellerProfile;
                 $imageCheck = $product ? $imageChecks->currentCheckForProduct($product) : null;
+                $imageFinding = $violation->imageCheck;
+                $findingImage = $imageFinding?->productImage;
+                $findingDisk = trim((string) ($imageFinding?->image_disk ?: $findingImage?->disk ?: 'public'));
+                $findingPath = $imageFinding?->image_path ?: $findingImage?->path;
+                $findingImageUrl = filled($findingPath) && config("filesystems.disks.{$findingDisk}")
+                    ? Storage::disk($findingDisk)->url($findingPath)
+                    : null;
 
                 $imageAdvisoryCode = $imageCheck !== null
                     ? (string) $imageCheck->status
@@ -989,6 +997,15 @@ class AdminController extends Controller
                         'disabled' => 'Image checks are disabled; no product photo is sent to Google.',
                         default => 'AI advisory only; it does not create, resolve, or change this violation or listing status.',
                     },
+                    'image_finding' => $imageFinding !== null,
+                    'image_finding_url' => $findingImageUrl,
+                    'image_finding_alt' => $findingImage?->alt_text ?: ($product?->name ?? 'Product image under review'),
+                    'image_finding_category_status' => $imageFinding?->status,
+                    'image_finding_safety_status' => $imageFinding?->safety_status,
+                    'image_finding_description' => $imageFinding?->visible_item_description,
+                    'image_finding_category_reason' => $imageFinding?->reason,
+                    'image_finding_safety_reason' => $imageFinding?->safety_reason,
+                    'image_finding_rule_codes' => (array) ($imageFinding?->matched_rule_codes ?? []),
                     'actions' => $violation->actions->map(fn ($action): array => [
                         'label' => Str::of($action->action_type)->replace(['_', '-'], ' ')->title()->toString(),
                         'actor' => $action->actor?->name ?? 'Admin account unavailable',

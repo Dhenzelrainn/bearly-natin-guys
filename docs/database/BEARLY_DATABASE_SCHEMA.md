@@ -1289,6 +1289,49 @@ Immutable per-Seller-Order/payment due and cash allocation for one aggregate COD
 - `product_compliance_checks_category_id_snapshot_foreign` (category_id_snapshot) — index.
 - `product_compliance_checks_product_id_created_at_index` (product_id,created_at) — index.
 
+## `product_image_category_checks`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---:|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `product_id` | `bigint unsigned` | NO | — | MUL |
+| `product_image_id` | `bigint unsigned` | YES | — | MUL |
+| `image_disk` | `varchar(40)` | YES | — |  |
+| `image_path` | `varchar(500)` | YES | — |  |
+| `image_sha256` | `char(64)` | YES | — |  |
+| `listing_snapshot` | `json` | NO | — |  |
+| `snapshot_hash` | `char(64)` | NO | — | MUL |
+| `provider` | `varchar(40)` | NO | — |  |
+| `model` | `varchar(120)` | NO | — |  |
+| `prompt_version` | `varchar(40)` | NO | — |  |
+| `status` | `varchar(30)` | NO | pending |  |
+| `safety_status` | `varchar(30)` | YES | — |  |
+| `matched_rule_codes` | `json` | YES | — |  |
+| `visible_item_description` | `varchar(180)` | YES | — |  |
+| `reason` | `varchar(320)` | YES | — |  |
+| `safety_reason` | `varchar(320)` | YES | — |  |
+| `failure_code` | `varchar(50)` | YES | — |  |
+| `is_current` | `tinyint(1)` | NO | 1 |  |
+| `attempts` | `tinyint unsigned` | NO | 0 |  |
+| `started_at` | `timestamp` | YES | — |  |
+| `completed_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `product_id` → `products.id`; update NO ACTION, delete CASCADE.
+- `product_image_id` → `product_images.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `product_image_category_checks_product_id_foreign` (product_id) — index.
+- `product_image_category_checks_product_image_id_foreign` (product_image_id) — index.
+- `product_image_category_checks_product_id_is_current_index` (product_id,is_current) — index.
+- `product_image_category_checks_status_created_at_index` (status,created_at) — index.
+- `product_image_category_checks_snapshot_hash_index` (snapshot_hash) — index.
+- `product_image_checks_image_current_index` (product_image_id,is_current) — index.
+
 ## `product_images`
 
 | Column | MySQL type | Null | Default | Key |
@@ -1389,6 +1432,7 @@ Immutable per-Seller-Order/payment due and cash allocation for one aggregate COD
 | `product_id` | `bigint unsigned` | NO | — | MUL |
 | `seller_profile_id` | `bigint unsigned` | NO | — | MUL |
 | `check_id` | `bigint unsigned` | YES | — | MUL |
+| `product_image_category_check_id` | `bigint unsigned` | YES | — | MUL |
 | `rule_id` | `bigint unsigned` | YES | — | MUL |
 | `product_report_id` | `bigint unsigned` | YES | — | MUL |
 | `source` | `varchar(30)` | NO | — |  |
@@ -1409,6 +1453,7 @@ Immutable per-Seller-Order/payment due and cash allocation for one aggregate COD
 
 - `assigned_to` → `users.id`; update NO ACTION, delete SET NULL.
 - `check_id` → `product_compliance_checks.id`; update NO ACTION, delete SET NULL.
+- `product_image_category_check_id` → `product_image_category_checks.id`; update NO ACTION, delete SET NULL.
 - `product_id` → `products.id`; update NO ACTION, delete RESTRICT.
 - `product_report_id` → `product_reports.id`; update NO ACTION, delete SET NULL.
 - `rule_id` → `compliance_rules.id`; update NO ACTION, delete SET NULL.
@@ -1418,6 +1463,7 @@ Immutable per-Seller-Order/payment due and cash allocation for one aggregate COD
 
 - `product_violations_assigned_to_foreign` (assigned_to) — index.
 - `product_violations_check_id_foreign` (check_id) — index.
+- `product_violations_product_image_category_check_id_foreign` (product_image_category_check_id) — index.
 - `product_violations_product_id_foreign` (product_id) — index.
 - `product_violations_product_report_id_foreign` (product_report_id) — index.
 - `product_violations_rule_id_foreign` (rule_id) — index.
@@ -3199,6 +3245,7 @@ setting row exists; it affects package estimates, not the fee.
 | `created_at` | `timestamp` | YES | — |  |
 | `updated_at` | `timestamp` | YES | — |  |
 | `deleted_at` | `timestamp` | YES | — |  |
+| `auth_session_version` | `bigint unsigned` | NO | 0 |  |
 
 **Foreign keys**
 

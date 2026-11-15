@@ -127,6 +127,64 @@ class AdminProductCategoryReviewTest extends TestCase
         $this->assertTrue(Product::visibleToBuyers()->whereKey($unscanned->id)->exists());
     }
 
+    public function test_queue_orders_newest_product_uploads_first(): void
+    {
+        $older = $this->product('A Review Order older upload', 'Older listing for category review ordering.');
+        $newer = $this->product('Z Review Order newer upload', 'Newer listing for category review ordering.');
+        $older->forceFill(['created_at' => now()->subDay()])->saveQuietly();
+        $newer->forceFill(['created_at' => now()])->saveQuietly();
+
+        $response = $this->actingAs($this->admin)
+            ->get(route('admin.compliance.category-reviews', ['search' => 'Review Order']))
+            ->assertOk();
+
+        $items = $response->viewData('products')->items();
+
+        $this->assertSame([$newer->id, $older->id], array_column($items, 'id'));
+    }
+
+    public function test_queue_can_be_filtered_by_marketplace_category_with_search_preserved(): void
+    {
+        $matchingProduct = $this->product('Category filter electronics item', 'Product in the selected marketplace category.');
+        $otherCategory = MarketplaceCategory::query()->create([
+            'name' => 'Review Queue Home',
+            'slug' => 'review-queue-home',
+            'is_active' => true,
+            'position' => 999,
+        ]);
+        $otherSubcategory = MarketplaceSubcategory::query()->create([
+            'marketplace_category_id' => $otherCategory->id,
+            'name' => 'Review Queue Storage',
+            'name_key' => 'review queue storage',
+            'slug' => 'review-queue-storage',
+            'is_active' => true,
+            'position' => 1,
+        ]);
+        $otherProduct = $this->product('Category filter home item', 'Product in another marketplace category.');
+        $otherProduct->update(['marketplace_subcategory_id' => $otherSubcategory->id]);
+        $categoryId = (int) $this->marketplaceSubcategory->marketplace_category_id;
+
+        $response = $this->actingAs($this->admin)
+            ->get(route('admin.compliance.category-reviews', [
+                'search' => 'Category filter',
+                'marketplace_category_id' => $categoryId,
+            ]))
+            ->assertOk()
+            ->assertSee('All marketplace categories')
+            ->assertSee($otherCategory->name)
+            ->assertSee('Reset all')
+            ->assertSee('data-category-review-filter-form', false)
+            ->assertSee('name="marketplace_category_id"', false)
+            ->assertSee('value="'.$categoryId.'" selected', false)
+            ->assertSee($matchingProduct->name)
+            ->assertDontSee($otherProduct->name);
+
+        $this->assertSame(
+            [$matchingProduct->id],
+            array_column($response->viewData('products')->items(), 'id'),
+        );
+    }
+
     public function test_clear_review_records_actor_reason_snapshot_and_requeues_after_text_or_image_metadata_changes(): void
     {
         $product = $this->product('Short testing', 'The listing needs a manual category check.');

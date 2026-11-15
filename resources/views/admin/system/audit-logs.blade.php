@@ -5,6 +5,8 @@
 
 @section('content')
 
+@include('admin.partials.success-toast')
+
 <section class="page-hero">
 
     <div>
@@ -187,6 +189,7 @@
                                 $log['action'].' '.
                                 $log['module'].' '.
                                 $log['target'].' '.
+                                ($log['subject_user_name'] ?? '').' '.
                                 $log['description'].' '.
                                 $log['ip'].' '.
                                 ($log['channel'] ?? '').' '.
@@ -542,7 +545,31 @@
 
                 </div>
 
-                @if ($log['is_authentication'])
+                @if ($log['is_force_logout'])
+
+                    <div>
+                        <span>Revocation scope</span>
+                        <strong>{{ $log['force_logout_scope'] ?? '—' }}</strong>
+                    </div>
+
+                    <div>
+                        <span>Web sessions</span>
+                        <strong>{{ $log['web_sessions_invalidated'] ? 'Revoked' : '—' }}</strong>
+                    </div>
+
+                    <div>
+                        <span>Mobile API tokens revoked</span>
+                        <strong>{{ $log['mobile_api_tokens_revoked'] ?? '—' }}</strong>
+                    </div>
+
+                    <div>
+                        <span>Remembered sign-ins revoked</span>
+                        <strong>{{ $log['remembered_sign_ins_revoked'] ?? '—' }}</strong>
+                    </div>
+
+                @endif
+
+                @if ($log['has_device_context'])
 
                     {{-- Sign-in channel --}}
                     <div>
@@ -632,7 +659,7 @@
             </div>
 
 
-            @if ($log['is_authentication'])
+            @if ($log['has_device_context'])
 
                 <div class="detail-note">
 
@@ -653,6 +680,29 @@
             @endif
 
 
+            @if ($log['can_force_logout'])
+                <form
+                    method="POST"
+                    action="{{ route('admin.audit-logs.force-logout', $log['record_id']) }}"
+                    onsubmit="return confirm('Sign out this account on all devices? This revokes active web sessions, mobile API tokens, and saved sign-ins.')"
+                >
+                    @csrf
+
+                    <div class="detail-note">
+                        <span>Admin action</span>
+                        <p>
+                            Force {{ $log['subject_user_name'] }} to sign in again everywhere.
+                            Their active web sessions, mobile API tokens, and remembered sign-ins
+                            will be revoked.
+                        </p>
+                        <button type="submit" class="button button-danger button-small">
+                            <i data-lucide="log-out" aria-hidden="true"></i>
+                            Sign out all devices
+                        </button>
+                    </div>
+                </form>
+            @endif
+
             <div class="detail-note">
 
                 <span>
@@ -660,8 +710,9 @@
                 </span>
 
                 <p>
-                    This record is read-only and represents platform activity
-                    recorded for accountability and system monitoring.
+                    This record is immutable and represents platform activity
+                    recorded for accountability and system monitoring. Any
+                    account action above creates a separate audit entry.
                 </p>
 
             </div>

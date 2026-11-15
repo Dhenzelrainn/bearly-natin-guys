@@ -34,6 +34,7 @@ return [
         ],
         'product_image_check' => [
             'enabled' => env('GEMINI_PRODUCT_IMAGE_CHECK_ENABLED', false),
+            'enforce_on_publish' => env('GEMINI_PRODUCT_IMAGE_ENFORCE_ON_PUBLISH', false),
             'model' => env('GEMINI_PRODUCT_IMAGE_CHECK_MODEL', 'gemini-3.5-flash-lite'),
             'timeout' => (int) env('GEMINI_PRODUCT_IMAGE_CHECK_TIMEOUT', 30),
         ],

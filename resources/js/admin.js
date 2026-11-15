@@ -243,6 +243,14 @@ import {
         initAdminCampaignBannerCrop();
         initShippingPolicyApprovalQueue();
 
+        const categoryReviewFilterForm = document.querySelector('[data-category-review-filter-form]');
+        const categoryReviewFilter = categoryReviewFilterForm?.querySelector('[name="marketplace_category_id"]');
+        const categoryReviewSearch = categoryReviewFilterForm?.querySelector('[name="search"]');
+        categoryReviewFilter?.addEventListener('change', () => {
+            if (categoryReviewSearch) categoryReviewSearch.value = '';
+            categoryReviewFilterForm.requestSubmit();
+        });
+
         const refreshIcons = () => {
             if (window.lucide?.createIcons) window.lucide.createIcons();
         };
@@ -368,6 +376,15 @@ import {
                 not_checked: 'badge-neutral',
                 disabled: 'badge-neutral',
             };
+            const safetyBadgeClasses = {
+                clear: 'badge-success',
+                prohibited: 'badge-danger',
+                possible_violation: 'badge-warning',
+                pending: 'badge-info',
+                uncertain: 'badge-neutral',
+                unavailable: 'badge-neutral',
+                not_checked: 'badge-neutral',
+            };
             let imageAdvisoryPollInFlight = false;
 
             const setAdvisoryNodeText = (node, value) => {
@@ -426,6 +443,28 @@ import {
                                     if (checkedAt.textContent !== text) checkedAt.textContent = text;
                                     checkedAt.hidden = text === '';
                                 }
+
+                                (Array.isArray(advisory.image_reviews) ? advisory.image_reviews : []).forEach((imageReview) => {
+                                    const image = target.querySelector(`[data-image-review-image-id="${String(imageReview.product_image_id || '')}"]`);
+                                    if (!image) return;
+
+                                    const updateReviewBadge = (node, value, classMap) => {
+                                        if (!node) return;
+                                        const code = String(value || 'not_checked');
+                                        const label = code.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+                                        const badgeClass = `status-badge ${classMap[code] || 'badge-neutral'}`;
+                                        if (node.textContent !== label) node.textContent = label;
+                                        if (node.className !== badgeClass) node.className = badgeClass;
+                                    };
+
+                                    updateReviewBadge(image.querySelector('[data-image-review-category-status]'), imageReview.category_status, advisoryBadgeClasses);
+                                    updateReviewBadge(image.querySelector('[data-image-review-safety-status]'), imageReview.safety_status, safetyBadgeClasses);
+                                    setAdvisoryNodeText(image.querySelector('[data-image-review-description]'), imageReview.visible_item_description);
+                                    setAdvisoryNodeText(
+                                        image.querySelector('[data-image-review-reason]'),
+                                        imageReview.category_reason || imageReview.safety_reason,
+                                    );
+                                });
                             });
                     });
                 } catch {

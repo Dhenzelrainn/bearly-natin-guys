@@ -462,6 +462,32 @@
                     <small class="table-subtext" data-image-advisory-helper @if (! $violation['image_advisory_helper']) hidden @endif>{{ $violation['image_advisory_helper'] }}</small>
                 </div>
 
+                @if ($violation['image_finding'])
+                    <div class="detail-note admin-violation-image-evidence">
+                        <span>Automated image finding · Admin decision required</span>
+                        @if ($violation['image_finding_url'])
+                            <img src="{{ $violation['image_finding_url'] }}" alt="{{ $violation['image_finding_alt'] }}" loading="lazy">
+                        @endif
+                        <p>
+                            Category: {{ str($violation['image_finding_category_status'] ?? 'unavailable')->replace('_', ' ')->title() }}
+                            · Safety: {{ str($violation['image_finding_safety_status'] ?? 'unavailable')->replace('_', ' ')->title() }}
+                        </p>
+                        @if ($violation['image_finding_description'])
+                            <p>Visible item: {{ $violation['image_finding_description'] }}</p>
+                        @endif
+                        @if ($violation['image_finding_category_reason'])
+                            <p>Category review: {{ $violation['image_finding_category_reason'] }}</p>
+                        @endif
+                        @if ($violation['image_finding_safety_reason'])
+                            <p>Safety review: {{ $violation['image_finding_safety_reason'] }}</p>
+                        @endif
+                        @if ($violation['image_finding_rule_codes'])
+                            <small>Matched configured rules: {{ collect($violation['image_finding_rule_codes'])->map(fn ($code) => str($code)->replace('_', ' ')->title())->implode(', ') }}</small>
+                        @endif
+                        <small class="admin-category-review-no-warning">No Seller warning or account penalty was issued from the automated image result.</small>
+                    </div>
+                @endif
+
 
                 <div class="detail-note">
                     <span>

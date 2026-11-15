@@ -10,6 +10,7 @@ use App\Services\AuditService;
 use App\Services\RegistrationLifecycleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 
@@ -24,9 +25,9 @@ class MobileAuthController extends Controller
 
         $email = strtolower(trim($credentials['email']));
 
-        $rateKey = 'mobile-login:' . hash_hmac(
+        $rateKey = 'mobile-login:'.hash_hmac(
             'sha256',
-            $email . '|' . $request->ip(),
+            $email.'|'.$request->ip(),
             (string) config('app.key')
         );
 
@@ -50,35 +51,92 @@ class MobileAuthController extends Controller
 
         RateLimiter::clear($rateKey);
 
-        if (! in_array($user->role, [
-            UserRole::Buyer->value,
-            UserRole::Rider->value,
-        ], true)) {
+        // A force-logout may commit after the initial password lookup but
+        // before this request creates a Sanctum token. Serialize issuance with
+        // revocation and reject credentials checked against an older version.
+        $expectedSessionVersion = (int) $user->auth_session_version;
+        $login = DB::transaction(function () use (
+            $audit,
+            $credentials,
+            $expectedSessionVersion,
+            $request,
+            $user,
+        ): array {
+            $lockedUser = User::query()
+                ->lockForUpdate()
+                ->find($user->getKey());
+
+            if (! $lockedUser || ! Hash::check($credentials['password'], $lockedUser->password)) {
+                return ['error' => 'credentials'];
+            }
+
+            if ((int) $lockedUser->auth_session_version !== $expectedSessionVersion) {
+                return ['error' => 'session_revoked'];
+            }
+
+            if (! in_array($lockedUser->role, [
+                UserRole::Buyer->value,
+                UserRole::Rider->value,
+            ], true)) {
+                return ['error' => 'role'];
+            }
+
+            if ($lockedUser->status !== AccountStatus::Active->value) {
+                return [
+                    'error' => 'status',
+                    'account_status' => $lockedUser->status,
+                    'role' => $lockedUser->role,
+                ];
+            }
+
+            $lockedUser->forceFill([
+                'last_login_at' => now(),
+            ])->save();
+
+            app(RegistrationLifecycleService::class)
+                ->syncActiveRole($lockedUser);
+
+            $token = $lockedUser
+                ->createToken('bearly-mobile')
+                ->plainTextToken;
+
+            $audit->recordAuthentication($lockedUser, 'signed_in', 'mobile_api', $request);
+
+            return [
+                'user' => $lockedUser,
+                'token' => $token,
+            ];
+        }, attempts: 3);
+
+        if (($login['error'] ?? null) === 'session_revoked') {
+            return response()->json([
+                'message' => 'This sign-in was interrupted by an account security change. Please submit your credentials again.',
+            ], 409);
+        }
+
+        if (($login['error'] ?? null) === 'role') {
             return response()->json([
                 'message' => 'This account type is not available in the Bearly mobile app.',
             ], 403);
         }
 
-        if ($user->status !== AccountStatus::Active->value) {
+        if (($login['error'] ?? null) === 'status') {
             return response()->json([
-                'message' => $this->statusMessage($user->status, $user->role),
-                'account_status' => $user->status,
-                'role' => $user->role,
+                'message' => $this->statusMessage($login['account_status'], $login['role']),
+                'account_status' => $login['account_status'],
+                'role' => $login['role'],
             ], 403);
         }
 
-        $user->forceFill([
-            'last_login_at' => now(),
-        ])->save();
+        if (($login['error'] ?? null) !== null) {
+            return response()->json([
+                'message' => 'Invalid email or password.',
+            ], 401);
+        }
 
-        app(RegistrationLifecycleService::class)
-            ->syncActiveRole($user);
-
-        $token = $user
-            ->createToken('bearly-mobile')
-            ->plainTextToken;
-
-        $audit->recordAuthentication($user, 'signed_in', 'mobile_api', $request);
+        /** @var User $user */
+        $user = $login['user'];
+        $token = $login['token'];
 
         return response()->json([
             'message' => 'Login successful.',
@@ -124,20 +182,15 @@ class MobileAuthController extends Controller
                 ? 'Your existing Buyer application needs revision and is outside the active Admin queues. Contact Support about this existing account.'
                 : 'Your application needs revision before it can be approved.',
 
-            AccountStatus::Rejected->value =>
-                'Your application was not approved.',
+            AccountStatus::Rejected->value => 'Your application was not approved.',
 
-            AccountStatus::Suspended->value =>
-                'Your account is currently suspended.',
+            AccountStatus::Suspended->value => 'Your account is currently suspended.',
 
-            AccountStatus::Deactivated->value =>
-                'Your account is currently deactivated.',
+            AccountStatus::Deactivated->value => 'Your account is currently deactivated.',
 
-            AccountStatus::Banned->value =>
-                'Your account is not available.',
+            AccountStatus::Banned->value => 'Your account is not available.',
 
-            default =>
-                'Your account is not currently available.',
+            default => 'Your account is not currently available.',
         };
     }
 }

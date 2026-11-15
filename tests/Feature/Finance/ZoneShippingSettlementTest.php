@@ -857,6 +857,11 @@ class ZoneShippingSettlementTest extends TestCase
             ->assertRedirect()
             ->assertSessionHasNoErrors();
         $this->actingAs($providerUser)
+            ->get(route('logistics.settlements.index'))
+            ->assertOk()
+            ->assertSee('data-external-rider-payout-reference', false)
+            ->assertSee('data-generated-rider-cash-reference hidden', false);
+        $this->actingAs($providerUser)
             ->post(route('logistics.settlements.payout-batches.record-paid', $batch->id), [
                 'method' => 'cash',
                 'paid_on' => now()->toDateString(),

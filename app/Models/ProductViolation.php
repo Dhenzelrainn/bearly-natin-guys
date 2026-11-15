@@ -30,6 +30,11 @@ class ProductViolation extends Model
         return $this->belongsTo(ProductComplianceCheck::class, 'check_id');
     }
 
+    public function imageCheck(): BelongsTo
+    {
+        return $this->belongsTo(ProductImageCategoryCheck::class, 'product_image_category_check_id');
+    }
+
     public function actions(): HasMany
     {
         return $this->hasMany(ViolationAction::class, 'violation_id')->latest('created_at');

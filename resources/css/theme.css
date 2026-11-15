@@ -3458,6 +3458,23 @@ html[data-theme-transition] body * {
     color: #c0b2a5;
 }
 
+:root[data-theme="dark"] body.admin-body .admin-category-review-image-list > summary {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.admin-body .admin-category-review-image-list-items {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+}
+
+:root[data-theme="dark"] body.admin-body .admin-category-review-image-item > div > strong {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.admin-body .admin-category-review-image-list-empty {
+    color: #c0b2a5;
+}
+
 :root[data-theme="dark"] body.admin-body .admin-category-review-summary {
     border-color: #72563e;
     background: #30241d;

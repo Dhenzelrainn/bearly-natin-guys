@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\RememberedAccount;
 use App\Models\User;
 use App\Services\RememberedAccountService;
+use App\Services\UserSessionRevocationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\User as SocialiteUser;
@@ -228,5 +230,32 @@ class RememberedAccountLoginTest extends TestCase
         $user->update(['password' => Hash::make('a-new-strong-password')]);
 
         $this->assertDatabaseMissing('remembered_accounts', ['user_id' => $user->id]);
+    }
+
+    public function test_stale_sign_in_cannot_recreate_remembered_credentials_after_force_logout(): void
+    {
+        $user = $this->account('Morgan Lee', 'morgan@example.test');
+        $staleUser = $user->fresh();
+        $admin = $this->account('Maria Admin', 'maria.admin@example.test');
+        $admin->forceFill(['role' => 'admin'])->save();
+
+        RememberedAccount::query()->create([
+            'user_id' => $user->id,
+            'token_hash' => hash('sha256', str_repeat('a', 64)),
+            'expires_at' => now()->addDays(7),
+            'last_used_at' => now(),
+        ]);
+
+        $request = Request::create('/admin/audit-logs', 'POST');
+        app(UserSessionRevocationService::class)->forceLogoutAll($user, $admin, $request);
+
+        $this->assertDatabaseCount('remembered_accounts', 0);
+
+        app(RememberedAccountService::class)->remember(
+            Request::create('/login'),
+            $staleUser,
+        );
+
+        $this->assertDatabaseCount('remembered_accounts', 0);
     }
 }

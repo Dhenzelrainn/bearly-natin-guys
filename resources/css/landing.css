@@ -830,6 +830,18 @@ body.bearly-landing .lp-save[aria-pressed="true"] .material-symbols-outlined {
     font-variation-settings: "FILL" 1;
 }
 
+:root[data-theme="dark"] body.bearly-landing .lp-save {
+    border: 1px solid rgba(67, 34, 20, .2);
+    background: #fffdf7;
+    color: #432214;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, .24);
+}
+:root[data-theme="dark"] body.bearly-landing .lp-save:hover,
+:root[data-theme="dark"] body.bearly-landing .lp-save[aria-pressed="true"] {
+    background: #fff1ee;
+    color: #a74438;
+}
+
 
 
 

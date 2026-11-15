@@ -74,7 +74,16 @@ class Product extends Model
     {
         return $this->hasOne(ProductImageCategoryCheck::class)
             ->where('is_current', true)
+            ->whereHas('productImage', fn (Builder $images) => $images
+                ->whereNull('variant_id')
+                ->where('is_primary', true))
             ->latestOfMany();
+    }
+
+    public function currentImageCategoryChecks()
+    {
+        return $this->hasMany(ProductImageCategoryCheck::class)
+            ->where('is_current', true);
     }
 
     public function violations()

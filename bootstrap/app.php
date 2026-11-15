@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureLocalRiderWorkType;
+use App\Http\Middleware\EnforceAuthSessionVersion;
 use App\Http\Middleware\EnsureUserHasRole;
 use App\Http\Middleware\PreventBackCache;
 use App\Models\RememberedAccount;
@@ -45,6 +46,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
             PreventBackCache::class,
+            EnforceAuthSessionVersion::class,
         ]);
 
         $middleware->alias([

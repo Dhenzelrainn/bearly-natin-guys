@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AuditLog;
 use App\Models\Product;
+use App\Models\ProductImageCategoryCheck;
 use App\Models\ProductViolation;
 use App\Models\User;
 use App\Models\ViolationAction;
@@ -20,13 +21,9 @@ class ProductCategoryReviewService
 {
     private const REVIEW_ACTION = 'category_review_marked_appropriate';
 
-    private const MODULE = 'Product Compliance';
+    private const IMAGE_REVIEW_APPROVAL_ACTION = 'product_image_review_approved';
 
-    private const ACTIONABLE_VIOLATION_STATUSES = [
-        'flagged',
-        'under_review',
-        'correction_requested',
-    ];
+    private const MODULE = 'Product Compliance';
 
     private const PER_PAGE = 20;
 
@@ -35,17 +32,31 @@ class ProductCategoryReviewService
         private readonly ProductImageCategoryCheckService $imageChecks,
     ) {}
 
-    public function paginateQueue(?string $search = null): LengthAwarePaginator
+    public function paginateQueue(?string $search = null, ?int $marketplaceCategoryId = null): LengthAwarePaginator
     {
         $reviewedProductIds = $this->unchangedReviewedProductIds();
 
         $products = Product::query()
-            ->visibleToBuyers()
             ->with($this->reviewRelations())
+            ->where(function (Builder $visibility) use ($reviewedProductIds): void {
+                $visibility
+                    ->where(function (Builder $visible) use ($reviewedProductIds): void {
+                        $visible->visibleToBuyers();
+                        if ($reviewedProductIds !== []) {
+                            $visible->whereNotIn('products.id', $reviewedProductIds);
+                        }
+                    })
+                    ->orWhere(function (Builder $pending): void {
+                        $pending
+                            ->where('products.product_status', 'pending_review')
+                            ->where('products.compliance_status', 'pending_scan');
+                    });
+            })
             ->whereDoesntHave('violations', fn (Builder $violations) => $violations
-                ->whereIn('status', self::ACTIONABLE_VIOLATION_STATUSES))
-            ->when($reviewedProductIds !== [], fn (Builder $query) => $query
-                ->whereNotIn('products.id', $reviewedProductIds));
+                ->whereNotIn('status', ['dismissed', 'resolved']))
+            ->when($marketplaceCategoryId !== null, fn (Builder $query) => $query
+                ->whereHas('marketplaceSubcategory', fn (Builder $subcategories) => $subcategories
+                    ->where('marketplace_category_id', $marketplaceCategoryId)));
 
         $search = trim((string) $search);
 
@@ -69,8 +80,8 @@ class ProductCategoryReviewService
         }
 
         return $products
-            ->orderBy('products.name')
-            ->orderBy('products.id')
+            ->orderByDesc('products.created_at')
+            ->orderByDesc('products.id')
             ->paginate(self::PER_PAGE)
             ->withQueryString()
             ->through(fn (Product $product): array => $this->presentQueueProduct($product));
@@ -121,6 +132,10 @@ class ProductCategoryReviewService
             $snapshot = $this->snapshot($product);
             $fingerprint = $this->fingerprint($snapshot);
             $now = now();
+            $previousProductStatus = (string) $product->product_status;
+            $previousComplianceStatus = (string) $product->compliance_status;
+            $wasPendingImageReview = $previousProductStatus === 'pending_review'
+                && $previousComplianceStatus === 'pending_scan';
 
             $violation = ProductViolation::query()->create([
                 'violation_no' => 'VIO-'.Str::upper(Str::random(10)),
@@ -144,7 +159,12 @@ class ProductCategoryReviewService
                 'to_status' => 'flagged',
                 'actor_user_id' => $actor->id,
                 'reason' => $reason,
-                'metadata' => ['fingerprint' => $fingerprint],
+                'metadata' => [
+                    'fingerprint' => $fingerprint,
+                    'previous_product_status' => $previousProductStatus,
+                    'previous_compliance_status' => $previousComplianceStatus,
+                    'was_pending_image_review' => $wasPendingImageReview,
+                ],
                 'created_at' => $now,
             ]);
 
@@ -159,8 +179,8 @@ class ProductCategoryReviewService
                 subject: $product,
                 description: $reason,
                 oldValues: [
-                    'product_status' => 'active',
-                    'compliance_status' => 'clear',
+                    'product_status' => $previousProductStatus,
+                    'compliance_status' => $previousComplianceStatus,
                 ],
                 newValues: [
                     'product_status' => 'flagged',
@@ -181,6 +201,101 @@ class ProductCategoryReviewService
         });
     }
 
+    public function approvePendingImageReview(
+        Product $product,
+        User $actor,
+        string $reason,
+        Request $request,
+    ): void {
+        DB::transaction(function () use ($product, $actor, $reason, $request): void {
+            $product = $this->lockReviewableProduct($product);
+
+            if ($product->product_status !== 'pending_review'
+                || $product->compliance_status !== 'pending_scan') {
+                throw ValidationException::withMessages([
+                    'product' => 'Only a listing held for image review can be approved from this action.',
+                ]);
+            }
+
+            $textCheck = $product->latestComplianceCheck;
+            if (! $textCheck
+                || $textCheck->result !== 'clear'
+                || $textCheck->name_snapshot !== $product->name
+                || $textCheck->description_snapshot !== $product->description
+                || (int) $textCheck->category_id_snapshot !== (int) $product->category_id) {
+                throw ValidationException::withMessages([
+                    'product' => 'The latest text compliance scan is missing, flagged, or stale. Re-save the listing for a current scan before approving it.',
+                ]);
+            }
+
+            $images = $product->images;
+            if ($images->isEmpty()) {
+                throw ValidationException::withMessages([
+                    'product' => 'This listing has no current product images to approve.',
+                ]);
+            }
+
+            foreach ($images as $image) {
+                $disk = trim((string) ($image->disk ?: 'public'));
+                try {
+                    $available = filled($image->path)
+                        && config("filesystems.disks.{$disk}")
+                        && Storage::disk($disk)->exists($image->path);
+                } catch (\Throwable) {
+                    $available = false;
+                }
+
+                if (! $available) {
+                    throw ValidationException::withMessages([
+                        'product' => 'At least one current product image cannot be opened for Admin review.',
+                    ]);
+                }
+            }
+
+            $imageReviews = $this->imageChecks->imageReviewPayload($product);
+            $snapshot = $this->snapshot($product);
+            $reviewFingerprint = $this->fingerprint($snapshot);
+            $reviewedAt = now();
+
+            ProductImageCategoryCheck::query()
+                ->where('product_id', $product->id)
+                ->where('is_current', true)
+                ->lockForUpdate()
+                ->update(['is_current' => false, 'updated_at' => $reviewedAt]);
+
+            $product->forceFill([
+                'product_status' => 'active',
+                'compliance_status' => 'clear',
+                'published_at' => $reviewedAt,
+            ])->save();
+
+            $this->audit->record(
+                action: self::IMAGE_REVIEW_APPROVAL_ACTION,
+                module: self::MODULE,
+                subject: $product,
+                description: $reason,
+                oldValues: [
+                    'product_status' => 'pending_review',
+                    'compliance_status' => 'pending_scan',
+                ],
+                newValues: [
+                    'product_status' => 'active',
+                    'compliance_status' => 'clear',
+                    'reviewed_by' => (int) $actor->id,
+                    'reviewed_at' => $reviewedAt->toIso8601String(),
+                    'reason' => $reason,
+                    'fingerprint_version' => 1,
+                    'fingerprint' => $reviewFingerprint,
+                    'snapshot' => $snapshot,
+                    'image_reviews' => $imageReviews,
+                ],
+                severity: 'info',
+                request: $request,
+                actor: $actor,
+            );
+        }, attempts: 3);
+    }
+
     private function lockReviewableProduct(Product $product): Product
     {
         $product = Product::query()
@@ -188,9 +303,13 @@ class ProductCategoryReviewService
             ->lockForUpdate()
             ->firstOrFail();
 
-        $this->ensureNoActionableViolation($product);
+        $this->ensureNoOpenViolation($product);
 
-        if (! Product::query()->visibleToBuyers()->whereKey($product->getKey())->exists()) {
+        $isBuyerVisible = Product::query()->visibleToBuyers()->whereKey($product->getKey())->exists();
+        $isPendingImageReview = $product->product_status === 'pending_review'
+            && $product->compliance_status === 'pending_scan';
+
+        if (! $isBuyerVisible && ! $isPendingImageReview) {
             throw ValidationException::withMessages([
                 'product' => 'This listing is no longer Buyer-visible and cannot be reviewed from this queue.',
             ]);
@@ -199,17 +318,17 @@ class ProductCategoryReviewService
         return $product->load($this->reviewRelations());
     }
 
-    private function ensureNoActionableViolation(Product $product): void
+    private function ensureNoOpenViolation(Product $product): void
     {
         $hasActionableViolation = ProductViolation::query()
             ->where('product_id', $product->id)
-            ->whereIn('status', self::ACTIONABLE_VIOLATION_STATUSES)
+            ->whereNotIn('status', ['dismissed', 'resolved'])
             ->lockForUpdate()
             ->exists();
 
         if ($hasActionableViolation) {
             throw ValidationException::withMessages([
-                'product' => 'This listing already has an actionable Product Violation. Continue its review in the Product Violations queue.',
+                'product' => 'This listing has an unresolved Product Violation. Continue its review in the Product Violations queue.',
             ]);
         }
     }
@@ -285,7 +404,7 @@ class ProductCategoryReviewService
         $productMorphType = (new Product)->getMorphClass();
         $latestReviewIds = AuditLog::query()
             ->selectRaw('MAX(id)')
-            ->where('action', self::REVIEW_ACTION)
+            ->whereIn('action', [self::REVIEW_ACTION, self::IMAGE_REVIEW_APPROVAL_ACTION])
             ->where('module', self::MODULE)
             ->where('auditable_type', $productMorphType)
             ->whereNotNull('auditable_id')
@@ -337,7 +456,7 @@ class ProductCategoryReviewService
             'store.sellerProfile.approvedCategory',
             'images',
             'latestComplianceCheck',
-            'currentImageCategoryCheck',
+            'currentImageCategoryChecks',
         ];
     }
 
@@ -360,7 +479,11 @@ class ProductCategoryReviewService
 
         $imageCheck = $this->imageChecks->currentCheckForProduct($product);
         $imageCheckEnabled = (bool) config('services.gemini.product_image_check.enabled', false);
+        $enforced = (bool) config('services.gemini.product_image_check.enforce_on_publish', false);
         $imageCheckCode = $imageCheck?->status ?? ($imageCheckEnabled ? 'not_checked' : 'disabled');
+        $imageReviews = $this->imageChecks->imageReviewPayload($product);
+        $awaitingManualImageReview = $product->product_status === 'pending_review'
+            && $product->compliance_status === 'pending_scan';
 
         return [
             'id' => (int) $product->id,
@@ -397,15 +520,24 @@ class ProductCategoryReviewService
             'image_category_description' => $imageCheck?->visible_item_description,
             'image_category_reason' => $imageCheck?->reason,
             'image_category_helper' => match ($imageCheckCode) {
-                'possible_mismatch', 'uncertain' => 'AI advisory only; Admin review is still required.',
-                'pending' => 'Awaiting an advisory check; this does not affect publishing or visibility.',
+                'possible_mismatch', 'uncertain' => $enforced
+                    ? 'The listing stays hidden while an Admin reviews this image finding.'
+                    : 'AI advisory only; Admin review is still required.',
+                'pending' => $enforced
+                    ? 'Buyer visibility is paused until every current image has a review result.'
+                    : 'Awaiting an advisory check; this does not affect publishing or visibility.',
                 'not_checked' => 'No image check is recorded for this listing yet.',
-                'disabled' => 'Image checks are disabled; no product photo is sent to Google.',
+                'disabled' => $enforced
+                    ? 'Image checks are unavailable; the listing stays hidden for Admin review. No product photo was sent to Google.'
+                    : 'Image checks are disabled; no product photo is sent to Google.',
                 default => null,
             },
             'image_category_checked_at' => $imageCheck?->completed_at
                 ? Carbon::parse($imageCheck->completed_at)->format('M j, Y g:i A')
                 : null,
+            'image_reviews' => $imageReviews,
+            'awaiting_manual_image_review' => $awaitingManualImageReview,
+            'can_approve_image_review' => $awaitingManualImageReview && $imageReviews !== [],
             'product_status' => Str::headline((string) $product->product_status),
             'compliance_status' => Str::headline((string) $product->compliance_status),
         ];

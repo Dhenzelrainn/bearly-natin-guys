@@ -273,7 +273,7 @@
 </section>
 @endif
 
-<section class="panel" style="margin-top:20px" aria-label="Consolidated Rider payout batches">
+<section class="panel rider-payout-queue" aria-label="Consolidated Rider payout batches">
     <div class="panel-header">
         <div>
             <h2>Consolidated Rider payout batches</h2>
@@ -282,12 +282,13 @@
     </div>
 
     @if($payoutCandidates->isEmpty())
-        <div class="panel-body">
-            <p class="empty-copy">No payout-eligible earnings are waiting for a batch. Held pickup earnings and unremitted delivery earnings are excluded.</p>
+        <div class="rider-payout-empty" role="status">
+            <strong>No payout-ready earnings</strong>
+            <p>Held pickup earnings and delivery earnings awaiting Finance remittance are excluded until eligible.</p>
         </div>
     @else
-        <div class="cash-custody-table-wrap" role="region" aria-label="Payout batch candidates" tabindex="0">
-            <table>
+        <div class="cash-custody-table-wrap rider-payout-candidates" role="region" aria-label="Payout batch candidates" tabindex="0">
+            <table class="cash-custody-table rider-payout-candidate-table">
                 <thead>
                     <tr>
                         <th>Rider</th>
@@ -324,16 +325,33 @@
             </table>
         </div>
     @endif
+</section>
 
-    <div class="panel-body">
-        <h3>Batch history</h3>
+<section class="panel rider-payout-history" aria-label="Rider payout batch history">
+    <div class="panel-header">
+        <div>
+            <h2>Batch history</h2>
+            <p>Review each Rider batch, its included earnings, and any recorded external payout.</p>
+        </div>
+    </div>
+
+    <div class="rider-payout-history-list">
         @forelse($payoutBatches as $batch)
-            <div class="cash-custody-row" style="border-top:1px solid var(--border); padding:16px 0">
-                <div>
-                    <strong>{{ $batch->batch_no }}</strong>
-                    <small class="table-subline">{{ $batch->riderProfile?->user?->name ?? 'Rider' }} · {{ number_format($batch->items->count()) }} {{ $batch->items->count() === 1 ? 'earning' : 'earnings' }} · ₱{{ number_format((int) $batch->total_minor / 100, 2) }}</small>
-                    @if($batch->review_notes)<small class="table-subline">Review note: {{ $batch->review_notes }}</small>@endif
-                    <details>
+            <article class="rider-payout-batch-row">
+                <div class="rider-payout-batch-main">
+                    <div class="rider-payout-batch-heading">
+                        <div class="rider-payout-batch-identity">
+                            <strong class="rider-payout-batch-number">{{ $batch->batch_no }}</strong>
+                            <p class="rider-payout-batch-meta">
+                                <span>{{ $batch->riderProfile?->user?->name ?? 'Rider' }}</span>
+                                <span>{{ number_format($batch->items->count()) }} {{ $batch->items->count() === 1 ? 'earning' : 'earnings' }}</span>
+                                <strong>₱{{ number_format((int) $batch->total_minor / 100, 2) }}</strong>
+                            </p>
+                        </div>
+                        <span class="status-badge rider-payout-batch-status" data-status="{{ $batch->status }}">{{ str($batch->status)->replace('_', ' ')->title() }}</span>
+                    </div>
+                    @if($batch->review_notes)<small class="rider-payout-review-note">Review note: {{ $batch->review_notes }}</small>@endif
+                    <details class="rider-payout-earnings-details">
                         <summary>View included earnings</summary>
                         <ul>
                             @foreach($batch->items as $item)
@@ -355,14 +373,15 @@
                             @endforeach
                         </ul>
                     </details>
-                    <small class="table-subline">
-                        <span class="status-badge" data-status="{{ $batch->status }}">{{ str($batch->status)->replace('_', ' ')->title() }}</span>
-                        @if($batch->approved_at) · Approved {{ $batch->approved_at->format('M j, Y g:i A') }} @endif
-                        @if($batch->paid_on) · Paid {{ $batch->paid_on->format('M j, Y') }} @endif
-                    </small>
+                    @if($batch->approved_at || $batch->paid_on)
+                        <p class="rider-payout-batch-timestamps">
+                            @if($batch->approved_at)<span>Approved {{ $batch->approved_at->format('M j, Y g:i A') }}</span>@endif
+                            @if($batch->paid_on)<span>Paid {{ $batch->paid_on->format('M j, Y') }}</span>@endif
+                        </p>
+                    @endif
                 </div>
 
-                <div>
+                <div class="rider-payout-batch-actions">
                     @if($batch->status === 'pending_review')
                         <form method="POST" action="{{ route('logistics.settlements.payout-batches.approve', $batch->id) }}">
                             @csrf
@@ -370,7 +389,7 @@
                         </form>
                     @elseif($batch->status === 'approved')
                         <p>Pay the approved batch total of <strong>₱{{ number_format((int) $batch->total_minor / 100, 2) }}</strong> to the Rider before recording payment.</p>
-                        <form method="POST" action="{{ route('logistics.settlements.payout-batches.record-paid', $batch->id) }}" class="cash-action-form">
+                        <form method="POST" action="{{ route('logistics.settlements.payout-batches.record-paid', $batch->id) }}" class="cash-action-form" data-rider-payout-form>
                             @csrf
                             <label for="batch-method-{{ $batch->id }}">Method
                                 <select id="batch-method-{{ $batch->id }}" name="method" required>
@@ -381,9 +400,10 @@
                                     <option value="other">Other</option>
                                 </select>
                             </label>
-                            <label for="batch-reference-{{ $batch->id }}">External payout reference
+                            <label for="batch-reference-{{ $batch->id }}" data-external-rider-payout-reference>External payout reference
                                 <input id="batch-reference-{{ $batch->id }}" type="text" name="reference" maxlength="150">
                             </label>
+                            <small data-generated-rider-cash-reference hidden>Cash does not use an external reference. Bearly generates a receipt reference after you record the payment.</small>
                             <label for="batch-paid-on-{{ $batch->id }}">Paid on
                                 <input id="batch-paid-on-{{ $batch->id }}" type="date" name="paid_on" max="{{ now()->toDateString() }}" value="{{ now()->toDateString() }}" required>
                             </label>
@@ -407,9 +427,12 @@
                         @endif
                     @endif
                 </div>
-            </div>
+            </article>
         @empty
-            <p class="empty-copy">No payout batches have been prepared for this provider.</p>
+            <div class="rider-payout-empty rider-payout-empty-history" role="status">
+                <strong>No batches yet</strong>
+                <p>Prepared Rider payout batches will appear here.</p>
+            </div>
         @endforelse
     </div>
 </section>

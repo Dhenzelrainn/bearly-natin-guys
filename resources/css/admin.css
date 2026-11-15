@@ -11914,6 +11914,7 @@ table {
 .admin-body .admin-category-review-guidance { max-width: 720px; margin: 7px 0 0; color: #75685f; font-size: 11px; line-height: 1.55; }
 .admin-body .admin-category-review-search { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .admin-body .admin-category-review-search .compact-field { min-width: 250px; }
+.admin-body .admin-category-review-search .select-field { min-width: 220px; }
 .admin-body .admin-category-review-table { min-width: 1620px; }
 .admin-body .admin-category-review-table th,
 .admin-body .admin-category-review-table td { vertical-align: top; }
@@ -11932,6 +11933,17 @@ table {
 .admin-category-review-cell small { margin-top: 3px; color: #81746b; font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
 .admin-category-review-cell { min-width: 100px; }
 .admin-category-review-image-check { min-width: 185px; max-width: 260px; }
+.admin-category-review-image-list { margin-top: 8px; }
+.admin-category-review-image-list > summary { color: #6a4a34; font-size: 10px; font-weight: 650; cursor: pointer; }
+.admin-category-review-image-list > summary:focus-visible { outline: 2px solid #d88b12; outline-offset: 2px; border-radius: 4px; }
+.admin-category-review-image-list-items { display: grid; max-height: 360px; gap: 8px; overflow: auto; margin-top: 7px; padding: 7px; border: 1px solid #e8ded4; border-radius: 7px; background: #fffdfa; }
+.admin-category-review-image-item { display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: start; gap: 8px; min-width: 0; }
+.admin-category-review-image-item > img,
+.admin-category-review-image-item > .admin-category-review-no-image { width: 48px; height: 48px; }
+.admin-category-review-image-item > div { min-width: 0; }
+.admin-category-review-image-item > div > strong { color: #3d2e25; font-size: 9px; line-height: 1.4; overflow-wrap: anywhere; }
+.admin-category-review-image-item .status-badge { display: inline-block; margin-left: 3px; padding: 2px 5px; font-size: 8px; }
+.admin-category-review-image-list-empty { margin: 0; color: #81746b; font-size: 10px; }
 .admin-category-review-stale { display: inline-block; margin-top: 6px; padding: 4px 7px; border-radius: 5px; color: #785416; background: #fff5df; font-size: 9px; font-weight: 650; line-height: 1.35; }
 .admin-category-review-actions { display: grid; min-width: 220px; gap: 8px; }
 .admin-category-review-action { border: 1px solid #e8ded4; border-radius: 8px; background: #fffdfa; }
@@ -11950,15 +11962,84 @@ table {
 .admin-category-review-action textarea:focus-visible { outline: 2px solid #d88b12; outline-offset: 2px; }
 .admin-category-review-action form .button { justify-self: start; white-space: normal; text-align: left; }
 .admin-category-review-no-warning { color: #81746b; font-size: 9px; line-height: 1.45; }
+.admin-violation-image-evidence > img { display: block; width: min(100%, 180px); max-height: 180px; margin: 8px 0; border: 1px solid #e8ded4; border-radius: 7px; object-fit: contain; background: #f8f4ef; }
+.admin-violation-image-evidence > small { display: block; margin-top: 6px; }
 .admin-category-review-empty { display: grid; justify-items: center; gap: 8px; min-height: 190px; padding: 34px 18px; color: #81746b; text-align: center; }
 .admin-category-review-empty svg { width: 24px; height: 24px; color: #7e9a6b; }
 .admin-category-review-empty strong { color: #46372e; font-size: 13px; }
 .admin-category-review-empty span { max-width: 520px; font-size: 10px; line-height: 1.55; }
-.admin-category-review-pagination { display: flex; justify-content: flex-end; padding: 14px 16px; }
+.admin-body .admin-category-review-pagination {
+    display: block;
+    padding: 14px 20px;
+    border-top: 1px solid var(--theme-border);
+}
+.admin-body .admin-category-review-pagination nav { width: 100%; }
+.admin-body .admin-category-review-pagination nav > div:first-child { display: none; }
+.admin-body .admin-category-review-pagination nav > div:last-child {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    width: 100%;
+}
+.admin-body .admin-category-review-pagination nav > div:last-child > div:first-child p {
+    margin: 0;
+    color: var(--theme-muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+.admin-body .admin-category-review-pagination nav > div:last-child > div:last-child > span {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    box-shadow: none;
+}
+.admin-body .admin-category-review-pagination nav > div:last-child > div:last-child > span > a,
+.admin-body .admin-category-review-pagination nav > div:last-child > div:last-child > span > span[aria-current],
+.admin-body .admin-category-review-pagination nav > div:last-child > div:last-child > span > span[aria-disabled] {
+    display: inline-flex;
+    min-width: 36px;
+    min-height: 36px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 9px;
+    border: 1px solid var(--theme-border);
+    border-radius: 7px;
+    background: var(--theme-surface);
+    color: var(--theme-text);
+    font-size: 12px;
+    line-height: 1;
+    text-decoration: none;
+}
+.admin-body .admin-category-review-pagination nav > div:last-child > div:last-child > span > span[aria-disabled] > span {
+    color: var(--theme-muted);
+}
+.admin-body .admin-category-review-pagination nav > div:last-child > div:last-child > span > span[aria-current] > span {
+    border-radius: 6px;
+    background: var(--theme-accent-soft);
+    color: var(--theme-text);
+    font-weight: 700;
+}
+.admin-body .admin-category-review-pagination nav > div:last-child > div:last-child > span > a:hover {
+    border-color: var(--theme-accent);
+    background: var(--theme-surface-soft);
+}
+.admin-body .admin-category-review-pagination nav > div:last-child > div:last-child > span > a:focus-visible {
+    outline: 2px solid var(--theme-accent);
+    outline-offset: 2px;
+}
+.admin-body .admin-category-review-pagination nav svg { width: 18px; height: 18px; }
 @media (max-width: 760px) {
     .admin-body .admin-category-review-search { align-items: stretch; flex-direction: column; width: 100%; }
     .admin-body .admin-category-review-search > *,
     .admin-body .admin-category-review-search .compact-field { width: 100%; min-width: 0; }
+    .admin-body .admin-category-review-pagination { padding: 14px 16px; }
+    .admin-body .admin-category-review-pagination nav > div:last-child {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+    .admin-body .admin-category-review-pagination nav > div:last-child > div:last-child { width: 100%; }
 }
 
 /* Returns & Refunds: full case review workspace */

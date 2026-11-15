@@ -361,12 +361,21 @@ class SellerProductService
                 $product->load('store.sellerProfile');
                 $check = app(ComplianceScanner::class)->scan($product, $isUpdate ? 'update' : 'create', $user);
                 $result = (string) $check->result;
+                // ComplianceScanner updates this row in its own transaction;
+                // refresh before applying the publish gate so Eloquent compares
+                // against the persisted compliance status, not the stale value
+                // loaded before the scan.
+                $product->refresh();
+                $waitForImageSafety = $intent === 'publish'
+                    && (bool) config('services.gemini.product_image_check.enforce_on_publish', false);
 
                 if ($result === 'clear') {
                     $product->update([
-                        'product_status' => $intent === 'publish' ? 'active' : 'draft',
-                        'compliance_status' => 'clear',
-                        'published_at' => $intent === 'publish' ? now() : null,
+                        'product_status' => $waitForImageSafety
+                            ? 'pending_review'
+                            : ($intent === 'publish' ? 'active' : 'draft'),
+                        'compliance_status' => $waitForImageSafety ? 'pending_scan' : 'clear',
+                        'published_at' => $intent === 'publish' && ! $waitForImageSafety ? now() : null,
                     ]);
                 } elseif ($result === 'blocked') {
                     $product->update([

@@ -17,12 +17,25 @@ class ProductImageCategoryCheck extends Model
 
     public const STATUS_UNAVAILABLE = 'unavailable';
 
+    public const SAFETY_PENDING = 'pending';
+
+    public const SAFETY_CLEAR = 'clear';
+
+    public const SAFETY_POSSIBLE_VIOLATION = 'possible_violation';
+
+    public const SAFETY_PROHIBITED = 'prohibited';
+
+    public const SAFETY_UNCERTAIN = 'uncertain';
+
+    public const SAFETY_UNAVAILABLE = 'unavailable';
+
     protected $guarded = [];
 
     protected function casts(): array
     {
         return [
             'listing_snapshot' => 'array',
+            'matched_rule_codes' => 'array',
             'is_current' => 'boolean',
             'attempts' => 'integer',
             'started_at' => 'datetime',

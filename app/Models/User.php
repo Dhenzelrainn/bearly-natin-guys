@@ -14,11 +14,12 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
 
-    protected $guarded = [];
+    protected $guarded = ['auth_session_version'];
 
     protected $hidden = [
         'password',
         'remember_token',
+        'auth_session_version',
         'valid_id_path',
         'business_permit_path',
         'or_cr_path',
@@ -27,7 +28,7 @@ class User extends Authenticatable
 
     protected function casts(): array
     {
-        return ['phone_verified_at' => 'datetime', 'terms_accepted_at' => 'datetime', 'birthday' => 'date', 'birth_date' => 'date', 'email_verified_at' => 'datetime', 'last_login_at' => 'datetime', 'approved_at' => 'datetime', 'password' => 'hashed'];
+        return ['phone_verified_at' => 'datetime', 'terms_accepted_at' => 'datetime', 'birthday' => 'date', 'birth_date' => 'date', 'email_verified_at' => 'datetime', 'last_login_at' => 'datetime', 'approved_at' => 'datetime', 'auth_session_version' => 'integer', 'password' => 'hashed'];
     }
 
     protected static function booted(): void

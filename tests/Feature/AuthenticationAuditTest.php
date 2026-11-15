@@ -3,8 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\AuditLog;
+use App\Models\RememberedAccount;
 use App\Models\User;
+use App\Services\UserSessionRevocationService;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\User as SocialiteUser;
@@ -33,6 +37,27 @@ class AuthenticationAuditTest extends TestCase
         return AuditLog::query()
             ->whereIn('action', ['auth.signed_in', 'auth.signed_out'])
             ->count();
+    }
+
+    private function authenticationAuditLog(User $user, string $action = 'auth.signed_in'): AuditLog
+    {
+        return AuditLog::query()->create([
+            'actor_user_id' => $user->id,
+            'action' => $action,
+            'module' => 'Authentication',
+            'auditable_type' => $user->getMorphClass(),
+            'auditable_id' => $user->id,
+            'description' => 'Authentication activity for test coverage.',
+            'new_values' => [
+                'event' => $action === 'auth.signed_out' ? 'signed_out' : 'signed_in',
+                'channel' => 'web_password',
+                'role' => $user->role,
+            ],
+            'ip_address' => '127.0.0.1',
+            'user_agent' => self::CHROME_USER_AGENT,
+            'severity' => 'info',
+            'created_at' => now(),
+        ]);
     }
 
     public function test_web_password_login_records_a_successful_sign_in(): void
@@ -201,6 +226,42 @@ class AuthenticationAuditTest extends TestCase
 
         $this->assertStringNotContainsString($token, (string) json_encode($log->toArray()));
         $this->assertSame(1, $buyer->tokens()->count());
+
+        $this->withToken($token)
+            ->getJson('/api/user')
+            ->assertOk()
+            ->assertJsonMissingPath('auth_session_version');
+    }
+
+    public function test_mobile_login_cannot_issue_a_token_when_force_logout_wins_the_race(): void
+    {
+        $buyer = $this->buyerFixture(['email' => 'mobile.revoked@example.test']);
+        $advanceVersionAfterPasswordLookup = true;
+
+        DB::listen(function (QueryExecuted $query) use ($buyer, &$advanceVersionAfterPasswordLookup): void {
+            if (
+                ! $advanceVersionAfterPasswordLookup
+                || ! str_contains(strtolower($query->sql), 'lower(email)')
+            ) {
+                return;
+            }
+
+            $advanceVersionAfterPasswordLookup = false;
+            DB::table('users')
+                ->where('id', $buyer->id)
+                ->update(['auth_session_version' => DB::raw('auth_session_version + 1')]);
+        });
+
+        $this->postJson('/api/mobile/login', [
+            'email' => 'mobile.revoked@example.test',
+            'password' => 'password',
+        ])
+            ->assertStatus(409)
+            ->assertJsonPath('message', 'This sign-in was interrupted by an account security change. Please submit your credentials again.');
+
+        $this->assertSame(1, $buyer->fresh()->auth_session_version);
+        $this->assertSame(0, $buyer->tokens()->count());
+        $this->assertSame(0, $this->signInEvents());
     }
 
     public function test_mobile_logout_records_a_signed_out_event_and_revokes_the_token(): void
@@ -288,10 +349,156 @@ class AuthenticationAuditTest extends TestCase
             ->assertDontSee('Administrator role');
     }
 
+    public function test_admin_can_force_logout_a_user_from_an_authentication_audit_entry(): void
+    {
+        $buyer = $this->buyerFixture([
+            'name' => 'Bea Buyer',
+            'email' => 'force.logout@example.test',
+            'remember_token' => 'existing-remember-token',
+        ]);
+        $admin = $this->buyerFixture([
+            'name' => 'Maria Admin',
+            'email' => 'force.logout.admin@example.test',
+            'role' => 'admin',
+        ]);
+        $authLog = $this->authenticationAuditLog($buyer);
+
+        $firstMobileToken = $buyer->createToken('first-mobile-device')->plainTextToken;
+        $buyer->createToken('second-mobile-device');
+        RememberedAccount::query()->create([
+            'user_id' => $buyer->id,
+            'token_hash' => hash('sha256', 'remembered-sign-in-one'),
+            'expires_at' => now()->addDays(7),
+            'last_used_at' => now(),
+        ]);
+        RememberedAccount::query()->create([
+            'user_id' => $buyer->id,
+            'token_hash' => hash('sha256', 'remembered-sign-in-two'),
+            'expires_at' => now()->addDays(7),
+            'last_used_at' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.audit-logs'))
+            ->assertOk()
+            ->assertSee('Sign out all devices')
+            ->assertSee('Bea Buyer');
+
+        $this->post(route('admin.audit-logs.force-logout', $authLog))
+            ->assertRedirect(route('admin.audit-logs'))
+            ->assertSessionHas('success');
+
+        $buyer->refresh();
+        $this->assertSame(1, $buyer->auth_session_version);
+        $this->assertNotSame('existing-remember-token', $buyer->remember_token);
+        $this->assertSame(0, $buyer->tokens()->count());
+        $this->assertSame(0, $buyer->rememberedAccounts()->count());
+
+        $this->actingAs($buyer->fresh())
+            ->withSession([
+                UserSessionRevocationService::SESSION_VERSION_KEY => 0,
+            ])
+            ->get(route('home'))
+            ->assertRedirect(route('login'));
+
+        $this->assertGuest();
+
+        $this->withToken($firstMobileToken)
+            ->getJson('/api/user')
+            ->assertUnauthorized();
+
+        $forceLogout = AuditLog::query()->where('action', 'auth.force_signed_out')->sole();
+        $this->assertSame($admin->id, $forceLogout->actor_user_id);
+        $this->assertSame('Authentication', $forceLogout->module);
+        $this->assertSame($buyer->getMorphClass(), $forceLogout->auditable_type);
+        $this->assertSame($buyer->id, $forceLogout->auditable_id);
+        $this->assertSame('warning', $forceLogout->severity);
+        $this->assertSame('force_signed_out', $forceLogout->new_values['event']);
+        $this->assertSame('all_devices', $forceLogout->new_values['scope']);
+        $this->assertTrue($forceLogout->new_values['web_sessions_invalidated']);
+        $this->assertSame(2, $forceLogout->new_values['mobile_api_tokens_revoked']);
+        $this->assertSame(2, $forceLogout->new_values['remembered_sign_ins_revoked']);
+        $this->assertTrue($forceLogout->new_values['remember_token_rotated']);
+    }
+
+    public function test_stale_or_unmarked_web_sessions_are_rejected_after_force_logout_but_new_login_works(): void
+    {
+        $buyer = $this->buyerFixture(['email' => 'revoked.session@example.test']);
+        $buyer->fill(['auth_session_version' => 1]);
+        $buyer->refresh();
+        $this->assertSame(0, $buyer->auth_session_version);
+        $buyer->forceFill(['auth_session_version' => 1])->save();
+
+        $this->actingAs($buyer)
+            ->withSession([
+                UserSessionRevocationService::SESSION_VERSION_KEY => 0,
+            ])
+            ->get(route('home'))
+            ->assertRedirect(route('login'));
+
+        $this->assertGuest();
+
+        $this->actingAs($buyer->fresh())
+            ->withSession([])
+            ->get(route('home'))
+            ->assertRedirect(route('login'));
+
+        $this->assertGuest();
+
+        $this->post('/login', [
+            'email' => 'revoked.session@example.test',
+            'password' => 'password',
+        ])->assertRedirect(route('home'));
+
+        $this->assertAuthenticatedAs($buyer);
+
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertSessionHas(UserSessionRevocationService::SESSION_VERSION_KEY, 1);
+    }
+
+    public function test_force_logout_route_rejects_non_auth_audit_records(): void
+    {
+        $buyer = $this->buyerFixture();
+        $admin = $this->buyerFixture([
+            'name' => 'Maria Admin',
+            'email' => 'non-auth.log.admin@example.test',
+            'role' => 'admin',
+        ]);
+        $log = AuditLog::query()->create([
+            'actor_user_id' => $admin->id,
+            'action' => 'product.updated',
+            'module' => 'Products',
+            'auditable_type' => $buyer->getMorphClass(),
+            'auditable_id' => $buyer->id,
+            'description' => 'A non-authentication audit record.',
+            'new_values' => [],
+            'ip_address' => '127.0.0.1',
+            'user_agent' => self::CHROME_USER_AGENT,
+            'severity' => 'info',
+            'created_at' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('admin.audit-logs.force-logout', $log))
+            ->assertNotFound();
+
+        $this->assertSame(0, $buyer->fresh()->auth_session_version);
+        $this->assertDatabaseMissing('audit_logs', ['action' => 'auth.force_signed_out']);
+    }
+
     public function test_audit_log_page_is_admin_only(): void
     {
-        $this->actingAs($this->buyerFixture())
+        $buyer = $this->buyerFixture();
+
+        $this->actingAs($buyer)
             ->get(route('admin.audit-logs'))
+            ->assertForbidden();
+
+        $log = $this->authenticationAuditLog($buyer);
+
+        $this->actingAs($buyer)
+            ->post(route('admin.audit-logs.force-logout', $log))
             ->assertForbidden();
     }
 }

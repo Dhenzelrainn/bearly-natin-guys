@@ -16,6 +16,7 @@ use App\Services\PsgcAddressService;
 use App\Services\RememberedAccountService;
 use App\Services\RegistrationDraftService;
 use App\Services\RegistrationLifecycleService;
+use App\Services\UserSessionRevocationService;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -78,6 +79,7 @@ class BearlyAuthController extends Controller
         Request $request,
         AuditService $audit,
         RememberedAccountService $rememberedAccounts,
+        UserSessionRevocationService $sessionRevocations,
     ): RedirectResponse
     {
         $credentials = $request->validate([
@@ -172,6 +174,8 @@ class BearlyAuthController extends Controller
         app(RegistrationLifecycleService::class)
             ->syncActiveRole($user);
 
+        $sessionRevocations->markCurrentSession($request, $user);
+
         if ($request->boolean('remember')) {
             $rememberedAccounts->remember($request, $user);
         } else {
@@ -190,6 +194,7 @@ class BearlyAuthController extends Controller
         int $userId,
         RememberedAccountService $rememberedAccounts,
         AuditService $audit,
+        UserSessionRevocationService $sessionRevocations,
     ): RedirectResponse {
         $user = $rememberedAccounts->authenticate($request, $userId);
 
@@ -201,6 +206,7 @@ class BearlyAuthController extends Controller
 
         Auth::login($user);
         $request->session()->regenerate();
+        $sessionRevocations->markCurrentSession($request, $user);
 
         app(RegistrationLifecycleService::class)
             ->syncActiveRole($user);
@@ -265,6 +271,7 @@ class BearlyAuthController extends Controller
         Request $request,
         AuditService $audit,
         RememberedAccountService $rememberedAccounts,
+        UserSessionRevocationService $sessionRevocations,
     ): RedirectResponse
     {
         $rememberAccount = (bool) $request->session()->pull('google_remember_account', false);
@@ -361,6 +368,7 @@ class BearlyAuthController extends Controller
 
             Auth::login($user);
             $request->session()->regenerate();
+            $sessionRevocations->markCurrentSession($request, $user);
 
             app(RegistrationLifecycleService::class)
                 ->syncActiveRole($user);

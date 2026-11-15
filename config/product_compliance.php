@@ -1,6 +1,14 @@
 <?php
 
 return [
+    // Only these explicitly curated, persisted rules are eligible for direct
+    // image-policy matching. Other visual concerns stay in Admin review.
+    'image_detection_rule_codes' => [
+        'PROHIBITED_FIREARMS',
+        'PROHIBITED_FIREARM_GUN_ALIAS',
+        'PROHIBITED_ILLEGAL_DRUGS',
+    ],
+
     /*
     | Runtime fallback terms for managed compliance rules. These are merged
     | with persisted rule configuration so existing installations receive

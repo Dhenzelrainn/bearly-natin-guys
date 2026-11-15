@@ -13,12 +13,16 @@
     <div>
         <span class="eyebrow">System Management</span>
         <h1>Account management</h1>
-        <p>Review the administrator identity used across Bearly and update the account password.</p>
+        <p>Manage your Admin Center profile photo and account password. Identity details remain platform-managed.</p>
     </div>
 
     <div class="hero-summary-card">
         <span class="avatar avatar-large avatar-warm">
-            {{ $admin['initials'] }}
+            @if (!empty($admin['photo_url']))
+                <img class="avatar-photo" src="{{ $admin['photo_url'] }}" alt="">
+            @else
+                {{ $admin['initials'] }}
+            @endif
         </span>
 
         <div>
@@ -47,30 +51,66 @@
                 >
                     <i data-lucide="shield-check"></i>
 
-                    <span>
-                        System managed
-                    </span>
+                    <span>Identity fields read-only</span>
                 </div>
 
             </div>
 
         </div>
 
-        <div class="profile-banner">
+        <div class="profile-banner admin-profile-banner">
             <span class="avatar avatar-xxl avatar-warm">
-                {{ $admin['initials'] }}
+                @if (!empty($admin['photo_url']))
+                    <img class="avatar-photo" src="{{ $admin['photo_url'] }}" alt="">
+                @else
+                    {{ $admin['initials'] }}
+                @endif
             </span>
 
-            <div>
+            <div class="admin-profile-banner-identity">
                 <h3>{{ $admin['name'] }}</h3>
 
-                <p>{{ $admin['email'] }}</p>
-
-                <span class="status-badge badge-success">
-                    Active administrator
+                <span class="admin-profile-banner-role">
+                    <i data-lucide="crown" aria-hidden="true"></i>
+                    Administrator
                 </span>
             </div>
+
+            <a class="admin-profile-banner-action" href="#profile-photo-editor" aria-label="Go to profile photo controls">
+                <i data-lucide="chevron-down" aria-hidden="true"></i>
+            </a>
         </div>
+
+        <section class="admin-account-photo-editor" id="profile-photo-editor" aria-labelledby="admin-photo-heading">
+            <div class="admin-account-photo-copy">
+                <strong id="admin-photo-heading">Profile photo</strong>
+                <p>This photo appears in your Admin Center profile menu. JPG, PNG, or WebP; maximum 10 MB.</p>
+            </div>
+
+            <div class="admin-account-photo-actions">
+                <form class="admin-account-photo-form" method="POST" action="{{ route('admin.account.photo.update') }}" enctype="multipart/form-data">
+                    @csrf
+                    @method('PATCH')
+
+                    <label class="form-field">
+                        <span>Choose a photo</span>
+                        <input id="admin-profile-photo" type="file" name="profile_photo" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" required aria-describedby="admin-photo-help{{ $errors->has('profile_photo') ? ' admin-photo-error' : '' }}">
+                        <small id="admin-photo-help">Select a clear square image for best results.</small>
+                        @error('profile_photo')<small class="field-error" id="admin-photo-error" role="alert">{{ $message }}</small>@enderror
+                    </label>
+
+                    <button class="button button-primary" type="submit">Save photo</button>
+                </form>
+
+                @if (!empty($admin['photo_url']))
+                    <form class="admin-account-photo-remove" method="POST" action="{{ route('admin.account.photo.destroy') }}">
+                        @csrf
+                        @method('DELETE')
+                        <button class="button button-secondary" type="submit">Remove photo</button>
+                    </form>
+                @endif
+            </div>
+        </section>
 
         <div class="form-grid two-column-form">
             <label class="form-field">

@@ -1037,6 +1037,7 @@ class RiderDeliveryWorkflowTest extends TestCase
             ->assertSee('data-rider-delivery-scan-form', false)
             ->assertSee('data-delivery-expected-parcel=', false)
             ->assertSee('data-delivery-scan-progress', false)
+            ->assertSee('data-delivery-camera-fallback', false)
             ->assertSee('Verify every assigned Parcel')
             ->assertSee('Scanning verifies the Parcels; it does not complete delivery.')
             ->assertSee('class="delivery-failure"', false)
@@ -2528,8 +2529,10 @@ class RiderDeliveryWorkflowTest extends TestCase
     public function test_return_delivery_requires_seller_inspection_before_restock(): void
     {
         Storage::fake('local');
+        Notification::fake();
 
         $rider = $this->makeRider('RETURN-DELIVERY');
+        $admin = User::factory()->create(['role' => 'admin', 'status' => 'active']);
         $assignment = $this->makeDispatchAssignment(
             $rider,
             'RETURN-DELIVERY',
@@ -2637,6 +2640,25 @@ class RiderDeliveryWorkflowTest extends TestCase
             'from_status' => 'return_in_transit',
             'to_status' => 'awaiting_inspection',
         ]);
+        Notification::assertSentTo(
+            $order->buyer,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'buyer_return_updates'
+                && $notification->title() === 'Return delivered to Seller',
+        );
+        Notification::assertSentTo(
+            $this->logistics,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'logistics_return_delivery_completed'
+                && $notification->meta()['return_request_id'] === $returnRequest->id,
+        );
+        Notification::assertSentTo(
+            $seller,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'seller_return_updates'
+                && $notification->title() === 'Return delivered for inspection',
+        );
+        Notification::assertNotSentTo($admin, WorkflowNotification::class);
 
         $inspected = app(ReturnRefundService::class)->inspectReturn(
             $seller,
@@ -2645,6 +2667,18 @@ class RiderDeliveryWorkflowTest extends TestCase
         );
 
         $this->assertSame('refund_pending', $inspected->status);
+        Notification::assertSentTo(
+            $admin,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'admin_return_ready_for_refund'
+                && $notification->meta()['return_request_id'] === $returnRequest->id,
+        );
+        Notification::assertSentTo(
+            $order->buyer,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'buyer_return_updates'
+                && $notification->title() === 'Seller inspection completed',
+        );
         $this->assertSame(4, (int) $variant->fresh()->stock_on_hand);
         $this->assertDatabaseHas('inventory_movements', [
             'variant_id' => $variant->id,

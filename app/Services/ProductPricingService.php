@@ -47,6 +47,8 @@ class ProductPricingService
 
     private ?Carbon $at = null;
 
+    public function __construct(private readonly PisoSaleEligibilityService $pisoSaleEligibility) {}
+
     /**
      * Preload product discounts and Seller campaign opt-ins for a catalog page.
      *
@@ -308,6 +310,17 @@ class ProductPricingService
         return null;
     }
 
+    public function campaignPriceMinorFor(
+        PlatformCampaignParticipationItem $item,
+        PlatformPromotion $campaign,
+    ): ?int {
+        if ($campaign->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE) {
+            return PlatformPromotion::PISO_SALE_PRICE_MINOR;
+        }
+
+        return $this->savedCampaignPriceMinor($item);
+    }
+
     /**
      * @return array{item: PlatformCampaignParticipationItem, price: int, funding: string}|null
      */
@@ -363,6 +376,29 @@ class ProductPricingService
                 continue;
             }
 
+            if (
+                $campaign->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE
+                && ($campaign->funding_type !== PlatformPromotion::FUNDING_PLATFORM
+                    || $campaign->budget_minor === null
+                    || (int) $campaign->budget_minor < 1)
+            ) {
+                continue;
+            }
+
+            if (
+                $campaign->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE
+                && ($buyer === null || ! $this->canBuyerUsePisoSale($buyer, $at))
+            ) {
+                continue;
+            }
+
+            if (
+                $campaign->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE
+                && $sellerPrice <= PlatformPromotion::PISO_SALE_PRICE_MINOR
+            ) {
+                continue;
+            }
+
             $stockProjected = $tracksReservations ? ($this->campaignStockProjected[(int) $item->id] ?? 0) : 0;
             if ($item->stock_limit !== null && $this->remainingStock($item) - $stockProjected < $quantity) {
                 continue;
@@ -382,7 +418,18 @@ class ProductPricingService
                 continue;
             }
 
-            if ($campaign->minimum_discount_percent !== null) {
+            if (
+                $campaign->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE
+                && $campaign->funding_type === PlatformPromotion::FUNDING_PLATFORM
+                && $sellerPrice > (int) $item->regular_price_minor
+            ) {
+                continue;
+            }
+
+            if (
+                $campaign->campaign_type !== PlatformPromotion::CAMPAIGN_PISO_SALE
+                && $campaign->minimum_discount_percent !== null
+            ) {
                 $minimumDiscount = (int) $campaign->minimum_discount_percent;
                 $minimumPrice = max(1, intdiv(max(0, $sellerPrice) * (100 - $minimumDiscount) + 50, 100));
                 if ($price > $minimumPrice) {
@@ -426,7 +473,7 @@ class ProductPricingService
         ProductVariant $variant,
         Carbon $at,
     ): ?int {
-        return $this->savedCampaignPriceMinor($item);
+        return $this->campaignPriceMinorFor($item, $campaign);
     }
 
     private function remainingStock(PlatformCampaignParticipationItem $item): int
@@ -451,6 +498,11 @@ class ProductPricingService
     private function campaignBuyerKey(PlatformCampaignParticipationItem $item, User $buyer): string
     {
         return (int) $item->id.':'.(int) $buyer->id;
+    }
+
+    private function canBuyerUsePisoSale(User $buyer, Carbon $at): bool
+    {
+        return $this->pisoSaleEligibility->canApply($buyer, $at);
     }
 
     private function campaignBudgetAvailable(

@@ -45,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const active = i === activeIndex;
             slide.classList.toggle('is-active', active);
             slide.setAttribute('aria-hidden', active ? 'false' : 'true');
+            slide.inert = !active;
         });
 
         dots.forEach((dot, i) => {

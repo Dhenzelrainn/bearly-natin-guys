@@ -30,6 +30,10 @@ return Application::configure(basePath: dirname(__DIR__))
             ->hourly()
             ->withoutOverlapping();
 
+        $schedule->command('returns:escalate-overdue-seller-responses')
+            ->everyMinute()
+            ->withoutOverlapping();
+
         $schedule->command('drafts:prune-expired')
             ->dailyAt('03:00')
             ->withoutOverlapping();

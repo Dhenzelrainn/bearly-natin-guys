@@ -4,6 +4,7 @@
 <head>
 
     <meta charset="UTF-8">
+    @include('partials.favicon')
 
     <meta
         name="viewport"

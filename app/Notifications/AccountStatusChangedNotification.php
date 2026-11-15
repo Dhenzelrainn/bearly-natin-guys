@@ -30,6 +30,16 @@ class AccountStatusChangedNotification extends BearlyNotification
         return in_array($this->toStatus, ['suspended', 'rejected', 'deactivated'], true) ? 'danger' : 'success';
     }
 
+    /** @return array<string, mixed> */
+    public function emailData(): array
+    {
+        return [
+            'from_status' => str($this->fromStatus)->replace('_', ' ')->title()->toString(),
+            'to_status' => str($this->toStatus)->replace('_', ' ')->title()->toString(),
+            'reason' => $this->reason,
+        ];
+    }
+
     /**
      * Keep the historical keys (from_status/to_status/reason/message) and add
      * display keys used by the shared notification surfaces.

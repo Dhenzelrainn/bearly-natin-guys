@@ -542,6 +542,7 @@ class BuyerCatalogService
                 in_array((int) $product->id, $wishlistIds, true),
                 $includeStoreSubcategory,
                 $includeCampaignItemId,
+                $buyer,
             ))
             ->values()
             ->all();
@@ -552,6 +553,7 @@ class BuyerCatalogService
         bool $isWishlisted = false,
         bool $includeStoreSubcategory = false,
         bool $includeCampaignItemId = false,
+        ?User $buyer = null,
     ): array
     {
         if ($this->hasMarketplaceTaxonomyTables()) {
@@ -579,10 +581,15 @@ class BuyerCatalogService
         $this->pricing->warm([$product]);
 
         $variantCards = $variants
-            ->map(fn (ProductVariant $variant): array => $this->variant($product, $variant, $variantImages[(int) $variant->id] ?? null))
+            ->map(fn (ProductVariant $variant): array => $this->variant(
+                $product,
+                $variant,
+                $variantImages[(int) $variant->id] ?? null,
+                $buyer,
+            ))
             ->values();
         $firstPrice = $firstVariant
-            ? $this->pricing->priceForVariant($product, $firstVariant)
+            ? $this->pricing->priceForVariant($product, $firstVariant, buyer: $buyer)
             : null;
 
         $card = [
@@ -702,12 +709,12 @@ class BuyerCatalogService
             && Schema::hasColumn('products', 'marketplace_subcategory_id');
     }
 
-    private function variant(Product $product, ProductVariant $variant, ?string $image = null): array
+    private function variant(Product $product, ProductVariant $variant, ?string $image = null, ?User $buyer = null): array
     {
         $options = (array) ($variant->options ?: []);
         $size = $this->option($options, ['size']);
         $color = $this->option($options, ['color', 'colour']);
-        $price = $this->pricing->priceForVariant($product, $variant);
+        $price = $this->pricing->priceForVariant($product, $variant, buyer: $buyer);
 
         return [
             'id' => (int) $variant->id,

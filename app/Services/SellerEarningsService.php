@@ -308,7 +308,7 @@ class SellerEarningsService
             && $transaction->posted_at !== null;
 
         if ($isRefund) {
-            return $posted && $transaction->refund?->isCompleted() ? 'Reversed' : 'Pending';
+            return $posted && $transaction->refund?->isPayoutSent() ? 'Reversed' : 'Pending';
         }
 
         if (! $posted
@@ -352,7 +352,7 @@ class SellerEarningsService
         }
 
         if ($this->isCommissionReversal($commission)) {
-            return $isRefund && $commission->refund?->isCompleted()
+            return $isRefund && $commission->refund?->isPayoutSent()
                 ? -abs((int) $commission->amount_minor)
                 : 0;
         }
@@ -683,7 +683,9 @@ class SellerEarningsService
     }
 
     /**
-     * Completed refunds attributed to the period by refund completion date.
+     * Paid refunds use the external payout date where applicable. Cash refunds
+     * retain their Finance completion date; legacy records without a payout
+     * date also retain their completion date.
      */
     private function sellerRefundsInRange(?SellerProfile $sellerProfile, CarbonImmutable $from, CarbonImmutable $to): Collection
     {
@@ -692,13 +694,26 @@ class SellerEarningsService
         }
 
         return Refund::query()
-            ->completed()
-            ->whereBetween('completed_at', [$from->startOfDay(), $to->endOfDay()])
+            ->payoutSent()
+            ->where(function (Builder $dates) use ($from, $to): void {
+                $dates->where(function (Builder $external) use ($from, $to): void {
+                    $external->whereIn('method', ['gcash', 'bank_transfer', 'other'])
+                        ->whereBetween('external_paid_on', [$from->toDateString(), $to->toDateString()]);
+                })->orWhere(function (Builder $completed) use ($from, $to): void {
+                    $completed->where('status', 'completed')
+                        ->where(function (Builder $fallback): void {
+                            $fallback->whereNull('external_paid_on')
+                                ->orWhereNotIn('method', ['gcash', 'bank_transfer', 'other']);
+                        })
+                        ->whereBetween('completed_at', [$from->startOfDay(), $to->endOfDay()]);
+                });
+            })
             ->whereHas(
                 'returnRequest.store',
                 fn (Builder $stores) => $stores->where('seller_profile_id', $sellerProfile->id),
             )
             ->with(['returnRequest.items.orderItem.product.subcategory', 'returnRequest.items.orderItem.variant'])
+            ->orderBy('external_paid_on')
             ->orderBy('completed_at')
             ->orderBy('id')
             ->get();
@@ -713,6 +728,17 @@ class SellerEarningsService
         return $sellerOrder->completed_at === null
             ? null
             : CarbonImmutable::parse($sellerOrder->completed_at);
+    }
+
+    private function refundPayoutAt(Refund $refund): ?CarbonImmutable
+    {
+        if (in_array($refund->method, ['gcash', 'bank_transfer', 'other'], true) && $refund->external_paid_on) {
+            return CarbonImmutable::parse($refund->external_paid_on->toDateString(), config('app.timezone'))->startOfDay();
+        }
+
+        return $refund->completed_at === null
+            ? null
+            : CarbonImmutable::parse($refund->completed_at);
     }
 
     /**
@@ -778,9 +804,9 @@ class SellerEarningsService
                 $sellerOrders->filter(fn (SellerOrder $sellerOrder): bool => ($completedAt = $this->sellerOrderCompletedAt($sellerOrder)) !== null
                     && $completedAt->greaterThanOrEqualTo($start)
                     && $completedAt->lessThanOrEqualTo($end)),
-                $refunds->filter(fn (Refund $refund): bool => $refund->completed_at !== null
-                    && $refund->completed_at->greaterThanOrEqualTo($start)
-                    && $refund->completed_at->lessThanOrEqualTo($end)),
+                $refunds->filter(fn (Refund $refund): bool => ($paidAt = $this->refundPayoutAt($refund)) !== null
+                    && $paidAt->greaterThanOrEqualTo($start)
+                    && $paidAt->lessThanOrEqualTo($end)),
             );
 
             $totals['label'] = $start->isSameDay($end)
@@ -955,8 +981,8 @@ class SellerEarningsService
      *
      * Same Seller sales basis as the seller reports: completed Seller
      * Orders by `completed_at`, product values from the immutable order
-     * item snapshots (shipping excluded), and completed refunds by
-     * `refunds.completed_at`. Category rows group by the purchase-time
+     * item snapshots (shipping excluded), and paid refunds by external payout
+     * date (or completion date for cash and legacy records). Category rows group by the purchase-time
      * category snapshot captured on each order item; items without a
      * snapshot stay in one "Category not recorded" bucket instead of
      * being backfilled from the Product's current category.
@@ -984,7 +1010,7 @@ class SellerEarningsService
      * calendar months or calendar days. Completed Seller Orders are attributed
      * once by `completed_at`; product values come from the immutable order-item
      * snapshots (shipping excluded), item discounts are deducted in the order's
-     * bucket, and completed refunds are deducted by their `completed_at`.
+     * bucket, and paid refunds are deducted by the applicable payout date.
      *
      * @param  'day'|'month'  $interval
      * @return array<int, array{gross_minor: int, discounts_minor: int, refunds_minor: int, net_minor: int, orders: int, seller_orders: int, units: int, label: string, short: string, start: string, end: string}>
@@ -1014,9 +1040,9 @@ class SellerEarningsService
                 $sellerOrders->filter(fn (SellerOrder $sellerOrder): bool => ($completedAt = $this->sellerOrderCompletedAt($sellerOrder)) !== null
                     && $completedAt->greaterThanOrEqualTo($start)
                     && $completedAt->lessThanOrEqualTo($end)),
-                $refunds->filter(fn (Refund $refund): bool => $refund->completed_at !== null
-                    && $refund->completed_at->greaterThanOrEqualTo($start)
-                    && $refund->completed_at->lessThanOrEqualTo($end)),
+                $refunds->filter(fn (Refund $refund): bool => ($paidAt = $this->refundPayoutAt($refund)) !== null
+                    && $paidAt->greaterThanOrEqualTo($start)
+                    && $paidAt->lessThanOrEqualTo($end)),
             );
 
             $bucket['label'] = $interval === 'month'
@@ -1302,7 +1328,7 @@ class SellerEarningsService
     }
 
     /**
-     * Completed refunds in the range (marketplace wide or one Seller profile)
+     * Paid refunds in the range (marketplace wide or one Seller profile)
      * with the return request, Store, and item allocations used to attribute
      * refunds per Seller and per Category.
      */
@@ -1312,8 +1338,20 @@ class SellerEarningsService
         ?int $sellerProfileId = null,
     ): Collection {
         return Refund::query()
-            ->completed()
-            ->whereBetween('completed_at', [$from->startOfDay(), $to->endOfDay()])
+            ->payoutSent()
+            ->where(function (Builder $dates) use ($from, $to): void {
+                $dates->where(function (Builder $external) use ($from, $to): void {
+                    $external->whereIn('method', ['gcash', 'bank_transfer', 'other'])
+                        ->whereBetween('external_paid_on', [$from->toDateString(), $to->toDateString()]);
+                })->orWhere(function (Builder $completed) use ($from, $to): void {
+                    $completed->where('status', 'completed')
+                        ->where(function (Builder $fallback): void {
+                            $fallback->whereNull('external_paid_on')
+                                ->orWhereNotIn('method', ['gcash', 'bank_transfer', 'other']);
+                        })
+                        ->whereBetween('completed_at', [$from->startOfDay(), $to->endOfDay()]);
+                });
+            })
             ->when(
                 $sellerProfileId !== null,
                 fn (Builder $refunds): Builder => $refunds->whereHas(
@@ -1327,6 +1365,7 @@ class SellerEarningsService
                 'returnRequest.items:id,return_request_id,order_item_id,refund_amount_minor',
                 'returnRequest.items.orderItem:id,category_id_snapshot,category_name_snapshot',
             ])
+            ->orderBy('external_paid_on')
             ->orderBy('completed_at')
             ->orderBy('id')
             ->get();
@@ -1398,9 +1437,9 @@ class SellerEarningsService
                 $sellerOrders->filter(fn (SellerOrder $sellerOrder): bool => ($completedAt = $this->sellerOrderCompletedAt($sellerOrder)) !== null
                     && $completedAt->greaterThanOrEqualTo($start)
                     && $completedAt->lessThanOrEqualTo($end)),
-                $refunds->filter(fn (Refund $refund): bool => $refund->completed_at !== null
-                    && $refund->completed_at->greaterThanOrEqualTo($start)
-                    && $refund->completed_at->lessThanOrEqualTo($end)),
+                $refunds->filter(fn (Refund $refund): bool => ($paidAt = $this->refundPayoutAt($refund)) !== null
+                    && $paidAt->greaterThanOrEqualTo($start)
+                    && $paidAt->lessThanOrEqualTo($end)),
             );
 
             if ($start->isSameDay($end)) {

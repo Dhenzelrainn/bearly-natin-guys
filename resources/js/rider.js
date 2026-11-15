@@ -2,6 +2,7 @@ import { isValidPhilippineMobile } from './registration-phone.js';
 import { restoreRegistrationDraft, setupRegistrationDraft } from './registration-draft.js';
 import { emailVerificationFailure } from './email-verification-error.js';
 import './notification-center.js';
+import './dashboard-context.js';
 import './rider-attendance-qr.js';
 import './rider-delivery-scanner.js';
 import './rider-delivery-map.js';
@@ -15,6 +16,7 @@ import {
 } from './chat-receipts.js';
 
 const RIDER_STATE_KEY = 'bearlyRiderStateV1';
+const COURIER_RUN_SCROLL_KEY = 'bearly:rider-courier-run:scroll-position';
 const readState = () => { try { return JSON.parse(localStorage.getItem(RIDER_STATE_KEY)) || {}; } catch { return {}; } };
 const writeState = (state) => localStorage.setItem(RIDER_STATE_KEY, JSON.stringify(state));
 const saveValue = (section, key, value) => { const state = readState(); state[section] ||= {}; state[section][key] = value; writeState(state); };
@@ -1218,6 +1220,106 @@ function setupSingleSubmitForms() {
                     submitButton.removeAttribute('aria-busy');
                 }
             });
+    });
+}
+
+function setupCourierRunScrollRestoration() {
+    const dashboard = document.querySelector('[data-courier-run-dashboard]');
+
+    if (!dashboard) return;
+
+    let savedPosition = null;
+
+    try {
+        const storedPosition = window.sessionStorage.getItem(COURIER_RUN_SCROLL_KEY);
+
+        if (storedPosition) {
+            savedPosition = JSON.parse(storedPosition);
+        }
+
+        window.sessionStorage.removeItem(COURIER_RUN_SCROLL_KEY);
+    } catch {
+        // Scroll restoration is an enhancement; Courier actions still work without storage.
+    }
+
+    const savedScrollY = Number(savedPosition?.scrollY);
+
+    if (
+        dashboard.dataset.courierRunFeedback === 'success'
+        && Number.isFinite(savedScrollY)
+        && savedScrollY >= 0
+    ) {
+        const sidebarCollapsed = savedPosition.sidebarCollapsed;
+
+        if (typeof sidebarCollapsed === 'boolean') {
+            const body = document.body;
+            const sidebar = document.querySelector('.ops-sidebar');
+
+            if (body.classList.contains('sidebar-collapsed') !== sidebarCollapsed) {
+                const previousTransition = sidebar?.style.transition ?? '';
+
+                if (sidebar) sidebar.style.transition = 'none';
+                body.classList.toggle('sidebar-collapsed', sidebarCollapsed);
+
+                if (sidebar) {
+                    void sidebar.offsetWidth;
+                    window.requestAnimationFrame(() => {
+                        sidebar.style.transition = previousTransition;
+                    });
+                }
+            }
+
+            try {
+                window.localStorage.setItem(
+                    'bearlyRiderSidebar',
+                    sidebarCollapsed ? 'collapsed' : 'open',
+                );
+            } catch {
+                // Keep the in-page state even if the browser blocks preference storage.
+            }
+        }
+
+        const runCard = [...document.querySelectorAll('[data-courier-run-card]')]
+            .find((card) => card.dataset.courierRunCard === String(savedPosition.runId));
+        const cardOffset = Number(savedPosition.cardOffset);
+        const scrollX = Number(savedPosition.scrollX);
+        const root = document.documentElement;
+        const previousScrollBehavior = root.style.scrollBehavior;
+
+        root.style.scrollBehavior = 'auto';
+
+        window.requestAnimationFrame(() => {
+            const targetScrollY = runCard && Number.isFinite(cardOffset)
+                ? window.scrollY + runCard.getBoundingClientRect().top - cardOffset
+                : savedScrollY;
+
+            window.scrollTo(
+                Number.isFinite(scrollX) ? scrollX : 0,
+                Math.max(0, targetScrollY),
+            );
+
+            window.requestAnimationFrame(() => {
+                root.style.scrollBehavior = previousScrollBehavior;
+            });
+        });
+    }
+
+    dashboard.querySelectorAll('form[data-courier-run-action]').forEach((form) => {
+        form.addEventListener('submit', () => {
+            const runCard = form.closest('[data-courier-run-card]');
+
+            try {
+                window.sessionStorage.setItem(COURIER_RUN_SCROLL_KEY, JSON.stringify({
+                    scrollX: window.scrollX,
+                    scrollY: window.scrollY,
+                    sidebarCollapsed: document.body.classList.contains('sidebar-collapsed'),
+                    runId: runCard?.dataset.courierRunCard ?? '',
+                    cardOffset: runCard?.getBoundingClientRect().top ?? 0,
+                }));
+            } catch {
+                // The normal POST/redirect flow remains the fallback.
+            }
+        });
     });
 }
 
@@ -3048,6 +3150,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupChat();
     setupForms();
     setupSingleSubmitForms();
+    setupCourierRunScrollRestoration();
     setupDeliveryConfirmation();
     setupRiderEarningsRealtime();
     setupRiderOperationalStatusRealtime();

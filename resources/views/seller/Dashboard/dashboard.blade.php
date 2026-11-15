@@ -4,7 +4,7 @@
 @section('page-title', 'Dashboard')
 
 @section('topbar-subtitle')
-    Welcome back! Here’s what’s happening with your store today.
+    @include('partials.dashboard-greeting') Here’s what’s happening with your store today.
 @endsection
 
 @section('topbar-controls')
@@ -23,6 +23,7 @@
 
 @section('content')
 <div class="dashboard-ref-page">
+    @include('partials.dashboard-context')
 
     <section class="dashboard-ref-reminder" aria-label="Order workflow reminder">
         <span class="dashboard-ref-reminder-icon" aria-hidden="true">

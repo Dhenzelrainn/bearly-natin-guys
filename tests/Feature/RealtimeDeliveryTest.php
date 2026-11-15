@@ -8,6 +8,7 @@ use App\Events\LogisticsRefundCashPayoutUpdated;
 use App\Events\RiderLocationUpdated;
 use App\Events\RiderOperationalStatusUpdated;
 use App\Events\RiderShippingEarningUpdated;
+use App\Events\SellerCampaignParticipationUpdated;
 use App\Events\SellerReturnStatusUpdated;
 use App\Models\Announcement;
 use App\Models\Role;
@@ -89,6 +90,30 @@ class RealtimeDeliveryTest extends TestCase
             'return_no' => 'RR-TEST-42',
             'status' => 'awaiting_inspection',
             'updated_at' => '2026-10-29T12:00:00+00:00',
+        ], $event->broadcastWith());
+    }
+
+    public function test_seller_campaign_participation_event_uses_the_owning_sellers_private_channel(): void
+    {
+        $seller = $this->user('seller');
+        $event = new SellerCampaignParticipationUpdated(
+            sellerUserId: (int) $seller->id,
+            campaignId: 17,
+            participationId: 42,
+            updatedAt: '2026-11-15T12:00:00+00:00',
+        );
+
+        $channels = collect($event->broadcastOn())
+            ->map(fn ($channel): string => $channel->name)
+            ->values()
+            ->all();
+
+        $this->assertSame('seller.campaign-participation-updated', $event->broadcastAs());
+        $this->assertSame(['private-users.'.$seller->id], $channels);
+        $this->assertSame([
+            'campaign_id' => 17,
+            'participation_id' => 42,
+            'updated_at' => '2026-11-15T12:00:00+00:00',
         ], $event->broadcastWith());
     }
 

@@ -4,12 +4,17 @@ namespace Tests\Feature\Admin;
 
 use App\Events\SellerReturnStatusUpdated;
 use App\Models\Address;
+use App\Models\Category;
+use App\Models\InventoryMovement;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Payment;
 use App\Models\PickupRequest;
+use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\Refund;
+use App\Models\ReturnEvent;
 use App\Models\ReturnEvidence;
 use App\Models\ReturnItem;
 use App\Models\ReturnRequest;
@@ -19,6 +24,7 @@ use App\Models\SellerPayout;
 use App\Models\SellerProfile;
 use App\Models\SellerRefundRecovery;
 use App\Models\SellerTransaction;
+use App\Models\SellerWalletTransaction;
 use App\Models\SortingCenter;
 use App\Models\Shipment;
 use App\Models\Store;
@@ -30,6 +36,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -689,6 +696,142 @@ class AdminReturnRefundTest extends TestCase
         ]);
     }
 
+    public function test_overdue_seller_response_escalates_once_notifies_parties_and_allows_admin_decision(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-14 12:00:00'));
+        Queue::fake();
+        $this->returnRequest->update([
+            'status' => 'awaiting_seller',
+            'seller_response' => null,
+            'seller_responded_at' => null,
+            'submitted_at' => now()->subDays(2),
+            'response_due_at' => now()->subSecond(),
+        ]);
+
+        $this->artisan('returns:escalate-overdue-seller-responses')
+            ->expectsOutput('Escalated 1 overdue return case(s) to Admin review.')
+            ->assertExitCode(0);
+
+        $this->assertSame('under_review', $this->returnRequest->fresh()->status);
+        $this->assertSame(1, ReturnEvent::query()
+            ->where('return_request_id', $this->returnRequest->id)
+            ->where('event_type', 'seller_response_deadline_missed')
+            ->count());
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'return.seller_response_deadline_missed',
+            'auditable_id' => $this->returnRequest->id,
+            'actor_user_id' => null,
+        ]);
+
+        foreach ([
+            [$this->admin, 'admin_return_response_overdue'],
+            [$this->buyer, 'buyer_return_updates'],
+            [$this->seller, 'seller_return_updates'],
+        ] as [$recipient, $event]) {
+            $this->assertSame(
+                1,
+                $recipient->notifications()->where('data->event', $event)->count(),
+                "Expected exactly one {$event} notification for {$recipient->role}.",
+            );
+        }
+
+        $this->artisan('returns:escalate-overdue-seller-responses')
+            ->expectsOutput('Escalated 0 overdue return case(s) to Admin review.')
+            ->assertExitCode(0);
+        $this->assertSame(1, ReturnEvent::query()
+            ->where('return_request_id', $this->returnRequest->id)
+            ->where('event_type', 'seller_response_deadline_missed')
+            ->count());
+
+        $this->actingAs($this->seller)
+            ->get(route('seller.orders.returns.show', $this->returnRequest->return_no))
+            ->assertOk()
+            ->assertSee('Response deadline passed')
+            ->assertSee('Admin review continues without your initial reply')
+            ->assertDontSee('name="response"', false);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.compliance.returns-refunds'))
+            ->assertOk()
+            ->assertSee('Seller response deadline missed')
+            ->assertSee('a Seller response is not required for this Admin decision');
+
+        $this->actingAs($this->admin)
+            ->post(
+                route('admin.compliance.returns-refunds.approve', $this->returnRequest),
+                $this->responsibilityData('platform'),
+            )
+            ->assertRedirect(route('admin.compliance.returns-refunds'));
+
+        $this->assertSame('refund_pending', $this->returnRequest->fresh()->status);
+    }
+
+    public function test_seller_cannot_submit_initial_response_after_deadline_and_late_attempt_escalates_case(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-14 12:00:00'));
+        Queue::fake();
+        Storage::fake('local');
+        $this->returnRequest->update([
+            'status' => 'awaiting_seller',
+            'seller_response' => null,
+            'seller_responded_at' => null,
+            'submitted_at' => now()->subDays(2),
+            'response_due_at' => now()->subSecond(),
+        ]);
+
+        $this->actingAs($this->seller)
+            ->from(route('seller.orders.returns.show', $this->returnRequest->return_no))
+            ->post(route('seller.orders.returns.respond', $this->returnRequest->id), [
+                'response' => 'We reviewed the order and inspected our dispatch records.',
+                'evidence' => [UploadedFile::fake()->create('dispatch-photo.jpg', 10, 'image/jpeg')],
+            ])
+            ->assertRedirect(route('seller.orders.returns.show', $this->returnRequest->return_no))
+            ->assertSessionHasErrors('return');
+
+        $this->assertSame('under_review', $this->returnRequest->fresh()->status);
+        $this->assertNull($this->returnRequest->fresh()->seller_response);
+        $this->assertSame(0, $this->returnRequest->evidence()->where('type', 'seller')->count());
+        $this->assertSame(1, ReturnEvent::query()
+            ->where('return_request_id', $this->returnRequest->id)
+            ->where('event_type', 'seller_response_deadline_missed')
+            ->count());
+    }
+
+    public function test_return_escalation_command_leaves_cases_with_future_deadlines_unchanged(): void
+    {
+        $this->returnRequest->update([
+            'status' => 'awaiting_seller',
+            'seller_response' => null,
+            'seller_responded_at' => null,
+            'response_due_at' => now()->addMinute(),
+        ]);
+
+        $this->artisan('returns:escalate-overdue-seller-responses')
+            ->expectsOutput('Escalated 0 overdue return case(s) to Admin review.')
+            ->assertExitCode(0);
+
+        $this->assertSame('awaiting_seller', $this->returnRequest->fresh()->status);
+    }
+
+    public function test_return_escalation_uses_submission_time_for_legacy_cases_without_a_deadline(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-14 12:00:00'));
+        Queue::fake();
+        $this->returnRequest->update([
+            'status' => 'awaiting_seller',
+            'seller_response' => null,
+            'seller_responded_at' => null,
+            'submitted_at' => now()->subDays(2)->subSecond(),
+            'response_due_at' => null,
+        ]);
+
+        $this->artisan('returns:escalate-overdue-seller-responses')
+            ->expectsOutput('Escalated 1 overdue return case(s) to Admin review.')
+            ->assertExitCode(0);
+
+        $this->assertSame('under_review', $this->returnRequest->fresh()->status);
+    }
+
     public function test_seller_response_requires_and_persists_supporting_evidence(): void
     {
         Storage::fake('local');
@@ -754,6 +897,18 @@ class AdminReturnRefundTest extends TestCase
             'cod_amount_minor' => 0,
             'delivered_at' => now(),
         ]);
+        Waybill::query()->create([
+            'shipment_id' => $returnShipment->id,
+            'waybill_no' => 'BRLY-RETURN-INSPECT-UI-001',
+            'scan_token' => str_repeat('b', 64),
+            'barcode_value' => 'BRLY-RETURN-INSPECT-UI-BARCODE-001',
+            'piece_count' => 1,
+            'total_weight_kg' => 1.25,
+            'length_cm' => 20,
+            'width_cm' => 15,
+            'height_cm' => 10,
+            'generated_at' => now(),
+        ]);
         $this->returnRequest->update([
             'status' => 'awaiting_inspection',
             'return_shipment_id' => $returnShipment->id,
@@ -762,6 +917,7 @@ class AdminReturnRefundTest extends TestCase
         $this->actingAs($this->seller)
             ->get(route('seller.orders.returns.show', $this->returnRequest->return_no))
             ->assertOk()
+            ->assertSee('Awaiting Seller Inspection')
             ->assertSee('data-inspection-condition', false)
             ->assertSee('data-inspection-resolution', false)
             ->assertSee('data-inspection-guidance', false)
@@ -769,11 +925,199 @@ class AdminReturnRefundTest extends TestCase
             ->assertSee('value="damaged"', false)
             ->assertSee('value="opened"', false)
             ->assertSee('value="missing_parts"', false)
-            ->assertSee('Sellable items must be restocked. Damaged, opened, or incomplete items must be held for review or discarded.');
+            ->assertSee('Sellable items must be restocked. Damaged, opened, or incomplete items must be held for review or discarded.')
+            ->assertSee('Return-delivery fee handled separately')
+            ->assertDontSee('No return fee');
+    }
+
+    public function test_seller_quarantine_review_restock_is_audited_and_retry_safe_without_changing_refund_state(): void
+    {
+        [$item, $variant] = $this->prepareReturnForInspection();
+
+        $this->actingAs($this->seller)
+            ->post(route('seller.orders.returns.inspect', $this->returnRequest->id), [
+                'items' => [$item->id => ['condition_code' => 'damaged', 'resolution' => 'quarantine']],
+            ])
+            ->assertRedirect(route('seller.orders.returns.show', $this->returnRequest->return_no));
+
+        $item->refresh();
+        $variant->refresh();
+        $this->assertSame('damaged', $item->condition_code);
+        $this->assertSame('quarantine', $item->resolution);
+        $this->assertSame('pending', $item->quarantine_review_status);
+        $this->assertSame(4, (int) $variant->stock_on_hand);
+        $this->assertSame('refund_pending', $this->returnRequest->fresh()->status);
+        $this->assertDatabaseMissing('inventory_movements', ['variant_id' => $variant->id]);
+
+        $this->actingAs($this->seller)
+            ->get(route('seller.orders.returns.show', $this->returnRequest->return_no))
+            ->assertOk()
+            ->assertSee('Review quarantined items')
+            ->assertSee('excluded from sellable stock')
+            ->assertSee('does not delay, change, or approve the Buyer refund')
+            ->assertSee(route('seller.orders.returns.quarantine-review', $item->id), false);
+
+        $this->actingAs($this->seller)
+            ->get(route('seller.orders.returns'))
+            ->assertOk()
+            ->assertSee('Quarantine Review')
+            ->assertSee('data-quarantine-review="true"', false);
+
+        $reviewData = [
+            'final_condition_code' => 'sellable',
+            'final_resolution' => 'restock',
+            'note' => 'Cleaned and checked; safe to sell.',
+        ];
+
+        $this->actingAs($this->seller)
+            ->post(route('seller.orders.returns.quarantine-review', $item->id), $reviewData)
+            ->assertRedirect(route('seller.orders.returns.show', $this->returnRequest->return_no));
+
+        $item->refresh();
+        $variant->refresh();
+        $this->assertSame('damaged', $item->condition_code, 'The initial inspection must remain traceable.');
+        $this->assertSame('quarantine', $item->resolution, 'The initial quarantine disposition must remain traceable.');
+        $this->assertSame('completed', $item->quarantine_review_status);
+        $this->assertSame('sellable', $item->quarantine_final_condition_code);
+        $this->assertSame('restock', $item->quarantine_final_resolution);
+        $this->assertSame('Cleaned and checked; safe to sell.', $item->quarantine_review_note);
+        $this->assertSame($this->seller->id, $item->quarantine_reviewed_by);
+        $this->assertNotNull($item->quarantine_reviewed_at);
+        $this->assertSame(5, (int) $variant->stock_on_hand);
+        $this->assertSame('refund_pending', $this->returnRequest->fresh()->status);
+        $this->assertDatabaseHas('inventory_movements', [
+            'variant_id' => $variant->id,
+            'type' => 'return_restock',
+            'quantity_delta' => 1,
+            'reference_type' => ReturnItem::class,
+            'reference_id' => $item->id,
+            'created_by' => $this->seller->id,
+        ]);
+        $this->assertDatabaseHas('return_events', [
+            'return_request_id' => $this->returnRequest->id,
+            'event_type' => 'seller_quarantine_review_completed',
+            'actor_user_id' => $this->seller->id,
+            'note' => $reviewData['note'],
+        ]);
+
+        $this->actingAs($this->seller)
+            ->post(route('seller.orders.returns.quarantine-review', $item->id), $reviewData)
+            ->assertRedirect(route('seller.orders.returns.show', $this->returnRequest->return_no));
+
+        $this->assertSame(5, (int) $variant->fresh()->stock_on_hand);
+        $this->assertSame(1, InventoryMovement::query()
+            ->where('reference_type', ReturnItem::class)
+            ->where('reference_id', $item->id)
+            ->count());
+        $this->assertSame(1, ReturnEvent::query()
+            ->where('return_request_id', $this->returnRequest->id)
+            ->where('event_type', 'seller_quarantine_review_completed')
+            ->count());
+    }
+
+    public function test_quarantine_disposal_does_not_restock_and_invalid_or_non_owner_reviews_are_rejected(): void
+    {
+        [$item, $variant] = $this->prepareReturnForInspection();
+        $item->update([
+            'condition_code' => 'opened',
+            'resolution' => 'quarantine',
+            'quarantine_review_status' => 'pending',
+        ]);
+        $this->returnRequest->update(['status' => 'refund_pending']);
+
+        $this->actingAs($this->seller)
+            ->post(route('seller.orders.returns.quarantine-review', $item->id), [
+                'final_condition_code' => 'damaged',
+                'final_resolution' => 'restock',
+                'note' => 'This combination must not be accepted.',
+            ])
+            ->assertSessionHasErrors('final_condition_code');
+
+        $otherSeller = User::factory()->create(['role' => 'seller', 'status' => 'active']);
+        $otherProfile = SellerProfile::query()->create([
+            'user_id' => $otherSeller->id,
+            'legal_business_name' => 'Other Seller Store',
+            'commission_rate_bps' => 1000,
+            'standing_status' => 'good_standing',
+            'approved_at' => now(),
+        ]);
+        Store::query()->create([
+            'seller_profile_id' => $otherProfile->id,
+            'name' => 'Other Seller Store',
+            'slug' => 'other-seller-store',
+            'publication_status' => 'published',
+            'published_at' => now(),
+        ]);
+
+        $this->actingAs($otherSeller)
+            ->post(route('seller.orders.returns.quarantine-review', $item->id), [
+                'final_condition_code' => 'damaged',
+                'final_resolution' => 'dispose',
+                'note' => 'Other store must not access this item.',
+            ])
+            ->assertNotFound();
+
+        $this->actingAs($this->seller)
+            ->post(route('seller.orders.returns.quarantine-review', $item->id), [
+                'final_condition_code' => 'damaged',
+                'final_resolution' => 'dispose',
+                'note' => 'Disposed after confirming the damage.',
+            ])
+            ->assertRedirect(route('seller.orders.returns.show', $this->returnRequest->return_no));
+
+        $item->refresh();
+        $this->assertSame('completed', $item->quarantine_review_status);
+        $this->assertSame('opened', $item->condition_code);
+        $this->assertSame('quarantine', $item->resolution);
+        $this->assertSame('damaged', $item->quarantine_final_condition_code);
+        $this->assertSame('dispose', $item->quarantine_final_resolution);
+        $this->assertSame(4, (int) $variant->fresh()->stock_on_hand);
+        $this->assertDatabaseMissing('inventory_movements', [
+            'variant_id' => $variant->id,
+            'reference_type' => ReturnItem::class,
+            'reference_id' => $item->id,
+        ]);
+        $this->assertSame('refund_pending', $this->returnRequest->fresh()->status);
+    }
+
+    public function test_quarantine_restock_requires_a_note_and_an_available_original_variant(): void
+    {
+        [$item, $variant] = $this->prepareReturnForInspection();
+        $item->update([
+            'condition_code' => 'damaged',
+            'resolution' => 'quarantine',
+            'quarantine_review_status' => 'pending',
+        ]);
+        $this->returnRequest->update(['status' => 'refund_pending']);
+        $variant->delete();
+
+        $route = route('seller.orders.returns.quarantine-review', $item->id);
+        $payload = [
+            'final_condition_code' => 'sellable',
+            'final_resolution' => 'restock',
+        ];
+
+        $this->actingAs($this->seller)
+            ->post($route, $payload)
+            ->assertSessionHasErrors('note');
+
+        $this->actingAs($this->seller)
+            ->post($route, $payload + ['note' => 'The final condition is sellable.'])
+            ->assertSessionHasErrors('return_item');
+
+        $this->assertSame('pending', $item->fresh()->quarantine_review_status);
+        $this->assertSame('refund_pending', $this->returnRequest->fresh()->status);
+        $this->assertDatabaseMissing('inventory_movements', [
+            'variant_id' => $variant->id,
+            'reference_type' => ReturnItem::class,
+            'reference_id' => $item->id,
+        ]);
     }
 
     public function test_seller_returns_list_uses_the_aligned_case_row_layout(): void
     {
+        $this->returnRequest->update(['status' => 'awaiting_inspection']);
+
         $this->actingAs($this->seller)
             ->get(route('seller.orders.returns'))
             ->assertOk()
@@ -788,9 +1132,12 @@ class AdminReturnRefundTest extends TestCase
             ->assertSee('data-returns-status-version=', false)
             ->assertSee('returns-table-product', false)
             ->assertSee('Within 3 days after Bearly marks the order complete')
-            ->assertSee('attach at least one helpful file')
-            ->assertSee('Logistics picks it up and brings it to you')
-            ->assertSee('It will not be taken from your payout automatically.')
+            ->assertSee('reply within 48 hours')
+            ->assertSee('Bearly escalates the case to Admin')
+            ->assertSee('Rider pickup or Logistics-center drop-off')
+            ->assertSee('Return-delivery fees are recovered separately')
+            ->assertDontSee('No return fee')
+            ->assertSee('Awaiting Seller Inspection')
             ->assertSee('REF-TEST-001');
     }
 
@@ -1020,7 +1367,7 @@ class AdminReturnRefundTest extends TestCase
         $this->assertSame('under_review', $this->returnRequest->fresh()->status);
     }
 
-    public function test_manual_payout_is_external_and_cannot_be_recorded_twice(): void
+    public function test_external_payout_is_recorded_as_sent_and_cannot_be_recorded_twice(): void
     {
         // This case covers the legacy separate-recovery path before the
         // configured post-cutoff automatic wallet-adjustment policy.
@@ -1037,19 +1384,19 @@ class AdminReturnRefundTest extends TestCase
         $this->actingAs($this->admin)
             ->get(route('admin.compliance.returns-refunds'))
             ->assertOk()
-            ->assertSee('Completed external payout only')
+            ->assertSee('Record successful external payout')
             ->assertSee('Bearly records the proof; it does not send money.')
-            ->assertSee('Record completed external payout')
+            ->assertSee('Record payout as sent')
             ->assertSee('<details class="return-payout-disclosure">', false)
             ->assertDontSee('<details class="return-payout-disclosure" open', false)
             ->assertSee('External payout method')
             ->assertDontSee('<option value="cash">Cash</option>', false)
             ->assertSee(route('admin.payments').'#refund-cash-dispatch', false)
-            ->assertSee('I confirm this exact payout was already sent to the Buyer.')
-            ->assertSee('name="external_payout_confirmed" value="1" required', false)
+            ->assertSee('I verified the provider marked this exact payout as successfully sent.')
+            ->assertSee('name="payout_sent_confirmed" value="1" required', false)
             ->assertSee('name="external_paid_on" type="date"', false)
             ->assertSee('name="receipt" type="file"', false)
-            ->assertSee('Confirm & record payout')
+            ->assertSee('Record payout as sent')
             ->assertSee(route('admin.compliance.returns-refunds.record-payout', $refund->id), false);
 
         $this->actingAs($this->admin)
@@ -1061,7 +1408,7 @@ class AdminReturnRefundTest extends TestCase
                 'receipt' => UploadedFile::fake()->create('gcash-receipt.pdf', 10, 'application/pdf'),
             ])
             ->assertRedirect(route('admin.compliance.returns-refunds'))
-            ->assertSessionHasErrors('external_payout_confirmed');
+            ->assertSessionHasErrors('payout_sent_confirmed');
 
         $this->assertSame('pending', $refund->fresh()->status);
         $this->assertSame('refund_pending', $this->returnRequest->fresh()->status);
@@ -1069,7 +1416,7 @@ class AdminReturnRefundTest extends TestCase
         $this->actingAs($this->admin)
             ->from(route('admin.compliance.returns-refunds'))
             ->post(route('admin.compliance.returns-refunds.record-payout', $refund), [
-                'external_payout_confirmed' => '1',
+                'payout_sent_confirmed' => '1',
                 'method' => 'cash',
                 'provider_reference' => 'BUYER-ACKNOWLEDGMENT-123',
                 'external_paid_on' => now()->toDateString(),
@@ -1080,26 +1427,32 @@ class AdminReturnRefundTest extends TestCase
 
         $this->assertSame('pending', $refund->fresh()->status);
 
+        $sellerVersionBeforePayout = $this->actingAs($this->seller)
+            ->get(route('seller.orders.returns.status-version'))
+            ->assertOk()
+            ->json('data.version');
+        Carbon::setTestNow('2026-10-20 12:00:01');
         $this->actingAs($this->admin)
             ->post(route('admin.compliance.returns-refunds.record-payout', $refund), [
-                'external_payout_confirmed' => '1',
-                'method' => 'gcash',
-                'provider_reference' => 'GCASH-RECEIPT-123',
-                'external_paid_on' => now()->toDateString(),
-                'receipt' => UploadedFile::fake()->create('gcash-receipt.pdf', 10, 'application/pdf'),
+                ...$this->payoutData(),
             ])
             ->assertRedirect();
+        $sellerVersionAfterPayout = $this->actingAs($this->seller)
+            ->get(route('seller.orders.returns.status-version'))
+            ->assertOk()
+            ->json('data.version');
+        $this->assertNotSame($sellerVersionBeforePayout, $sellerVersionAfterPayout);
 
         $this->assertDatabaseHas('refunds', [
             'id' => $refund->id,
-            'status' => 'completed',
+            'status' => 'processing',
             'method' => 'gcash',
             'provider_reference' => 'GCASH-RECEIPT-123',
             'financially_responsible_party' => 'seller',
             'payout_amount_minor' => 129900,
         ]);
         $this->assertSame(now()->toDateString(), $refund->fresh()->external_paid_on->toDateString());
-        $this->assertSame('resolved', $this->returnRequest->fresh()->status);
+        $this->assertSame('refund_pending', $this->returnRequest->fresh()->status);
         $this->assertSame('refunded', Payment::query()->where('order_id', $this->returnRequest->order_id)->value('status'));
         $this->assertSame(0, SellerTransaction::query()->where('refund_id', $refund->id)->where('type', 'refund_reversal')->count());
         $this->assertDatabaseHas('seller_refund_recoveries', [
@@ -1121,20 +1474,36 @@ class AdminReturnRefundTest extends TestCase
             ->get(route('seller.orders.returns.show', $this->returnRequest->return_no))
             ->assertOk()
             ->assertSee('Refund and financial responsibility')
-            ->assertSee('Paid externally by Admin')
+            ->assertSee('External payout recorded by Admin')
             ->assertSee('Recoverable Seller balance')
-            ->assertSee('₱1,299.00 paid')
+            ->assertSee('₱1,299.00 sent')
             ->assertSee('₱1,169.10')
+            ->assertSee('Awaiting Buyer confirmation')
+            ->assertSee('case-refund-summary is-pending', false)
             ->assertSee('not yet deducted')
             ->assertDontSee('Download payout receipt');
+
+        $this->actingAs($this->buyer)
+            ->get(route('buyer.returns.show', $this->returnRequest->id))
+            ->assertOk()
+            ->assertSee('Did you receive the full refund?')
+            ->assertSee('Confirm refund received')
+            ->assertSee('Report a payout problem')
+            ->assertSee('Review payout receipt');
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.compliance.returns-refunds'))
+            ->assertOk()
+            ->assertSee('External payout recorded · awaiting Buyer confirmation')
+            ->assertSee('Review payout receipt');
+        $this->actingAs($this->admin)
+            ->get(route('admin.compliance.returns-refunds.payout-receipt', $refund->id))
+            ->assertOk();
 
         $this->actingAs($this->admin)
             ->from(route('admin.compliance.returns-refunds'))
             ->post(route('admin.compliance.returns-refunds.record-payout', $refund), [
-                'external_payout_confirmed' => '1',
-                'method' => 'gcash',
-                'provider_reference' => 'GCASH-RECEIPT-123',
-                'external_paid_on' => now()->toDateString(),
+                ...$this->payoutData(),
                 'receipt' => UploadedFile::fake()->create('duplicate-receipt.pdf', 10, 'application/pdf'),
             ])
             ->assertRedirect(route('admin.compliance.returns-refunds'))
@@ -1144,7 +1513,141 @@ class AdminReturnRefundTest extends TestCase
         $this->assertSame(1, SellerRefundRecovery::query()->where('refund_id', $refund->id)->count());
     }
 
-    public function test_post_cutoff_completed_payout_deducts_from_seller_wallet(): void
+    public function test_only_the_owning_buyer_can_confirm_an_external_refund_and_retries_are_idempotent(): void
+    {
+        Storage::fake('local');
+        Queue::fake();
+        $this->actingAs($this->admin)
+            ->post(route('admin.compliance.returns-refunds.approve', $this->returnRequest), $this->responsibilityData('platform'))
+            ->assertRedirect();
+        $refund = Refund::query()->where('return_request_id', $this->returnRequest->id)->firstOrFail();
+        $this->actingAs($this->admin)
+            ->post(route('admin.compliance.returns-refunds.record-payout', $refund), $this->payoutData())
+            ->assertRedirect();
+
+        $this->assertSame('processing', $refund->fresh()->status);
+        $this->assertSame('refund_pending', $this->returnRequest->fresh()->status);
+
+        $otherBuyer = User::factory()->create(['role' => 'buyer', 'status' => 'active']);
+        $this->actingAs($otherBuyer)
+            ->post(route('buyer.returns.refund-receipt.confirm', $this->returnRequest->id), [
+                'buyer_received_confirmed' => '1',
+            ])
+            ->assertNotFound();
+        $this->actingAs($otherBuyer)
+            ->get(route('buyer.returns.refund-receipt', $refund->id))
+            ->assertNotFound();
+        $this->assertSame('processing', $refund->fresh()->status);
+        $this->assertSame('refund_pending', $this->returnRequest->fresh()->status);
+
+        $this->actingAs($this->buyer)
+            ->post(route('buyer.returns.refund-receipt.confirm', $this->returnRequest->id), [
+                'buyer_received_confirmed' => '1',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('refunds', [
+            'id' => $refund->id,
+            'status' => 'completed',
+        ]);
+        $this->assertSame('resolved', $this->returnRequest->fresh()->status);
+        $this->assertSame(1, ReturnEvent::query()
+            ->where('return_request_id', $this->returnRequest->id)
+            ->where('event_type', 'buyer_refund_receipt_confirmed')
+            ->where('actor_user_id', $this->buyer->id)
+            ->count());
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_user_id' => $this->buyer->id,
+            'action' => 'refund.buyer_receipt_confirmed',
+            'auditable_id' => $refund->id,
+        ]);
+
+        $this->actingAs($this->buyer)
+            ->post(route('buyer.returns.refund-receipt.confirm', $this->returnRequest->id), [
+                'buyer_received_confirmed' => '1',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+        $this->assertSame(1, ReturnEvent::query()
+            ->where('return_request_id', $this->returnRequest->id)
+            ->where('event_type', 'buyer_refund_receipt_confirmed')
+            ->count());
+        $this->assertSame(1, $this->admin->notifications()->where('data->event', 'admin_return_buyer_refund_updates')->count());
+
+        $this->actingAs($this->buyer)
+            ->get(route('buyer.returns.refund-receipt', $refund->id))
+            ->assertOk();
+    }
+
+    public function test_buyer_can_report_a_missing_external_payout_without_resolving_the_case(): void
+    {
+        Storage::fake('local');
+        Queue::fake();
+        $this->actingAs($this->admin)
+            ->post(route('admin.compliance.returns-refunds.approve', $this->returnRequest), $this->responsibilityData('platform'))
+            ->assertRedirect();
+        $refund = Refund::query()->where('return_request_id', $this->returnRequest->id)->firstOrFail();
+        $this->actingAs($this->admin)
+            ->post(route('admin.compliance.returns-refunds.record-payout', $refund), $this->payoutData())
+            ->assertRedirect();
+
+        $this->actingAs($this->buyer)
+            ->post(route('buyer.returns.refund-receipt.report-not-received', $this->returnRequest->id), ['note' => ''])
+            ->assertRedirect()
+            ->assertSessionHasErrors('note');
+
+        $this->actingAs($this->buyer)
+            ->post(route('buyer.returns.refund-receipt.report-not-received', $this->returnRequest->id), [
+                'note' => 'The transfer does not appear in my account yet.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($this->buyer)
+            ->post(route('buyer.returns.refund-receipt.report-not-received', $this->returnRequest->id), [
+                'note' => 'A repeated request should not duplicate the Admin alert.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('processing', $refund->fresh()->status);
+        $this->assertSame('refund_pending', $this->returnRequest->fresh()->status);
+        $this->assertDatabaseHas('return_events', [
+            'return_request_id' => $this->returnRequest->id,
+            'actor_user_id' => $this->buyer->id,
+            'event_type' => 'buyer_refund_receipt_not_received',
+            'note' => 'The transfer does not appear in my account yet.',
+        ]);
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_user_id' => $this->buyer->id,
+            'action' => 'refund.buyer_reported_not_received',
+            'auditable_id' => $refund->id,
+        ]);
+        $this->assertSame(1, $this->admin->notifications()->where('data->event', 'admin_return_buyer_refund_updates')->count());
+        $this->assertSame(1, ReturnEvent::query()
+            ->where('return_request_id', $this->returnRequest->id)
+            ->where('event_type', 'buyer_refund_receipt_not_received')
+            ->count());
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.compliance.returns-refunds'))
+            ->assertOk()
+            ->assertSee('Buyer reports the payout was not received')
+            ->assertSee('The transfer does not appear in my account yet.');
+
+        // A later confirmation remains available if the full payout does arrive.
+        $this->actingAs($this->buyer)
+            ->post(route('buyer.returns.refund-receipt.confirm', $this->returnRequest->id), [
+                'buyer_received_confirmed' => '1',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+        $this->assertSame('completed', $refund->fresh()->status);
+        $this->assertSame('resolved', $this->returnRequest->fresh()->status);
+    }
+
+    public function test_post_cutoff_external_payout_deducts_from_seller_wallet_before_buyer_confirmation(): void
     {
         Carbon::setTestNow('2026-10-22 12:00:00');
         Storage::fake('local');
@@ -1169,6 +1672,8 @@ class AdminReturnRefundTest extends TestCase
             ->assertRedirect();
 
         $wallet->refresh();
+        $this->assertSame('processing', $refund->fresh()->status);
+        $this->assertSame('refund_pending', $this->returnRequest->fresh()->status);
         $this->assertSame(0, (int) $wallet->pending_balance_minor);
         $this->assertSame(0, (int) $wallet->available_balance_minor);
         $this->assertDatabaseHas('seller_wallet_transactions', [
@@ -1187,6 +1692,16 @@ class AdminReturnRefundTest extends TestCase
             'method' => 'wallet_offset',
             'amount_minor' => 116_910,
         ]);
+
+        $this->actingAs($this->buyer)
+            ->post(route('buyer.returns.refund-receipt.confirm', $this->returnRequest->id), [
+                'buyer_received_confirmed' => '1',
+            ])
+            ->assertRedirect();
+        $this->assertSame(1, SellerWalletTransaction::query()
+            ->where('refund_id', $refund->id)
+            ->where('type', 'refund_adjustment')
+            ->count());
 
         $this->actingAs($this->seller)
             ->get(route('seller.orders.returns.show', $this->returnRequest->return_no))
@@ -1219,6 +1734,13 @@ class AdminReturnRefundTest extends TestCase
             ->post(route('admin.compliance.returns-refunds.record-payout', $refund), $this->payoutData())
             ->assertRedirect();
 
+        $this->assertSame('processing', $refund->fresh()->status);
+        $this->assertSame('refund_pending', $this->returnRequest->fresh()->status);
+        $this->actingAs($this->buyer)
+            ->post(route('buyer.returns.refund-receipt.confirm', $this->returnRequest->id), [
+                'buyer_received_confirmed' => '1',
+            ])
+            ->assertRedirect();
         $this->assertSame('completed', $refund->fresh()->status);
         $this->assertDatabaseMissing('seller_refund_recoveries', ['refund_id' => $refund->id]);
         $this->assertDatabaseMissing('platform_commissions', [
@@ -1370,8 +1892,8 @@ class AdminReturnRefundTest extends TestCase
             ->get(route('buyer.returns.show', $this->returnRequest->id))
             ->assertOk()
             ->assertSee('Refund transaction')
-            ->assertSee('Paid externally')
-            ->assertSee('Amount paid')
+            ->assertSee('You confirmed receipt of the full external payout; the case is resolved.')
+            ->assertSee('Payout amount recorded')
             ->assertSee('₱1,299.00')
             ->assertSee('GCASH-RECEIPT-123')
             ->assertSee('Download payout receipt');
@@ -1671,7 +2193,7 @@ class AdminReturnRefundTest extends TestCase
     private function payoutData(): array
     {
         return [
-            'external_payout_confirmed' => '1',
+            'payout_sent_confirmed' => '1',
             'method' => 'gcash',
             'provider_reference' => 'GCASH-RECEIPT-123',
             'external_paid_on' => now()->toDateString(),
@@ -1688,6 +2210,12 @@ class AdminReturnRefundTest extends TestCase
 
         $this->actingAs($this->admin)
             ->post(route('admin.compliance.returns-refunds.record-payout', $refund), $this->payoutData())
+            ->assertRedirect();
+
+        $this->actingAs($this->buyer)
+            ->post(route('buyer.returns.refund-receipt.confirm', $this->returnRequest->id), [
+                'buyer_received_confirmed' => '1',
+            ])
             ->assertRedirect();
 
         return $refund->fresh();
@@ -1738,6 +2266,69 @@ class AdminReturnRefundTest extends TestCase
             'code' => fake()->unique()->bothify('SC-#####'),
             'status' => 'active',
         ]);
+    }
+
+    /** @return array{ReturnItem, ProductVariant} */
+    private function prepareReturnForInspection(): array
+    {
+        $category = Category::query()->create([
+            'name' => 'Return Review Category',
+            'slug' => 'return-review-category',
+        ]);
+        $storeId = (int) SellerProfile::query()->where('user_id', $this->seller->id)->firstOrFail()->store->id;
+        $product = Product::query()->create([
+            'store_id' => $storeId,
+            'category_id' => $category->id,
+            'name' => 'Quarantine Review Product',
+            'slug' => 'quarantine-review-product',
+            'product_status' => 'active',
+            'compliance_status' => 'clear',
+        ]);
+        $variant = ProductVariant::query()->create([
+            'product_id' => $product->id,
+            'sku' => 'QREVIEW-001',
+            'name' => 'Standard',
+            'price_minor' => 129900,
+            'stock_on_hand' => 4,
+            'stock_reserved' => 0,
+            'low_stock_threshold' => 1,
+            'is_active' => true,
+        ]);
+        $this->orderItem->update(['product_variant_id' => $variant->id]);
+
+        $provider = $this->createLogisticsProvider('Quarantine Review Center');
+        ['seller_address' => $sellerAddress] = $this->preparePhysicalReturn($provider);
+        $returnShipment = Shipment::query()->create([
+            'shipment_no' => 'SHP-QREVIEW-001',
+            'seller_order_id' => $this->returnRequest->seller_order_id,
+            'logistics_profile_id' => $provider->id,
+            'origin_logistics_profile_id' => $provider->id,
+            'destination_address_id' => $sellerAddress->id,
+            'destination_city_code' => '0403422000',
+            'purpose' => 'return',
+            'status' => 'delivered',
+            'shipping_fee_minor' => 5000,
+            'cod_amount_minor' => 0,
+            'delivered_at' => now(),
+        ]);
+        Waybill::query()->create([
+            'shipment_id' => $returnShipment->id,
+            'waybill_no' => 'BRLY-QREVIEW-001',
+            'scan_token' => str_repeat('c', 64),
+            'barcode_value' => 'BRLY-QREVIEW-BARCODE-001',
+            'piece_count' => 1,
+            'total_weight_kg' => 1.25,
+            'length_cm' => 20,
+            'width_cm' => 15,
+            'height_cm' => 10,
+            'generated_at' => now(),
+        ]);
+        $this->returnRequest->update([
+            'status' => 'awaiting_inspection',
+            'return_shipment_id' => $returnShipment->id,
+        ]);
+
+        return [$this->returnRequest->items()->firstOrFail(), $variant];
     }
 
     /** @return array{seller_address: Address, outbound: Shipment} */

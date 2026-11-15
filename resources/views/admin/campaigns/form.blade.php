@@ -13,6 +13,11 @@
     $defaultDeadline = now('Asia/Manila')->addDays(5)->toDateString();
     $defaultStartTime = now('Asia/Manila')->addDays(7)->format('H:i');
     $defaultEndTime = '23:59';
+    $formCampaignType = old('campaign_type', $campaign?->campaign_type);
+    $isPisoSale = $formCampaignType === \App\Models\PlatformPromotion::CAMPAIGN_PISO_SALE;
+    $minimumDiscountRequired = ! $isEdit
+        || $campaign->minimum_discount_percent !== null
+        || $campaign->campaign_type === \App\Models\PlatformPromotion::CAMPAIGN_PISO_SALE;
     $formAction = $isEdit ? route('admin.campaigns.update', $campaign) : route('admin.campaigns.store');
 @endphp
 
@@ -41,7 +46,7 @@
     </div>
 @endif
 
-<form class="panel" method="POST" action="{{ $formAction }}" enctype="multipart/form-data">
+<form data-campaign-form class="panel" method="POST" action="{{ $formAction }}" enctype="multipart/form-data">
     @csrf
     @if ($isEdit)
         @method('PATCH')
@@ -73,7 +78,7 @@
 
         <label class="form-field">
             <span>Campaign type</span>
-            <select class="select-field" name="campaign_type" required>
+            <select class="select-field" name="campaign_type" data-campaign-type required>
                 @foreach ($campaignTypes as $value => $label)
                     <option value="{{ $value }}" @selected(old('campaign_type', $campaign?->campaign_type) === $value)>{{ $label }}</option>
                 @endforeach
@@ -91,14 +96,20 @@
             @endif
         </div>
 
-        <label class="form-field">
+        <label class="form-field" data-minimum-discount-field @if ($isPisoSale) hidden @endif>
             <span>Minimum Seller discount (%)</span>
-            <input class="text-field" type="number" name="minimum_discount_percent" min="1" max="90" step="1" inputmode="numeric" value="{{ old('minimum_discount_percent', $campaign?->minimum_discount_percent) }}" @required(! $isEdit || $campaign->minimum_discount_percent !== null)>
+            <input class="text-field" type="number" name="minimum_discount_percent" data-campaign-minimum-discount min="1" max="90" step="1" inputmode="numeric" value="{{ old('minimum_discount_percent', $campaign?->minimum_discount_percent) }}" @required($minimumDiscountRequired && ! $isPisoSale) @disabled($isPisoSale)>
             <small>Every Seller-submitted product discount must meet this whole-number minimum. Applies to Bearly-funded and Seller-funded campaigns. Range: 1–90%.</small>
             @if ($isEdit && $campaign->minimum_discount_percent === null)
                 <small>Legacy campaign with no configured minimum. Leave blank to keep it unset; Sellers must still submit at least 1%.</small>
             @endif
+            @error('minimum_discount_percent')<small class="campaign-form-error" role="alert">{{ $message }}</small>@enderror
         </label>
+
+        <div class="form-field promotion-field-wide campaign-form-note" data-piso-sale-notice @unless ($isPisoSale) hidden @endunless>
+            <strong>Piso Sale fixed price: ₱1.00</strong>
+            <p>Every eligible SKU is sold for exactly ₱1.00. Bearly funds the difference, capped by the required campaign budget; Sellers do not submit a discount percentage.</p>
+        </div>
 
         <label class="form-field">
             <span>Starts on</span>
@@ -158,7 +169,7 @@
         @endif
 
         <label class="form-field promotion-field-wide">
-            <span>Description</span>
+            <span>Description <small>Maximum 2,000 characters. Typing stops at the limit.</small></span>
             <textarea class="text-field" name="description" rows="3" maxlength="2000" placeholder="Shown to Sellers and Buyers.">{{ old('description', $campaign?->description) }}</textarea>
         </label>
 
@@ -242,7 +253,8 @@
                     <input type="hidden" name="requires_approval" value="0">
                     <label><input type="checkbox" name="requires_approval" value="1" @checked((bool) old('requires_approval', $campaign?->requires_approval ?? true))> Seller participations require Bearly approval</label>
                     <input type="hidden" name="is_featured" value="0">
-                    <label><input type="checkbox" name="is_featured" value="1" @checked((bool) old('is_featured', $campaign?->is_featured ?? false))> Feature on the homepage</label>
+                    <label><input type="checkbox" name="is_featured" value="1" @checked((bool) old('is_featured', $campaign?->is_featured ?? false))> Feature on the public landing page</label>
+                    <small>Featured campaigns appear on the public landing page automatically while active, public, and in schedule—even while Sellers are still joining. Approved, shoppable products appear in the campaign preview as they become available. Piso Sale stays hidden from guests; featured campaigns are also prioritized on the Buyer homepage.</small>
                 </div>
 
                 <label class="form-field promotion-field-wide">
@@ -250,13 +262,34 @@
                     <textarea class="text-field" name="campaign_notes" rows="2" maxlength="2000">{{ old('campaign_notes', $campaign?->campaign_notes) }}</textarea>
                 </label>
 
-                <label class="form-field">
-                    <span>Banner image <small>Optional, max 10 MB</small></span>
-                    <input class="text-field" type="file" name="banner" accept=".jpg,.jpeg,.png,.webp">
+                <div class="form-field promotion-field-wide campaign-banner-field" data-campaign-banner-crop>
+                    <label class="campaign-banner-upload-label" for="campaign-banner-input">Banner image <small>Optional, max 10 MB</small></label>
+                    <input class="text-field" id="campaign-banner-input" type="file" name="banner" data-campaign-banner-input accept=".jpg,.jpeg,.png,.webp" aria-describedby="campaign-banner-crop-help">
+                    <small id="campaign-banner-crop-help">Preview the 3:1 homepage banner crop before upload. Drag to reposition, then zoom or reset; keep logos and text inside the frame.</small>
+                    <small>For security, select the image again after a refresh; browsers do not retain file selections.</small>
                     @if ($isEdit && $campaign->banner_path)
                         <small>Leave blank to keep the current banner.</small>
                     @endif
-                </label>
+                    <div class="campaign-banner-crop-editor" data-campaign-banner-editor hidden>
+                        <div class="campaign-banner-crop-heading">
+                            <div>
+                                <strong>Campaign banner crop preview</strong>
+                                <p>Drag the image inside the frame. Use the arrow keys for small adjustments.</p>
+                            </div>
+                        </div>
+                        <div class="campaign-banner-crop-stage" id="campaign-banner-crop-preview" data-campaign-banner-stage tabindex="0" role="group" aria-label="Campaign banner crop preview. Drag to reposition or use the arrow keys.">
+                            <img data-campaign-banner-preview alt="" aria-hidden="true" draggable="false">
+                        </div>
+                        <div class="campaign-banner-crop-controls">
+                            <label class="campaign-banner-zoom-control" for="campaign-banner-zoom">
+                                <span>Zoom <output data-campaign-banner-zoom-output for="campaign-banner-zoom">100%</output></span>
+                                <input id="campaign-banner-zoom" data-campaign-banner-zoom type="range" min="1" max="3" step="0.05" value="1" aria-controls="campaign-banner-crop-preview">
+                            </label>
+                            <button class="button button-secondary campaign-banner-reset" type="button" data-campaign-banner-reset>Reset crop</button>
+                        </div>
+                        <p class="campaign-banner-crop-status" data-campaign-banner-status role="status" aria-live="polite"></p>
+                    </div>
+                </div>
 
                 <label class="form-field">
                     <span>Banner title <small>Optional banner alt text</small></span>
@@ -280,7 +313,6 @@
 <script>
 (() => {
     const dropdowns = [...document.querySelectorAll('[data-multi-dropdown]')];
-    if (!dropdowns.length) return;
 
     const updateSummary = (dropdown) => {
         const summary = dropdown.querySelector('[data-multi-dropdown-summary]');
@@ -317,6 +349,121 @@
 
         updateSummary(dropdown);
     });
+
+    const campaignForm = document.querySelector('[data-campaign-form]');
+    const adminId = document.body.dataset.realtimeUserId;
+
+    const campaignTypeInput = campaignForm?.querySelector('[data-campaign-type]');
+    const minimumDiscountField = campaignForm?.querySelector('[data-minimum-discount-field]');
+    const minimumDiscountInput = campaignForm?.querySelector('[data-campaign-minimum-discount]');
+    const pisoSaleNotice = campaignForm?.querySelector('[data-piso-sale-notice]');
+    const syncCampaignPricingFields = () => {
+        const isPisoSale = campaignTypeInput?.value === 'piso_sale';
+        if (minimumDiscountField) minimumDiscountField.hidden = isPisoSale;
+        if (minimumDiscountInput) {
+            minimumDiscountInput.disabled = isPisoSale;
+            minimumDiscountInput.required = !isPisoSale && campaignForm?.dataset.minimumDiscountRequired === '1';
+        }
+        if (pisoSaleNotice) pisoSaleNotice.hidden = !isPisoSale;
+    };
+
+    campaignForm?.setAttribute('data-minimum-discount-required', '{{ $minimumDiscountRequired ? '1' : '0' }}');
+    campaignTypeInput?.addEventListener('change', syncCampaignPricingFields);
+    syncCampaignPricingFields();
+
+    if (campaignForm && adminId) {
+        const draftKey = `bearly:admin:campaign-form:v1:${adminId}:${window.location.pathname}`;
+        const draftFields = () => [...campaignForm.querySelectorAll('input[name], select[name], textarea[name]')]
+            .filter((field) => !['hidden', 'file', 'password', 'submit', 'button', 'reset', 'image'].includes(field.type));
+
+        const saveDraft = () => {
+            const draft = {};
+
+            draftFields().forEach((field) => {
+                if (field.type === 'checkbox' || field.type === 'radio') {
+                    const entry = draft[field.name] || { type: field.type, values: [] };
+                    if (field.checked) entry.values.push(field.value);
+                    draft[field.name] = entry;
+                    return;
+                }
+
+                if (field.tagName === 'SELECT' && field.multiple) {
+                    draft[field.name] = {
+                        type: 'multiple',
+                        values: [...field.selectedOptions].map((option) => option.value),
+                    };
+                    return;
+                }
+
+                draft[field.name] = { type: 'value', value: field.value };
+            });
+
+            try {
+                window.sessionStorage.setItem(draftKey, JSON.stringify(draft));
+            } catch {
+                // Draft saving is optional when browser storage is unavailable.
+            }
+        };
+
+        try {
+            const draft = JSON.parse(window.sessionStorage.getItem(draftKey) || 'null');
+
+            if (draft && typeof draft === 'object') {
+                draftFields().forEach((field) => {
+                    const saved = draft[field.name];
+                    if (!saved || typeof saved !== 'object') return;
+
+                    if (field.type === 'checkbox' || field.type === 'radio') {
+                        const values = saved.type === field.type && Array.isArray(saved.values)
+                            ? saved.values.map(String)
+                            : [];
+                        field.checked = values.includes(field.value);
+                        return;
+                    }
+
+                    if (field.tagName === 'SELECT' && field.multiple) {
+                        const values = saved.type === 'multiple' && Array.isArray(saved.values)
+                            ? saved.values.map(String)
+                            : [];
+                        [...field.options].forEach((option) => {
+                            option.selected = values.includes(option.value);
+                        });
+                        return;
+                    }
+
+                    if (saved.type === 'value' && typeof saved.value === 'string') {
+                        field.value = saved.value;
+                    }
+                });
+
+                dropdowns.forEach(updateSummary);
+                syncCampaignPricingFields();
+            }
+        } catch {
+            try {
+                window.sessionStorage.removeItem(draftKey);
+            } catch {
+                // Ignore unavailable browser storage.
+            }
+        }
+
+        let isSubmitting = false;
+        campaignForm.addEventListener('input', saveDraft);
+        campaignForm.addEventListener('change', saveDraft);
+        window.addEventListener('pagehide', () => {
+            if (!isSubmitting) saveDraft();
+        });
+        campaignForm.addEventListener('submit', () => {
+            isSubmitting = true;
+            try {
+                window.sessionStorage.removeItem(draftKey);
+            } catch {
+                // Ignore unavailable browser storage.
+            }
+        });
+
+        saveDraft();
+    }
 
     document.addEventListener('click', (event) => {
         dropdowns.forEach((dropdown) => {

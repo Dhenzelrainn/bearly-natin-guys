@@ -24,6 +24,7 @@ use App\Services\SellerFulfillmentService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
@@ -55,6 +56,8 @@ class SellerPickupRequestIntegrationTest extends TestCase
         $firstItem->update([
             'quantity' => 5,
             'subtotal_minor' => 44_725,
+            'product_image_disk' => 'public',
+            'product_image_path' => 'order-snapshots/snapshot-product.jpg',
         ]);
         $firstQuote = $sellerOrders[0]->shipping_quote;
         $firstQuote['actual_weight_kg'] = 6.25;
@@ -87,6 +90,10 @@ class SellerPickupRequestIntegrationTest extends TestCase
             ->assertSee($sellerOrders[0]->seller_order_no)
             ->assertSee($sellerOrders[1]->seller_order_no)
             ->assertSee('name="order_ids[]"', false)
+            ->assertSee('data-pickup-order-product-preview', false)
+            ->assertSee(Storage::disk('public')->url('order-snapshots/snapshot-product.jpg'))
+            ->assertSee('Snapshot Product')
+            ->assertSee('No image')
             ->assertSee('5 parcels')
             ->assertSee('printed');
 

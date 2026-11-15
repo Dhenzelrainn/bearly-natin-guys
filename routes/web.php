@@ -8,6 +8,7 @@ use App\Http\Controllers\AdminCommerceController;
 use App\Http\Controllers\AdminComplianceController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AdminDashboardController;
+use App\Http\Controllers\DashboardWeatherController;
 use App\Http\Controllers\AdminDisputeController;
 use App\Http\Controllers\AdminFinanceController;
 use App\Http\Controllers\AdminFulfillmentController;
@@ -37,6 +38,7 @@ use App\Http\Controllers\BuyerReturnController;
 use App\Http\Controllers\BuyerReviewController;
 use App\Http\Controllers\BearlyChatbotController;
 use App\Http\Controllers\ContactController;
+use App\Http\Controllers\LandingPageController;
 use App\Http\Controllers\DisputeParticipantController;
 use App\Http\Controllers\DeliveryProofController;
 use App\Http\Controllers\LogisticsCashController;
@@ -75,9 +77,21 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 */
 
-Route::view('/', 'landing-page.landingpage')->name('shop.home');
+Route::get('/', [LandingPageController::class, 'index'])->name('shop.home');
+
+Route::get('/products/{product}/preview', [LandingPageController::class, 'productPreview'])
+    ->whereNumber('product')
+    ->name('products.preview');
+
+Route::get('/campaigns/{campaign}/preview', [LandingPageController::class, 'campaignPreview'])
+    ->whereNumber('campaign')
+    ->name('campaigns.preview');
 
 Route::redirect('/landing', '/')->name('landing');
+
+Route::get('/dashboard/weather/current', DashboardWeatherController::class)
+    ->middleware(['auth', 'role:admin,seller,logistics,rider'])
+    ->name('dashboard.weather.current');
 
 Route::view('/about', 'landing-page.about.about')
     ->name('about');
@@ -182,14 +196,14 @@ Route::middleware('guest')->group(function () {
     Route::post('/forgot-password', [BearlyAuthController::class, 'sendPasswordResetLink'])
         ->middleware('throttle:5,1')
         ->name('password.email');
-
-    Route::get('/reset-password/{token}', [BearlyAuthController::class, 'showResetPassword'])
-        ->name('password.reset');
-
-    Route::post('/reset-password', [BearlyAuthController::class, 'resetPassword'])
-        ->middleware('throttle:10,1')
-        ->name('password.update');
 });
+
+Route::get('/reset-password/{token}', [BearlyAuthController::class, 'showResetPassword'])
+    ->name('password.reset');
+
+Route::post('/reset-password', [BearlyAuthController::class, 'resetPassword'])
+    ->middleware('throttle:10,1')
+    ->name('password.update');
 
 /*
 |--------------------------------------------------------------------------
@@ -276,8 +290,14 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
     Route::get('/home', [BuyerController::class, 'home'])
         ->name('home');
 
+    Route::get('/daily-discoveries', [BuyerController::class, 'dailyDiscoveries'])
+        ->name('buyer.daily-discoveries.index');
+
     Route::get('/products', [BuyerController::class, 'products'])
         ->name('products.index');
+
+    Route::get('/products/category-data', [BuyerController::class, 'categoryProductData'])
+        ->name('products.category-data');
 
     Route::get('/products/{product}', [BuyerController::class, 'showProduct'])
         ->name('products.show');
@@ -340,6 +360,16 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
     Route::get('/profile/returns/{returnRequest}', [BuyerReturnController::class, 'show'])
         ->whereNumber('returnRequest')
         ->name('buyer.returns.show');
+
+    Route::post('/profile/returns/{returnRequest}/refund-receipt/confirm', [BuyerReturnController::class, 'confirmRefundReceipt'])
+        ->whereNumber('returnRequest')
+        ->middleware('throttle:10,1')
+        ->name('buyer.returns.refund-receipt.confirm');
+
+    Route::post('/profile/returns/{returnRequest}/refund-receipt/report-not-received', [BuyerReturnController::class, 'reportRefundNotReceived'])
+        ->whereNumber('returnRequest')
+        ->middleware('throttle:10,1')
+        ->name('buyer.returns.refund-receipt.report-not-received');
 
     Route::post('/profile/returns/{returnRequest}/switch-to-pickup', [BuyerReturnController::class, 'switchToPickup'])
         ->whereNumber('returnRequest')
@@ -429,6 +459,9 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
 
     Route::get('/flash-deals', [BuyerController::class, 'flashDeals'])
         ->name('flash-deals');
+
+    Route::get('/campaigns', [BuyerController::class, 'campaignIndex'])
+        ->name('campaigns.index');
 
     Route::get('/campaigns/{campaign}', [BuyerController::class, 'showCampaign'])
         ->whereNumber('campaign')
@@ -658,6 +691,10 @@ Route::prefix('admin')
         Route::get('/campaigns/{campaign}/edit', [AdminCampaignController::class, 'edit'])
             ->whereNumber('campaign')
             ->name('campaigns.edit');
+
+        Route::get('/campaigns/{campaign}/participations/refresh', [AdminCampaignController::class, 'refreshParticipations'])
+            ->whereNumber('campaign')
+            ->name('campaigns.participations.refresh');
 
         Route::patch('/campaigns/{campaign}', [AdminCampaignController::class, 'update'])
             ->whereNumber('campaign')
@@ -1069,11 +1106,17 @@ Route::prefix('admin')
         |--------------------------------------------------------------------------
         | Admin Account
         |--------------------------------------------------------------------------
-        | Keep current Fusion implementation until account integration phase.
+        | Identity details remain system-managed; admins can manage their own photo/password.
         */
 
         Route::get('/account', [AdminController::class, 'account'])
             ->name('account');
+
+        Route::patch('/account/photo', [AdminController::class, 'updateAccountPhoto'])
+            ->name('account.photo.update');
+
+        Route::delete('/account/photo', [AdminController::class, 'removeAccountPhoto'])
+            ->name('account.photo.destroy');
 
         Route::patch('/account/password', [AdminController::class, 'updatePassword'])
             ->name('account.password');
@@ -1090,6 +1133,11 @@ Route::prefix('admin')
             '/applications/{user}/approve',
             [AccountApprovalController::class, 'approveByAdmin']
         )->name('applications.approve');
+
+        Route::post(
+            '/applications/{user}/start-review',
+            [AccountApprovalController::class, 'startReviewByAdmin']
+        )->name('applications.start-review');
 
         Route::post(
             '/applications/{user}/request-revision',
@@ -1161,6 +1209,10 @@ Route::prefix('seller')
         Route::post('/orders/returns-refunds/{returnRequest}/inspect', [SellerWorkflowController::class, 'inspectReturn'])
             ->whereNumber('returnRequest')
             ->name('orders.returns.inspect');
+
+        Route::post('/orders/returns-refunds/items/{returnItem}/quarantine-review', [SellerWorkflowController::class, 'finalizeQuarantineReview'])
+            ->whereNumber('returnItem')
+            ->name('orders.returns.quarantine-review');
 
         Route::post('/orders/returns-refunds/{returnRequest}/evidence', [SellerWorkflowController::class, 'addReturnEvidence'])
             ->whereNumber('returnRequest')
@@ -1345,6 +1397,10 @@ Route::prefix('seller')
         Route::get('/promotions/campaigns/{campaign}', [SellerCampaignController::class, 'show'])
             ->whereNumber('campaign')
             ->name('promotions.campaigns.show');
+
+        Route::get('/promotions/campaigns/{campaign}/participation-status', [SellerCampaignController::class, 'participationStatus'])
+            ->whereNumber('campaign')
+            ->name('promotions.campaigns.participation-status');
 
         Route::post('/promotions/campaigns/{campaign}/join', [SellerCampaignController::class, 'join'])
             ->whereNumber('campaign')

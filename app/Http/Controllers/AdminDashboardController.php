@@ -70,10 +70,18 @@ class AdminDashboardController extends Controller
             ])->all();
 
         $admin = $request->user();
+        $manilaTime = CarbonImmutable::now('Asia/Manila');
+        $manilaGreeting = match (true) {
+            $manilaTime->hour < 12 => 'Good morning',
+            $manilaTime->hour < 18 => 'Good afternoon',
+            default => 'Good evening',
+        };
 
         return view('admin.dashboard', [
             'admin' => ['name' => $admin->name, 'role' => 'Admin', 'email' => $admin->email,
                 'initials' => collect(explode(' ', $admin->name))->map(fn ($part) => strtoupper(substr($part, 0, 1)))->take(2)->implode('')],
+            'manilaGreeting' => $manilaGreeting,
+            'manilaTime' => $manilaTime,
             'topNotifications' => [],
             'kpis' => [
                 ['label' => 'Total Users', 'value' => number_format(User::count()), 'change' => User::where('status', 'active')->count().' active', 'trend' => 'up', 'icon' => 'users'],

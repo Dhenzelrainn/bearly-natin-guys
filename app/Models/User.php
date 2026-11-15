@@ -2,9 +2,10 @@
 
 namespace App\Models;
 
+use App\Notifications\BearlyPasswordResetNotification;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -88,5 +89,14 @@ class User extends Authenticatable
     public function rememberedAccounts(): HasMany
     {
         return $this->hasMany(RememberedAccount::class);
+    }
+
+    /**
+     * Keep the framework password broker and reset token flow, using Bearly's
+     * email presentation for the notification it dispatches.
+     */
+    public function sendPasswordResetNotification($token)
+    {
+        $this->notify(new BearlyPasswordResetNotification($token));
     }
 }

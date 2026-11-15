@@ -75,6 +75,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Throwable;
 
 class LogisticsController extends Controller
@@ -4618,7 +4619,12 @@ class LogisticsController extends Controller
                             'cancelled',
                         ]
                     )
-                    ->withCount('parcels'),
+                    ->withCount([
+                        'parcels' => fn ($query) => $query->whereNotIn('parcels.status', [
+                            ParcelStatus::Delivered->value,
+                            ParcelStatus::Returned->value,
+                        ]),
+                    ]),
             ])
             ->orderBy('id')
             ->get();
@@ -4885,8 +4891,8 @@ class LogisticsController extends Controller
                 $validated['rider_profile_id']
             );
 
-        $batch = $dispatchService
-            ->dispatchZone(
+        try {
+            $batch = $dispatchService->dispatchZone(
                 $zone,
                 $rider,
                 $operator,
@@ -4894,6 +4900,15 @@ class LogisticsController extends Controller
                 $plannedWindowEnd,
                 $validated['assignment_reason'] ?? null,
             );
+        } catch (ConflictHttpException $exception) {
+            return redirect()
+                ->route('logistics.dispatch.index')
+                ->withInput()
+                ->with([
+                    'dispatch_conflict' => $exception->getMessage(),
+                    'dispatch_conflict_zone_id' => (int) $zone->id,
+                ]);
+        }
 
         $riderName =
             $batch->riderProfile

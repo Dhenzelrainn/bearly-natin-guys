@@ -4,6 +4,7 @@ namespace Tests\Feature\Finance;
 
 use App\Enums\UserRole;
 use App\Events\LogisticsRefundCashPayoutUpdated;
+use App\Models\Address;
 use App\Models\AuditLog;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
@@ -20,6 +21,8 @@ use App\Models\SellerPayoutItem;
 use App\Models\SellerProfile;
 use App\Models\SellerTransaction;
 use App\Models\Shipment;
+use App\Models\SortingCenter;
+use App\Models\SortingZone;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\CodCashCollectionService;
@@ -29,6 +32,7 @@ use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -691,9 +695,143 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
         app(CodCashCollectionService::class)->assertPaymentCaptured($scenario['order']->fresh());
     }
 
+    public function test_refund_cash_assignment_is_zone_first_and_audits_same_center_fallback_reason(): void
+    {
+        $scenario = $this->scenario('refund assignment policy');
+        $refund = $this->refund($scenario, 5000);
+        [$center, $buyerZone, $nearbyZone, $farZone] = $this->refundAssignmentZones($scenario);
+        $payout = RefundCashPayout::query()->create([
+            'payout_no' => 'RCP-'.Str::upper(Str::random(12)),
+            'refund_id' => $refund->id,
+            'return_request_id' => $scenario['return_request']->id,
+            'logistics_profile_id' => $scenario['provider']->id,
+            'amount_minor' => 5000,
+            'status' => 'awaiting_rider_assignment',
+            'finance_issue_reference' => 'CFH-'.Str::upper(Str::random(26)),
+        ]);
+
+        $inZoneRider = $this->rider($scenario['provider'], 'refund in-zone');
+        $inZoneProfile = $this->assignRiderToZone($inZoneRider, $center, $buyerZone);
+        $nearbyRider = $this->rider($scenario['provider'], 'refund nearby');
+        $nearbyProfile = $this->assignRiderToZone($nearbyRider, $center, $nearbyZone);
+        $farRider = $this->rider($scenario['provider'], 'refund far fallback');
+        $farProfile = $this->assignRiderToZone($farRider, $center, $farZone);
+
+        $courier = $this->rider($scenario['provider'], 'refund courier');
+        $this->assignRiderToZone($courier, $center, $buyerZone, 'courier', 'both');
+        $pickupOnly = $this->rider($scenario['provider'], 'refund pickup-only');
+        $this->assignRiderToZone($pickupOnly, $center, $buyerZone, 'local', 'pickup_only');
+
+        $this->actingAs($scenario['provider_user'])
+            ->get(route('logistics.cash.index'))
+            ->assertOk()
+            ->assertSee('Buyer destination zone')
+            ->assertSee($inZoneRider->name)
+            ->assertDontSee($nearbyRider->name)
+            ->assertDontSee($courier->name)
+            ->assertDontSee($pickupOnly->name)
+            ->assertDontSee('Nearby-zone fallback reason');
+
+        // A direct request cannot bypass the in-zone-first recommendation.
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.refunds.assign', $payout), [
+                'rider_user_id' => $nearbyRider->id,
+                'assignment_reason' => 'Nearby Rider is ready for the Buyer.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('rider_user_id');
+        $this->assertSame('awaiting_rider_assignment', $payout->fresh()->status);
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.refunds.assign', $payout), [
+                'rider_user_id' => $courier->id,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('rider_user_id');
+
+        // Once no eligible Rider remains in the destination zone, only same-center
+        // fallback Riders are offered, and a clear reason is required and audited.
+        $inZoneProfile->update(['availability_status' => 'offline']);
+        $scenario['order']->update([
+            'delivery_latitude' => 14.282,
+            'delivery_longitude' => 121.088,
+        ]);
+        $nearbyProfile->liveLocation()->create([
+            'latitude' => 14.2825,
+            'longitude' => 121.0885,
+            'accuracy_meters' => 150,
+            'last_seen_at' => now(),
+        ]);
+        $farProfile->liveLocation()->create([
+            'latitude' => 14.36,
+            'longitude' => 121.16,
+            'accuracy_meters' => 20,
+            'last_seen_at' => now()->subMinutes(4),
+        ]);
+
+        $this->actingAs($scenario['provider_user'])
+            ->get(route('logistics.cash.index'))
+            ->assertOk()
+            ->assertSee('No eligible Rider is available in')
+            ->assertSee($nearbyRider->name)
+            ->assertSee($farRider->name)
+            ->assertSee('Nearby-zone fallback reason')
+            ->assertDontSee($inZoneRider->name)
+            ->assertSee('Fresh accurate GPS is not available for every eligible Rider')
+            ->assertDontSee('Closest fresh GPS estimate');
+
+        $nearbyProfile->liveLocation()->update([
+            'accuracy_meters' => 20,
+            'last_seen_at' => now(),
+        ]);
+        $farProfile->liveLocation()->update([
+            'accuracy_meters' => 20,
+            'last_seen_at' => now(),
+        ]);
+
+        $this->actingAs($scenario['provider_user'])
+            ->get(route('logistics.cash.index'))
+            ->assertOk()
+            ->assertSee('No eligible Rider is available in')
+            ->assertSee($nearbyRider->name)
+            ->assertSee($farRider->name)
+            ->assertDontSee($inZoneRider->name)
+            ->assertSee('Closest fresh GPS estimate')
+            ->assertSee('straight-line, not road distance or an ETA');
+
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.refunds.assign', $payout), [
+                'rider_user_id' => $nearbyRider->id,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('assignment_reason');
+
+        $reason = 'The Buyer-zone Rider is off duty; this same-center Rider is available for delivery today.';
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.refunds.assign', $payout), [
+                'rider_user_id' => $nearbyRider->id,
+                'assignment_reason' => $reason,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $payout->refresh();
+        $this->assertSame((int) $nearbyProfile->id, (int) $payout->rider_profile_id);
+        $assignmentEvent = RefundCashPayoutEvent::query()
+            ->where('refund_cash_payout_id', $payout->id)
+            ->where('event_type', 'cash_assigned_to_rider')
+            ->sole();
+        $this->assertSame('nearby_zone', $assignmentEvent->metadata['assignment_mode']);
+        $this->assertSame((int) $buyerZone->id, $assignmentEvent->metadata['buyer_destination_zone_id']);
+        $this->assertSame((int) $nearbyZone->id, $assignmentEvent->metadata['rider_zone_id']);
+        $this->assertSame((int) $center->id, $assignmentEvent->metadata['sorting_center_id']);
+        $this->assertSame($reason, $assignmentEvent->metadata['cross_zone_reason']);
+        $this->assertStringContainsString($reason, $assignmentEvent->note);
+    }
+
     public function test_refund_cash_requires_logistics_receipt_rider_return_and_verified_buyer_acknowledgment(): void
     {
         Storage::fake('local');
+        Queue::fake();
         $scenario = $this->scenario('refund cash');
         $collection = app(CodCashCollectionService::class)->recordRiderCollection(
             $scenario['shipment'],
@@ -714,6 +852,22 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             ->assertRedirect();
 
         $refund = $this->refund($scenario, 5000);
+        $orderItem = $scenario['seller_order']->items()->create([
+            'product_name' => 'Refund Cash Test Product',
+            'variant_name' => 'Black / One Size',
+            'sku' => 'REFUND-CASH-TEST-001',
+            'unit_price_minor' => 5000,
+            'quantity' => 1,
+            'discount_minor' => 0,
+            'subtotal_minor' => 5000,
+            'product_image_disk' => 'public',
+            'product_image_path' => 'seller-products/refund-cash-test.png',
+        ]);
+        $scenario['return_request']->items()->create([
+            'order_item_id' => $orderItem->id,
+            'quantity' => 1,
+            'refund_amount_minor' => 5000,
+        ]);
         $payout = null;
 
         $this->actingAs($this->admin)
@@ -774,22 +928,64 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             ->assertSee('Amount &amp; status', false)
             ->assertSee('Custody action')
             ->assertSee('data-copy-cash-reference', false)
+            ->assertSee('data-refund-product-preview', false)
+            ->assertSee('Refund Cash Test Product')
+            ->assertSee('seller-products/refund-cash-test.png')
+            ->assertSee('Black / One Size')
+            ->assertSee('This acknowledgment will be recorded against Finance handoff')
+            ->assertSee($payout->finance_issue_reference)
+            ->assertDontSee('Enter receipt reference')
             ->assertSee('Finance handoff reference')
             ->assertSee($payout->finance_issue_reference);
 
         $this->actingAs($scenario['provider_user'])
             ->post(route('logistics.cash.refunds.receive', $payout), [
                 'actual_amount' => '50.00',
-                'reference' => 'LOG-REFUND-RECEIPT-001',
             ])
             ->assertRedirect();
+        $payout->refresh();
+        $this->assertSame('awaiting_rider_assignment', $payout->status);
+        $this->assertSame($payout->finance_issue_reference, $payout->logistics_receipt_reference);
+        $this->actingAs($scenario['provider_user'])
+            ->get(route('logistics.cash.refunds.acknowledgment-slip', $payout))
+            ->assertRedirect(route('logistics.cash.index'))
+            ->assertSessionHas('error', 'Assign an eligible Rider before printing this acknowledgment form.');
+        $this->actingAs($scenario['provider_user'])
+            ->get(route('logistics.cash.index'))
+            ->assertOk()
+            ->assertSee('Assign an eligible Rider before printing this acknowledgment form.')
+            ->assertSee('role="alert"', false);
+
+        $adminNotification = $this->admin->notifications()
+            ->where('data->event', 'admin_refund_cash_received_by_logistics')
+            ->sole();
+        $this->assertStringContainsString($payout->payout_no, $adminNotification->data['body']);
+        $this->assertStringContainsString($scenario['provider']->display_name, $adminNotification->data['body']);
+        $this->assertStringContainsString($payout->finance_issue_reference, $adminNotification->data['body']);
+        $this->assertSame(route('admin.payments').'#refund-cash-assignments', $adminNotification->data['url']);
+        $this->assertSame((int) $payout->id, $adminNotification->data['meta']['refund_cash_payout_id']);
+
+        // A retried acknowledgment is idempotent and must not notify Admin twice.
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.refunds.receive', $payout), [
+                'actual_amount' => '50.00',
+            ])
+            ->assertRedirect();
+        $this->assertSame(
+            1,
+            $this->admin->notifications()->where('data->event', 'admin_refund_cash_received_by_logistics')->count(),
+        );
+
+        [$refundCenter, $buyerZone] = $this->refundAssignmentZones($scenario);
         $firstRider = $this->rider($scenario['provider'], 'refund rider one');
+        $this->assignRiderToZone($firstRider, $refundCenter, $buyerZone);
         $secondRider = $this->rider($scenario['provider'], 'refund rider two');
+        $this->assignRiderToZone($secondRider, $refundCenter, $buyerZone);
 
         $this->actingAs($scenario['provider_user'])
             ->post(route('logistics.cash.refunds.assign', $payout), ['rider_user_id' => $firstRider->id])
             ->assertRedirect()
-            ->assertSessionHas('success', fn (string $message): bool => str_contains($message, 'Print acknowledgment ACK-'));
+            ->assertSessionHas('success', fn (string $message): bool => str_contains($message, 'Print acknowledgment form ACK-'));
         $payout->refresh();
         $this->assertSame('assigned_to_rider', $payout->status);
         $firstReference = 'ACK-'.$payout->payout_no.'-A01';
@@ -843,7 +1039,11 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
         $this->actingAs($scenario['provider_user'])
             ->get(route('logistics.cash.index'))
             ->assertOk()
-            ->assertSee('Prepare acknowledgment slip');
+            ->assertSee('Prepare acknowledgment form');
+        $this->actingAs($scenario['provider_user'])
+            ->get(route('logistics.cash.refunds.acknowledgment-slip', $payout))
+            ->assertRedirect(route('logistics.cash.index'))
+            ->assertSessionHas('error', 'Prepare the acknowledgment form from Cash custody before printing it.');
         $this->actingAs($scenario['provider_user'])
             ->post(route('logistics.cash.refunds.acknowledgment-slip.prepare', $payout))
             ->assertRedirect(route('logistics.cash.refunds.acknowledgment-slip', $payout));
@@ -894,6 +1094,14 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             ->where('event_type', 'refund_cash_delivery_started')
             ->sole();
         $this->assertSame($firstReference, $startEvent->reference);
+        $this->assertSame(
+            1,
+            $scenario['buyer']->notifications()->where('data->event', 'buyer_refund_cash_tracking')->count(),
+        );
+        $this->assertSame(
+            'Cash refund out for delivery',
+            $scenario['buyer']->notifications()->where('data->event', 'buyer_refund_cash_tracking')->sole()->data['title'],
+        );
 
         $this->actingAs($firstRider)
             ->get(route('rider.refund-cash.index'))
@@ -914,6 +1122,10 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             'event_type' => 'refund_cash_delivery_failed',
             'reference' => $firstReference,
         ]);
+        $this->assertSame(
+            2,
+            $scenario['buyer']->notifications()->where('data->event', 'buyer_refund_cash_tracking')->count(),
+        );
 
         $this->actingAs($firstRider)
             ->post(route('rider.refund-cash.return-cash', $payout), [
@@ -965,6 +1177,18 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             ->assertSessionHas('success', fn (string $message): bool => str_contains($message, 'form provided by Logistics'));
         $this->assertSame($secondReference, $payout->fresh()->acknowledgment_reference);
         $this->assertNotSame($firstReference, $secondReference);
+        $this->assertSame(
+            3,
+            $scenario['buyer']->notifications()->where('data->event', 'buyer_refund_cash_tracking')->count(),
+        );
+        $this->actingAs($secondRider)
+            ->post(route('rider.refund-cash.start', $payout))
+            ->assertRedirect();
+        $this->assertSame(
+            3,
+            $scenario['buyer']->notifications()->where('data->event', 'buyer_refund_cash_tracking')->count(),
+            'A retry of the same Rider delivery start must not create a duplicate Buyer alert.',
+        );
         $versionBeforeBuyerReceipt = $this->actingAs($scenario['provider_user'])
             ->getJson(route('logistics.cash.refunds.status-version'))
             ->assertOk()
@@ -1002,16 +1226,49 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
         $this->assertSame('delivered_pending_verification', $payout->fresh()->status);
         $this->assertSame($secondReference, $payout->fresh()->acknowledgment_reference);
         $this->assertSame('pending', $refund->fresh()->status);
+        $this->assertSame(
+            0,
+            $this->admin->notifications()->where('data->event', 'admin_refund_cash_ready_for_finance')->count(),
+            'Admin should be notified once Logistics verification makes the payout ready for Finance.',
+        );
+        $this->assertSame(
+            4,
+            $scenario['buyer']->notifications()->where('data->event', 'buyer_refund_cash_tracking')->count(),
+        );
+        $logisticsVerificationAlert = $scenario['provider_user']->notifications()
+            ->where('data->event', 'logistics_refund_cash_verification_required')
+            ->sole();
+        $this->assertStringContainsString($payout->payout_no, $logisticsVerificationAlert->data['body']);
+        $this->assertSame(route('logistics.cash.index'), $logisticsVerificationAlert->data['url']);
+        $this->actingAs($scenario['buyer'])
+            ->get(route('buyer.returns.show', $scenario['return_request']->id))
+            ->assertOk()
+            ->assertSee('Cash refund delivery tracking')
+            ->assertSee('The Rider reported delivery; Logistics verification is pending')
+            ->assertSee('The Rider reported the refund delivered')
+            ->assertSee('This is not live Rider location.')
+            ->assertDontSee($secondReference)
+            ->assertDontSee('Buyer Refund Recipient')
+            ->assertDontSee('signed-ack.pdf');
+        $otherBuyer = User::factory()->create(['role' => 'buyer', 'status' => 'active']);
+        $this->actingAs($otherBuyer)
+            ->get(route('buyer.returns.show', $scenario['return_request']->id))
+            ->assertNotFound();
         $this->actingAs($scenario['provider_user'])
             ->get(route('logistics.cash.refunds.acknowledgment-slip', $payout))
-            ->assertNotFound();
+            ->assertRedirect(route('logistics.cash.index'))
+            ->assertSessionHas('error', "This acknowledgment form is not available at the payout's current step. Return to Cash custody to review the next required action.");
         $this->actingAs($scenario['provider_user'])
             ->get(route('logistics.cash.index'))
             ->assertOk()
+            ->assertSee("This acknowledgment form is not available at the payout's current step. Return to Cash custody to review the next required action.")
             ->assertSee('Delivered Pending Verification')
             ->assertSee('Buyer acknowledgment reference')
             ->assertSee("Check that the number above matches the number on the Buyer's signed receipt.", false)
             ->assertSee($secondReference);
+        $this->actingAs($scenario['provider_user'])
+            ->get(route('logistics.cash.refunds.acknowledgment-slip', 999999))
+            ->assertNotFound();
         $this->actingAs($this->admin)
             ->post(route('admin.payments.refund-cash.complete', $payout), [
                 'buyer_receipt_verified' => '1',
@@ -1029,6 +1286,37 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             ])
             ->assertRedirect();
         $this->assertSame('awaiting_finance_completion', $payout->fresh()->status);
+        $financeReadyAlert = $this->admin->notifications()
+            ->where('data->event', 'admin_refund_cash_ready_for_finance')
+            ->sole();
+        $this->assertStringContainsString($payout->payout_no, $financeReadyAlert->data['body']);
+        $this->assertStringContainsString('Provider refund cash', $financeReadyAlert->data['body']);
+        $this->assertSame(route('admin.payments').'#refund-cash-assignments', $financeReadyAlert->data['url']);
+        $this->assertSame(
+            5,
+            $scenario['buyer']->notifications()->where('data->event', 'buyer_refund_cash_tracking')->count(),
+        );
+        $this->actingAs($scenario['buyer'])
+            ->get(route('buyer.returns.show', $scenario['return_request']->id))
+            ->assertOk()
+            ->assertSee('Logistics verified delivery; Finance completion is pending')
+            ->assertSee('Logistics verified the signed acknowledgment')
+            ->assertDontSee('Signed paper acknowledgment and amount verified.');
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.refunds.verify-receipt', $payout), [
+                'verification_note' => 'Signed paper acknowledgment and amount verified.',
+            ])
+            ->assertRedirect();
+        $this->assertSame(
+            1,
+            $this->admin->notifications()->where('data->event', 'admin_refund_cash_ready_for_finance')->count(),
+            'Retrying Logistics verification must not duplicate the Finance alert.',
+        );
+        $this->assertSame(
+            5,
+            $scenario['buyer']->notifications()->where('data->event', 'buyer_refund_cash_tracking')->count(),
+            'Retrying Logistics verification must not duplicate the Buyer alert.',
+        );
 
         $this->actingAs($this->admin)
             ->get(route('admin.payments'))
@@ -1055,7 +1343,85 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             'event_type' => 'cash_return_received_by_logistics',
             'amount_minor' => 5000,
         ]);
+        $buyerCompletionAlert = $scenario['buyer']->notifications()
+            ->where('data->event', 'buyer_return_updates')
+            ->where('data->title', 'Cash refund completed')
+            ->sole();
+        $this->assertStringContainsString('Finance completed cash refund', $buyerCompletionAlert->data['body']);
+        $this->actingAs($scenario['buyer'])
+            ->get(route('buyer.returns.show', $scenario['return_request']->id))
+            ->assertOk()
+            ->assertSee('Finance completed the cash refund')
+            ->assertSee('Finance completed the cash refund after Logistics verified the Buyer acknowledgment.')
+            ->assertDontSee($secondReference)
+            ->assertDontSee('Buyer Refund Recipient')
+            ->assertDontSee('Download payout receipt');
+        $this->actingAs($scenario['buyer'])
+            ->get(route('buyer.returns.refund-receipt', $refund))
+            ->assertNotFound();
         $this->assertDatabaseMissing('seller_refund_recoveries', ['refund_id' => $refund->id]);
+    }
+
+    /** @return array{0: SortingCenter, 1: SortingZone, 2: SortingZone, 3: SortingZone} */
+    private function refundAssignmentZones(array $scenario): array
+    {
+        $address = Address::query()->create([
+            'user_id' => $scenario['provider_user']->id,
+            'label' => 'Sorting Center',
+            'recipient_name' => $scenario['provider_user']->name,
+            'phone' => '+639171234568',
+            'street' => 'Refund Cash Facility Road',
+            'barangay' => 'Balibago',
+            'city_municipality' => 'Santa Rosa',
+            'province' => 'Laguna',
+            'postal_code' => '4026',
+        ]);
+        $center = SortingCenter::query()->create([
+            'logistics_profile_id' => $scenario['provider']->id,
+            'address_id' => $address->id,
+            'name' => 'Refund Cash Sorting Center',
+            'code' => 'REFUND-CENTER-'.$scenario['provider']->id,
+            'status' => 'active',
+        ]);
+
+        $makeZone = function (string $code, string $name, string $barangay) use ($center): SortingZone {
+            return SortingZone::query()->create([
+                'sorting_center_id' => $center->id,
+                'code' => $code,
+                'name' => $name,
+                'destination_rules' => [
+                    'province' => 'Laguna',
+                    'city_municipality' => 'Santa Rosa',
+                    'barangays' => [$barangay],
+                ],
+                'status' => 'active',
+            ]);
+        };
+
+        return [
+            $center,
+            $makeZone('BUYER-ZONE', 'Santa Rosa / Balibago', 'Balibago'),
+            $makeZone('NEAR-ZONE', 'Santa Rosa / Canlubang', 'Canlubang'),
+            $makeZone('FAR-ZONE', 'Santa Rosa / Pulong Santa Cruz', 'Pulong Santa Cruz'),
+        ];
+    }
+
+    private function assignRiderToZone(
+        User $user,
+        SortingCenter $center,
+        SortingZone $zone,
+        string $workType = 'local',
+        string $specialization = 'both',
+    ): RiderProfile {
+        $profile = $user->riderProfile()->firstOrFail();
+        $profile->update([
+            'home_sorting_center_id' => $center->id,
+            'current_zone_id' => $zone->id,
+            'work_type' => $workType,
+            'specialization' => $specialization,
+        ]);
+
+        return $profile->fresh(['user', 'currentZone.sortingCenter']);
     }
 
     /** @return array<string, mixed> */

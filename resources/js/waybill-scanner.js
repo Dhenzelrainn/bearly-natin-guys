@@ -1,11 +1,13 @@
 import {
     createBarcodeReadState,
+    createNativeCode128Detector,
     observeBarcodeRead,
     REQUIRED_STABLE_BARCODE_READS,
 } from './waybill-scanner-utils.js';
 
 (() => {
     const roots = [...document.querySelectorAll('[data-waybill-scan-form]')];
+    let fallbackScannerSequence = 0;
 
     roots.forEach((form) => {
         const input = form.querySelector('[data-waybill-identifier]');
@@ -13,17 +15,22 @@ import {
         const openButton = form.querySelector('[data-waybill-camera-open]');
         const panel = form.querySelector('[data-waybill-camera-panel]');
         const video = form.querySelector('[data-waybill-camera-video]');
+        const fallbackHost = form.querySelector('[data-waybill-camera-fallback]');
         const status = form.querySelector('[data-waybill-camera-status]');
         const closeButton = form.querySelector('[data-waybill-camera-close]');
         const loadButton = form.querySelector('[data-waybill-load]');
         const sizeList = form.querySelector('[data-waybill-parcel-size-list]');
         const sizeStatus = form.querySelector('[data-waybill-parcel-size-status]');
-        if (!input || !method || !openButton || !panel || !video) return;
+        if (!input || !method || !openButton || !panel || !video || !fallbackHost) return;
+        if (!fallbackHost.id) fallbackHost.id = `waybill-camera-fallback-${++fallbackScannerSequence}`;
 
         let stream = null;
         let detector = null;
+        let fallbackScanner = null;
         let animation = null;
         let scanning = false;
+        let startingCamera = false;
+        let cameraStartSequence = 0;
         let candidateState = createBarcodeReadState();
         let lastAttemptedValue = '';
         let lastInvalidValue = '';
@@ -340,18 +347,113 @@ import {
             return promise;
         };
 
-        const stop = () => {
+        const stop = async () => {
+            cameraStartSequence += 1;
             scanning = false;
             if (animation) window.cancelAnimationFrame(animation);
             animation = null;
             if (stream) stream.getTracks().forEach((track) => track.stop());
             stream = null;
+            detector = null;
             video.srcObject = null;
+            const scannerToStop = fallbackScanner;
+            fallbackScanner = null;
+            if (scannerToStop) {
+                try {
+                    await scannerToStop.stop();
+                } catch {
+                    // The fallback camera may not have finished starting yet.
+                }
+                try {
+                    await scannerToStop.clear();
+                } catch {
+                    // Camera cleanup is best-effort after a completed or failed scan.
+                }
+            }
+            fallbackHost.replaceChildren();
+            fallbackHost.hidden = true;
+            video.hidden = false;
             panel.hidden = true;
             candidateState = createBarcodeReadState();
             lastAttemptedValue = '';
             lastInvalidValue = '';
             lastDetectionAt = 0;
+        };
+
+        const handleCameraMiss = () => {
+            if (!scanning) return;
+
+            observeBarcodeRead(candidateState, '', performance.now());
+            if (!candidateState.value) lastAttemptedValue = '';
+        };
+
+        const handleDecodedText = async (rawValue) => {
+            if (!scanning) return;
+
+            const observed = observeBarcodeRead(candidateState, rawValue, performance.now());
+
+            if (observed.invalid) {
+                lastAttemptedValue = '';
+                if (lastInvalidValue !== rawValue) {
+                    setStatus('Unclear barcode read. Keep the full barcode in frame, hold steady, and use good lighting.', 'error');
+                }
+                lastInvalidValue = rawValue;
+                return;
+            }
+
+            if (observed.value && !observed.stable) {
+                lastInvalidValue = '';
+                setStatus(`Barcode detected (${observed.reads}/${REQUIRED_STABLE_BARCODE_READS}). Hold still…`);
+                return;
+            }
+
+            if (!observed.value || !observed.stable) {
+                if (!candidateState.value) lastAttemptedValue = '';
+                return;
+            }
+
+            const value = observed.value;
+            lastInvalidValue = '';
+            if (value === lastAttemptedValue) return;
+
+            lastAttemptedValue = value;
+            input.value = value;
+            method.value = 'camera';
+
+            if (requiresIntakeLookup) {
+                clearParcelRows();
+                setStatus(`Stable scan ${value}. Checking this Parcel…`);
+                const loaded = await loadParcels(value);
+
+                if (!scanning) return;
+
+                if (loaded) {
+                    await stop();
+                    return;
+                }
+
+                setStatus('Could not confirm that code for this Logistics account. Move the barcode out of view briefly, then scan it again, or close the camera and enter the printed Parcel code.', 'error');
+                return;
+            }
+
+            if (requiresHandoffLookup) {
+                setStatus('Stable scan. Finding the incoming Waybill for this Parcel…');
+                const preview = await lookupIncomingHandoff(value);
+
+                if (!scanning) return;
+
+                if (preview) {
+                    await stop();
+                    setStatus(`Waybill ${preview.waybill_no} found with ${preview.parcel_count} parcel(s). Review the shipment before accepting.`, 'success');
+                    return;
+                }
+
+                setStatus('No eligible incoming Waybill was found. Move the barcode out of view briefly and scan again, or select a Waybill below.', 'error');
+                return;
+            }
+
+            await stop();
+            setStatus(`Stable scan ${value}. Submit to confirm this code.`, 'success');
         };
 
         const scanFrame = async (frameTime = performance.now()) => {
@@ -369,61 +471,7 @@ import {
                 if (!scanning) return;
 
                 const rawValue = results?.find((result) => result.rawValue)?.rawValue || '';
-                const observed = observeBarcodeRead(candidateState, rawValue, performance.now());
-
-                if (observed.invalid) {
-                    lastAttemptedValue = '';
-                    if (lastInvalidValue !== rawValue) {
-                        setStatus('Unclear barcode read. Keep the full barcode in frame, hold steady, and use good lighting.', 'error');
-                    }
-                    lastInvalidValue = rawValue;
-                } else if (observed.value && !observed.stable) {
-                    lastInvalidValue = '';
-                    setStatus(`Barcode detected (${observed.reads}/${REQUIRED_STABLE_BARCODE_READS}). Hold still…`);
-                } else if (observed.value && observed.stable) {
-                    const value = observed.value;
-                    lastInvalidValue = '';
-
-                    if (value !== lastAttemptedValue) {
-                        lastAttemptedValue = value;
-                        input.value = value;
-                        method.value = 'camera';
-
-                        if (requiresIntakeLookup) {
-                            clearParcelRows();
-                            setStatus(`Stable scan ${value}. Checking this Parcel…`);
-                            const loaded = await loadParcels(value);
-
-                            if (!scanning) return;
-
-                            if (loaded) {
-                                stop();
-                                return;
-                            }
-
-                            setStatus('Could not confirm that code for this Logistics account. Move the barcode out of view briefly, then scan it again, or close the camera and enter the printed Parcel code.', 'error');
-                        } else if (requiresHandoffLookup) {
-                            setStatus('Stable scan. Finding the incoming Waybill for this Parcel…');
-                            const preview = await lookupIncomingHandoff(value);
-
-                            if (!scanning) return;
-
-                            if (preview) {
-                                stop();
-                                setStatus(`Waybill ${preview.waybill_no} found with ${preview.parcel_count} parcel(s). Review the shipment before accepting.`, 'success');
-                                return;
-                            }
-
-                            setStatus('No eligible incoming Waybill was found. Move the barcode out of view briefly and scan again, or select a Waybill below.', 'error');
-                        } else {
-                            stop();
-                            setStatus(`Stable scan ${value}. Submit to confirm this code.`, 'success');
-                            return;
-                        }
-                    }
-                } else {
-                    if (!candidateState.value) lastAttemptedValue = '';
-                }
+                await handleDecodedText(rawValue);
             } catch {
                 if (!scanning) return;
                 setStatus(
@@ -435,65 +483,134 @@ import {
         };
 
         const start = async () => {
-            if (scanning) return;
-            if (!('BarcodeDetector' in window)) {
-                setStatus('Camera barcode scanning is not supported in this browser. Use manual entry or a keyboard-wedge scanner.', 'error');
-                return;
-            }
+            if (scanning || startingCamera) return;
             if (!navigator.mediaDevices?.getUserMedia) {
-                setStatus('Camera access is unavailable. Use manual entry or a keyboard-wedge scanner.', 'error');
+                panel.hidden = false;
+                setStatus('Camera access is unavailable. Open this page over HTTPS, allow camera access, or enter the code manually.', 'error');
                 return;
             }
+
+            startingCamera = true;
+            openButton.disabled = true;
+            panel.hidden = false;
+            setStatus('Opening the rear camera…');
+            const startSequence = ++cameraStartSequence;
+
             try {
                 candidateState = createBarcodeReadState();
                 lastAttemptedValue = '';
                 lastInvalidValue = '';
                 lastDetectionAt = 0;
-                detector = new window.BarcodeDetector({ formats: ['code_128'] });
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: { ideal: 'environment' },
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 },
-                    },
-                    audio: false,
-                });
 
-                const track = stream.getVideoTracks()[0];
-                try {
-                    const focusModes = track?.getCapabilities?.()?.focusMode;
-                    if (typeof track?.applyConstraints === 'function'
-                        && Array.isArray(focusModes)
-                        && focusModes.includes('continuous')) {
-                        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+                detector = await createNativeCode128Detector(window.BarcodeDetector);
+                if (startSequence !== cameraStartSequence) return;
+
+                if (detector) {
+                    video.hidden = false;
+                    fallbackHost.hidden = true;
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: { ideal: 'environment' },
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 },
+                        },
+                        audio: false,
+                    });
+
+                    if (startSequence !== cameraStartSequence) {
+                        stream.getTracks().forEach((track) => track.stop());
+                        stream = null;
+                        return;
                     }
-                } catch {
-                    // Autofocus is optional; keep the native camera fallback.
+
+                    const track = stream.getVideoTracks()[0];
+                    try {
+                        const focusModes = track?.getCapabilities?.()?.focusMode;
+                        if (typeof track?.applyConstraints === 'function'
+                            && Array.isArray(focusModes)
+                            && focusModes.includes('continuous')) {
+                            await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+                        }
+                    } catch {
+                        // Autofocus is optional; keep the native camera fallback.
+                    }
+
+                    if (startSequence !== cameraStartSequence) {
+                        await stop();
+                        return;
+                    }
+
+                    video.muted = true;
+                    video.playsInline = true;
+                    video.autoplay = true;
+                    video.srcObject = stream;
+                    scanning = true;
+                    setStatus(requiresIntakeLookup
+                        ? 'Point the rear camera at the unique Code 128 Parcel barcode and hold still for three matching reads.'
+                        : requiresHandoffLookup
+                            ? 'Scan a Parcel Code 128 label from this arrived shipment. Review its Waybill and parcel count before accepting.'
+                            : 'Point the rear camera at the Code 128 barcode and hold still for three matching reads.');
+                    await video.play();
+                    if (scanning) animation = window.requestAnimationFrame(scanFrame);
+                    return;
                 }
 
-                video.muted = true;
-                video.playsInline = true;
-                video.autoplay = true;
-                video.srcObject = stream;
-                panel.hidden = false;
+                video.hidden = true;
+                fallbackHost.hidden = false;
+                const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
+                if (startSequence !== cameraStartSequence) return;
+
+                fallbackScanner = new Html5Qrcode(fallbackHost.id, {
+                    formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128],
+                    useBarCodeDetectorIfSupported: false,
+                    verbose: false,
+                });
                 scanning = true;
+                await fallbackScanner.start(
+                    { facingMode: 'environment' },
+                    {
+                        fps: 10,
+                        videoConstraints: {
+                            facingMode: { ideal: 'environment' },
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 },
+                        },
+                    },
+                    (decodedText) => {
+                        handleDecodedText(decodedText).catch(() => {
+                            if (scanning) setStatus('The camera could not read this code. Keep the barcode centered, or enter it manually.', 'error');
+                        });
+                    },
+                    () => handleCameraMiss(),
+                );
+
+                if (startSequence !== cameraStartSequence || !scanning) {
+                    await stop();
+                    return;
+                }
+
                 setStatus(requiresIntakeLookup
                     ? 'Point the rear camera at the unique Code 128 Parcel barcode and hold still for three matching reads.'
                     : requiresHandoffLookup
                         ? 'Scan a Parcel Code 128 label from this arrived shipment. Review its Waybill and parcel count before accepting.'
                         : 'Point the rear camera at the Code 128 barcode and hold still for three matching reads.');
-                await video.play();
-                animation = window.requestAnimationFrame(scanFrame);
-            } catch {
-                stop();
-                setStatus('Camera permission was denied or the camera is unavailable. Use manual entry instead.', 'error');
+            } catch (error) {
+                await stop();
+                panel.hidden = false;
+                const denied = ['NotAllowedError', 'PermissionDeniedError', 'SecurityError'].includes(error?.name);
+                setStatus(denied
+                    ? 'Camera permission was denied. Allow camera access for this site in Safari Settings, then try again.'
+                    : 'Camera could not be opened. Check camera access and try again, or enter the code manually.', 'error');
+            } finally {
+                startingCamera = false;
+                openButton.disabled = false;
             }
         };
 
         openButton.addEventListener('click', start);
-        closeButton?.addEventListener('click', stop);
+        closeButton?.addEventListener('click', () => { void stop(); });
         form.closest('[data-modal]')?.querySelectorAll('[data-modal-close]').forEach((button) => {
-            button.addEventListener('click', stop);
+            button.addEventListener('click', () => { void stop(); });
         });
         input.addEventListener('input', () => {
             if (method.value === 'camera') method.value = 'manual';
@@ -543,9 +660,9 @@ import {
         });
         if (requiresIntakeLookup && input.value.trim() !== '') loadParcels(input.value);
         document.addEventListener('visibilitychange', () => {
-            if (document.hidden) stop();
+            if (document.hidden) void stop();
         });
-        window.addEventListener('pagehide', stop);
+        window.addEventListener('pagehide', () => { void stop(); });
     });
 
     const handoffForm = document.querySelector('[data-handoff-accept-form]');

@@ -72,7 +72,7 @@
 @if ($reportKey === 'sales_summary')
     <section class="dashboard-grid dashboard-grid-main">
         <article class="panel panel-large">
-            <div class="panel-heading"><div><span class="eyebrow">Sales summary report</span><h2>Net sales by period</h2><p>Server-bucketed net product sales for {{ $dateRange['label'] }}: gross product sales after item discounts and completed refunds.</p></div><span class="status-badge badge-success">{{ $chartHasData ? 'Recorded sales' : 'No data' }}</span></div>
+            <div class="panel-heading"><div><span class="eyebrow">Sales summary report</span><h2>Net sales by period</h2><p>Server-bucketed net product sales for {{ $dateRange['label'] }}: gross product sales after item discounts and paid refunds, including external payouts awaiting Buyer confirmation.</p></div><span class="status-badge badge-success">{{ $chartHasData ? 'Recorded sales' : 'No data' }}</span></div>
             <div class="line-chart-shell" data-chart>
                 @if (! $chartHasData || $salesChart === [])
                     <div class="report-no-results report-chart-empty"><i data-lucide="bar-chart-3"></i><strong>No completed sales in this period</strong><span>Adjust the report period or complete orders to see the sales trend.</span></div>

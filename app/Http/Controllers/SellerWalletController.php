@@ -48,7 +48,9 @@ class SellerWalletController extends Controller
             ])
             ->orderByDesc('created_at')
             ->orderByDesc('id')
-            ->paginate(20, ['*'], 'ledger_page');
+            ->paginate(20, ['*'], 'ledger_page')
+            ->withQueryString()
+            ->fragment('wallet-activity');
 
         $transactions->getCollection()->each(function (SellerWalletTransaction $transaction) use ($catalog): void {
             $sellerOrders = collect();

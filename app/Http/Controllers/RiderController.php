@@ -1194,7 +1194,9 @@ class RiderController extends Controller
         $this->courierProfileFor($request);
         $runs->startLoading($run, $request->user());
 
-        return back()->with('success', 'Loading has started for '.$run->run_no.'.');
+        return back()
+            ->with('success', 'Loading has started for '.$run->run_no.'.')
+            ->with('courierRunActionComplete', true);
     }
 
     public function courierMarkLoaded(
@@ -1205,7 +1207,9 @@ class RiderController extends Controller
         $this->courierProfileFor($request);
         $runs->markLoaded($run, $request->user());
 
-        return back()->with('success', 'All listed shipments were recorded as loaded.');
+        return back()
+            ->with('success', 'All listed shipments were recorded as loaded.')
+            ->with('courierRunActionComplete', true);
     }
 
     public function courierDepart(
@@ -1216,7 +1220,9 @@ class RiderController extends Controller
         $this->courierProfileFor($request);
         $runs->depart($run, $request->user());
 
-        return back()->with('success', 'Departure recorded. Destination Logistics will accept custody after arrival.');
+        return back()
+            ->with('success', 'Departure recorded. Destination Logistics will accept custody after arrival.')
+            ->with('courierRunActionComplete', true);
     }
 
     public function courierArrive(
@@ -1227,7 +1233,9 @@ class RiderController extends Controller
         $this->courierProfileFor($request);
         $runs->arrive($run, $request->user());
 
-        return back()->with('success', 'Arrival recorded. Destination Logistics must scan and accept each handoff.');
+        return back()
+            ->with('success', 'Arrival recorded. Destination Logistics must scan and accept each handoff.')
+            ->with('courierRunActionComplete', true);
     }
 
     public function courierReportException(
@@ -1241,7 +1249,9 @@ class RiderController extends Controller
         ]);
         $runs->reportException($run, $request->user(), trim($data['reason']));
 
-        return back()->with('success', 'The line-haul exception was recorded and the run is on hold for review.');
+        return back()
+            ->with('success', 'The line-haul exception was recorded and the run is on hold for review.')
+            ->with('courierRunActionComplete', true);
     }
 
     public function courierResolveException(
@@ -1255,7 +1265,9 @@ class RiderController extends Controller
         ]);
         $runs->resolveException($run, $request->user(), trim($data['resolution']));
 
-        return back()->with('success', 'The exception resolution was recorded.');
+        return back()
+            ->with('success', 'The exception resolution was recorded.')
+            ->with('courierRunActionComplete', true);
     }
 
     private function courierProfileFor(Request $request): RiderProfile

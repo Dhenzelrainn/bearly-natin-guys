@@ -1087,7 +1087,9 @@ class AdminFinanceController extends Controller
                 'order' => $refund->order?->order_no ?? '—',
                 'seller' => $refund->returnRequest?->store?->name ?? '—',
                 'amount' => $this->money((int) ($refund->payout_amount_minor ?? $refund->amount_minor)),
-                'status' => str($refund->status)->replace('_', ' ')->title()->toString(),
+                'status' => $refund->status === 'processing'
+                    ? 'Payout sent · awaiting Buyer confirmation'
+                    : str($refund->status)->replace('_', ' ')->title()->toString(),
                 'responsible_party' => $refund->financially_responsible_party
                     ? str($refund->financially_responsible_party)->title()->toString()
                     : 'Not recorded',
@@ -1103,7 +1105,9 @@ class AdminFinanceController extends Controller
                 $refund->order?->order_no ?? '—',
                 $refund->returnRequest?->store?->name ?? '—',
                 $this->decimal((int) ($refund->payout_amount_minor ?? $refund->amount_minor)),
-                str($refund->status)->replace('_', ' ')->title()->toString(),
+                $refund->status === 'processing'
+                    ? 'Payout sent · awaiting Buyer confirmation'
+                    : str($refund->status)->replace('_', ' ')->title()->toString(),
                 $refund->financially_responsible_party
                     ? str($refund->financially_responsible_party)->title()->toString()
                     : 'Not recorded',
@@ -1140,7 +1144,7 @@ class AdminFinanceController extends Controller
     private function recognizedCommissionBaseMinor(PlatformCommission $commission): int
     {
         if ($this->isCommissionReversal($commission)) {
-            return $commission->refund?->isCompleted() ? -abs((int) $commission->base_amount_minor) : 0;
+            return $commission->refund?->isPayoutSent() ? -abs((int) $commission->base_amount_minor) : 0;
         }
 
         return $this->isFinalizedCommission($commission) ? (int) $commission->base_amount_minor : 0;
@@ -1149,7 +1153,7 @@ class AdminFinanceController extends Controller
     private function recognizedCommissionMinor(PlatformCommission $commission): int
     {
         if ($this->isCommissionReversal($commission)) {
-            return $commission->refund?->isCompleted() ? -abs((int) $commission->amount_minor) : 0;
+            return $commission->refund?->isPayoutSent() ? -abs((int) $commission->amount_minor) : 0;
         }
 
         return $this->isFinalizedCommission($commission) ? (int) $commission->amount_minor : 0;
@@ -1182,7 +1186,7 @@ class AdminFinanceController extends Controller
         $posted = in_array($status, ['posted', 'completed', 'paid'], true) && $transaction->posted_at !== null;
 
         if ($isRefund) {
-            return $posted && $transaction->refund?->isCompleted() ? 'Refunded' : 'Pending';
+            return $posted && $transaction->refund?->isPayoutSent() ? 'Refunded' : 'Pending';
         }
 
         return $posted

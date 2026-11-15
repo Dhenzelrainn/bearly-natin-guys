@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\SellerOrderStatus;
 use App\Models\Category;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -9,6 +10,7 @@ use App\Models\PlatformCampaignParticipation;
 use App\Models\PlatformCampaignParticipationItem;
 use App\Models\PlatformPromotion;
 use App\Models\Product;
+use App\Models\ProductImage;
 use App\Models\ProductVariant;
 use App\Models\SellerOrder;
 use App\Models\SellerProfile;
@@ -16,8 +18,10 @@ use App\Models\Store;
 use App\Models\StorePromotion;
 use App\Models\User;
 use App\Services\BuyerCatalogService;
+use App\Services\PisoSaleEligibilityService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -76,9 +80,9 @@ class BuyerCampaignDisplayTest extends TestCase
             ->assertSee($store->name)
             ->assertSee('A public campaign description.')
             ->assertSee('Approved Campaign Product')
-            ->assertSee('₱80.00')
+            ->assertSee('₱1.00')
             ->assertSee('₱100.00')
-            ->assertSee('20% OFF')
+            ->assertSee('99% OFF')
             ->assertDontSee('Pending Campaign Product')
             ->assertDontSee('Withdrawn Campaign Product')
             ->assertDontSee('Unpublished Store Product')
@@ -87,6 +91,212 @@ class BuyerCampaignDisplayTest extends TestCase
             ->assertDontSee('Internal terms only.')
             ->assertDontSee('Internal campaign notes.')
             ->assertDontSee('Internal reviewer note.');
+    }
+
+    public function test_public_landing_shows_featured_live_campaigns_even_before_products_are_shoppable(): void
+    {
+        Storage::fake('public');
+
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore('landing-featured-campaign-store');
+        $campaign = $this->campaign([
+            'name' => 'Public Payday Campaign',
+            'is_featured' => true,
+            'campaign_type' => PlatformPromotion::CAMPAIGN_PAYDAY_SALE,
+            'banner_path' => 'campaigns/banners/public-payday.webp',
+            'banner_disk' => 'public',
+            'banner_title' => 'Payday picks for everyone',
+        ]);
+        Storage::disk('public')->put('campaigns/banners/public-payday.webp', 'campaign banner');
+
+        $product = $this->product($store, $category, 'Featured Campaign Product');
+        $variant = $this->variant($product, 'PUBLIC-PAYDAY-SKU', 10_000);
+        $this->participation($campaign, $store, $seller, $product, $variant, PlatformCampaignParticipation::STATUS_APPROVED);
+
+        $this->campaign([
+            'name' => 'Unfeatured Campaign',
+            'is_featured' => false,
+            'campaign_type' => PlatformPromotion::CAMPAIGN_MONTHLY_DEAL,
+        ]);
+        $featuredWithoutProducts = $this->campaign([
+            'name' => 'Featured Campaign Without Products',
+            'is_featured' => true,
+            'campaign_type' => PlatformPromotion::CAMPAIGN_MONTHLY_DEAL,
+        ]);
+        $this->campaign([
+            'name' => 'Paused Featured Campaign',
+            'is_featured' => true,
+            'status' => PlatformPromotion::STATUS_PAUSED,
+            'campaign_type' => PlatformPromotion::CAMPAIGN_DOUBLE_DATE,
+        ]);
+
+        $response = $this->get(route('shop.home'))
+            ->assertOk()
+            ->assertSee('Public Payday Campaign')
+            ->assertSee('Payday picks for everyone')
+            ->assertSee(Storage::disk('public')->url('campaigns/banners/public-payday.webp'), false)
+            ->assertSee(route('campaigns.preview', $campaign), false)
+            ->assertSee('Featured Campaign Without Products')
+            ->assertSee(route('campaigns.preview', $featuredWithoutProducts), false)
+            ->assertDontSee('Unfeatured Campaign')
+            ->assertDontSee('Paused Featured Campaign');
+
+        $this->assertStringContainsString('Live campaigns', $response->getContent());
+
+        $this->get(route('campaigns.preview', $featuredWithoutProducts))
+            ->assertOk()
+            ->assertSee('There are no shoppable products in this campaign right now.');
+    }
+
+    public function test_guest_campaign_preview_only_exposes_campaign_context_and_product_image_name_and_price(): void
+    {
+        Storage::fake('public');
+
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore('guest-campaign-preview-store');
+        $campaign = $this->campaign([
+            'name' => 'Guest Preview Payday Sale',
+            'description' => 'A short public campaign description.',
+            'campaign_type' => PlatformPromotion::CAMPAIGN_PAYDAY_SALE,
+            'terms' => 'CAMPAIGN_PRIVATE_TERMS_SENTINEL',
+            'campaign_notes' => 'CAMPAIGN_PRIVATE_NOTES_SENTINEL',
+        ]);
+        $product = $this->product($store, $category, 'Guest Campaign Headphones', [
+            'description' => 'CAMPAIGN_PRIVATE_PRODUCT_DESCRIPTION_SENTINEL',
+        ]);
+        $variant = $this->variant($product, 'CAMPAIGN_PRIVATE_SKU_SENTINEL', 10_000, [
+            'name' => 'CAMPAIGN_PRIVATE_VARIANT_SENTINEL',
+            'options' => ['Color' => 'CAMPAIGN_PRIVATE_OPTION_SENTINEL'],
+        ]);
+        $this->participation($campaign, $store, $seller, $product, $variant, PlatformCampaignParticipation::STATUS_APPROVED);
+
+        $imagePath = 'seller-products/guest-campaign-preview.webp';
+        Storage::disk('public')->put($imagePath, 'product image');
+        ProductImage::query()->create([
+            'product_id' => $product->id,
+            'path' => $imagePath,
+            'disk' => 'public',
+            'purpose' => 'primary',
+            'alt_text' => 'Guest campaign product image',
+            'position' => 0,
+            'is_primary' => true,
+        ]);
+
+        $this->get(route('campaigns.preview', $campaign))
+            ->assertOk()
+            ->assertSee($campaign->name)
+            ->assertSee('A short public campaign description.')
+            ->assertSee('Guest Campaign Headphones')
+            ->assertSee('₱80.00')
+            ->assertSee(Storage::disk('public')->url($imagePath), false)
+            ->assertSee(route('products.preview', $product), false)
+            ->assertSee(route('campaigns.show', $campaign), false)
+            ->assertDontSee($store->name)
+            ->assertDontSee('CAMPAIGN_PRIVATE_TERMS_SENTINEL')
+            ->assertDontSee('CAMPAIGN_PRIVATE_NOTES_SENTINEL')
+            ->assertDontSee('CAMPAIGN_PRIVATE_PRODUCT_DESCRIPTION_SENTINEL')
+            ->assertDontSee('CAMPAIGN_PRIVATE_SKU_SENTINEL')
+            ->assertDontSee('CAMPAIGN_PRIVATE_VARIANT_SENTINEL')
+            ->assertDontSee('CAMPAIGN_PRIVATE_OPTION_SENTINEL');
+
+        $this->get(route('campaigns.show', $campaign))
+            ->assertRedirect(route('login'));
+
+        $buyer = $this->buyer();
+        $this->post(route('login.submit'), [
+            'email' => $buyer->email,
+            'password' => 'Password123',
+        ])->assertRedirect(route('campaigns.show', $campaign));
+
+        $this->get(route('campaigns.preview', $campaign))
+            ->assertRedirect(route('campaigns.show', $campaign));
+    }
+
+    public function test_piso_sale_is_not_exposed_to_guests_or_the_public_landing_page(): void
+    {
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore('public-piso-sale-store');
+        $campaign = $this->campaign([
+            'name' => 'Public Piso Sale Must Stay Hidden',
+            'is_featured' => true,
+        ]);
+        $product = $this->product($store, $category, 'Public Piso Sale Product');
+        $variant = $this->variant($product, 'PUBLIC-PISO-SALE-001', 10_000);
+        $this->participation($campaign, $store, $seller, $product, $variant, PlatformCampaignParticipation::STATUS_APPROVED);
+
+        $this->get(route('shop.home'))
+            ->assertOk()
+            ->assertDontSee($campaign->name);
+        $this->get(route('campaigns.preview', $campaign))->assertNotFound();
+
+        $card = app(BuyerCatalogService::class)->card($product);
+        $this->assertSame(10_000, $card['price_minor']);
+        $this->assertNull($card['campaign_name']);
+    }
+
+    public function test_piso_sale_visibility_and_pricing_require_a_recent_buyer_without_a_fulfilled_order(): void
+    {
+        Storage::fake('public');
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore('eligible-piso-sale-store');
+        $buyer = $this->buyer();
+        $campaign = $this->campaign([
+            'name' => 'Recent Buyer Piso Sale',
+            'is_featured' => true,
+            'banner_path' => 'campaigns/banners/recent-buyer-piso.webp',
+            'banner_disk' => 'public',
+        ]);
+        Storage::disk('public')->put('campaigns/banners/recent-buyer-piso.webp', 'eligible featured Piso banner');
+        $product = $this->product($store, $category, 'Recent Buyer Piso Product');
+        $variant = $this->variant($product, 'RECENT-PISO-001', 10_000);
+        $this->participation($campaign, $store, $seller, $product, $variant, PlatformCampaignParticipation::STATUS_APPROVED);
+
+        $this->actingAs($buyer)->get(route('home'))
+            ->assertOk()
+            ->assertSee($campaign->name)
+            ->assertSee('data-hero-campaign-id="'.$campaign->id.'"', false);
+        $eligibleCard = app(BuyerCatalogService::class)->card($product, buyer: $buyer);
+        $this->assertSame(PlatformPromotion::PISO_SALE_PRICE_MINOR, $eligibleCard['price_minor']);
+        $this->assertSame('campaign', $eligibleCard['price_source']);
+
+        $buyer->forceFill(['created_at' => now()->subDays(31)])->saveQuietly();
+        $this->actingAs($buyer)->get(route('home'))
+            ->assertOk()
+            ->assertDontSee($campaign->name)
+            ->assertDontSee('data-hero-campaign-id="'.$campaign->id.'"', false);
+        $this->actingAs($buyer)->get(route('campaigns.show', $campaign))->assertNotFound();
+        $agedCard = app(BuyerCatalogService::class)->card($product->fresh(), buyer: $buyer->fresh());
+        $this->assertSame(10_000, $agedCard['price_minor']);
+        $this->assertSame('regular', $agedCard['price_source']);
+
+        $buyer->forceFill(['created_at' => now()])->saveQuietly();
+        Order::query()->create([
+            'order_no' => 'ORDER-FULFILLED-PISO-'.(++$this->sequence),
+            'buyer_id' => $buyer->id,
+            'recipient_name' => $buyer->name,
+            'recipient_phone' => '+639171234567',
+            'address_line' => '1 Piso Sale Street',
+            'barangay' => 'Poblacion',
+            'city_municipality' => 'San Pablo City',
+            'province' => 'Laguna',
+            'currency' => 'PHP',
+            'subtotal_minor' => 1000,
+            'shipping_fee_minor' => 0,
+            'discount_minor' => 0,
+            'total_minor' => 1000,
+            'status' => 'fulfilled',
+            'payment_status' => 'paid',
+            'placed_at' => now()->subDay(),
+            'completed_at' => now(),
+        ]);
+
+        $this->actingAs($buyer)->get(route('home'))
+            ->assertOk()
+            ->assertDontSee($campaign->name);
+        $this->actingAs($buyer)->get(route('campaigns.show', $campaign))->assertNotFound();
+        $completedCard = app(BuyerCatalogService::class)->card($product->fresh(), buyer: $buyer->fresh());
+        $this->assertSame(10_000, $completedCard['price_minor']);
+        $this->assertFalse(app(PisoSaleEligibilityService::class)->canDisplay($buyer->fresh()));
     }
 
     public function test_non_public_or_inactive_campaigns_return_not_found(): void
@@ -129,24 +339,65 @@ class BuyerCampaignDisplayTest extends TestCase
 
             $this->get(route('campaigns.show', $campaign))
                 ->assertNotFound();
+
+            $this->get(route('campaigns.preview', $campaign))
+                ->assertNotFound();
         }
     }
 
-    public function test_buyer_home_and_live_offers_link_to_active_campaigns(): void
+    public function test_buyer_home_shows_campaign_banners_without_voucher_promotions(): void
     {
+        Storage::fake('public');
         $buyer = $this->buyer();
         $this->actingAs($buyer);
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore('buyer-home-campaigns');
+        $regularVoucher = PlatformPromotion::query()->create([
+            'name' => 'Buyer Home Voucher',
+            'code' => 'HOMEVOUCHER',
+            'kind' => PlatformPromotion::KIND_VOUCHER,
+            'campaign_type' => null,
+            'funding_type' => PlatformPromotion::FUNDING_PLATFORM,
+            'discount_type' => PlatformPromotion::DISCOUNT_PERCENT,
+            'discount_percent' => 15,
+            'status' => PlatformPromotion::STATUS_ACTIVE,
+            'description' => 'A regular eligible Buyer voucher.',
+            'minimum_spend_minor' => 0,
+            'starts_on' => now('Asia/Manila')->subDay()->toDateString(),
+            'ends_on' => now('Asia/Manila')->addDays(7)->toDateString(),
+            'is_claimable' => true,
+            'is_public' => true,
+            'is_featured' => true,
+        ]);
 
         $payday = $this->campaign([
             'name' => 'Payday Rush',
             'position' => 1,
             'campaign_type' => PlatformPromotion::CAMPAIGN_PAYDAY_SALE,
+            'is_featured' => true,
+            'banner_path' => 'campaigns/banners/buyer-home-payday.webp',
+            'banner_disk' => 'public',
+            'banner_title' => 'Payday Rush banner',
         ]);
+        Storage::disk('public')->put('campaigns/banners/buyer-home-payday.webp', 'buyer home campaign banner');
+        $paydayProduct = $this->product($store, $category, 'Payday Rush Product');
+        $paydayVariant = $this->variant($paydayProduct, 'BUYER-HOME-PAYDAY-001', 10000);
+        $paydayParticipation = $this->participation($payday, $store, $seller, $paydayProduct, $paydayVariant, PlatformCampaignParticipation::STATUS_APPROVED);
+        $paydayParticipation->items()->firstOrFail()->forceFill(['discount_percent' => 20])->save();
+
         $doubleDate = $this->campaign([
             'name' => '10.10 Sale',
             'position' => 2,
             'campaign_type' => PlatformPromotion::CAMPAIGN_PISO_SALE,
+            'banner_path' => 'campaigns/banners/buyer-home-piso.webp',
+            'banner_disk' => 'public',
+            'banner_title' => '10.10 Sale banner',
         ]);
+        Storage::disk('public')->put('campaigns/banners/buyer-home-piso.webp', 'buyer home Piso campaign banner');
+        $pisoProduct = $this->product($store, $category, 'Piso Sale Home Product');
+        $pisoVariant = $this->variant($pisoProduct, 'BUYER-HOME-PISO-001', 10000);
+        $this->participation($doubleDate, $store, $seller, $pisoProduct, $pisoVariant, PlatformCampaignParticipation::STATUS_APPROVED);
+
         $hidden = $this->campaign([
             'name' => 'Hidden Open Campaign',
             'status' => PlatformPromotion::STATUS_OPEN,
@@ -157,21 +408,76 @@ class BuyerCampaignDisplayTest extends TestCase
             'status' => PlatformPromotion::STATUS_ENDED,
             'position' => 3,
         ]);
+        $emptyFeatured = $this->campaign([
+            'name' => 'Featured Campaign Without Shoppable Products',
+            'is_featured' => true,
+            'banner_path' => 'campaigns/banners/empty-featured.webp',
+            'banner_disk' => 'public',
+        ]);
+        Storage::disk('public')->put('campaigns/banners/empty-featured.webp', 'empty featured campaign banner');
+
+        $pausedFeatured = $this->campaign([
+            'name' => 'Paused Featured Campaign',
+            'status' => PlatformPromotion::STATUS_PAUSED,
+            'is_featured' => true,
+            'banner_path' => 'campaigns/banners/paused-featured.webp',
+            'banner_disk' => 'public',
+        ]);
+        Storage::disk('public')->put('campaigns/banners/paused-featured.webp', 'paused featured campaign banner');
+        $pausedProduct = $this->product($store, $category, 'Paused Featured Product');
+        $pausedVariant = $this->variant($pausedProduct, 'BUYER-HOME-PAUSED-001', 10000);
+        $this->participation($pausedFeatured, $store, $seller, $pausedProduct, $pausedVariant, PlatformCampaignParticipation::STATUS_APPROVED);
+
+        $expiredFeatured = $this->campaign([
+            'name' => 'Expired Featured Campaign',
+            'is_featured' => true,
+            'ends_on' => now('Asia/Manila')->subDay()->toDateString(),
+            'ends_time' => '23:59:59',
+            'banner_path' => 'campaigns/banners/expired-featured.webp',
+            'banner_disk' => 'public',
+        ]);
+        Storage::disk('public')->put('campaigns/banners/expired-featured.webp', 'expired featured campaign banner');
+        $expiredProduct = $this->product($store, $category, 'Expired Featured Product');
+        $expiredVariant = $this->variant($expiredProduct, 'BUYER-HOME-EXPIRED-001', 10000);
+        $this->participation($expiredFeatured, $store, $seller, $expiredProduct, $expiredVariant, PlatformCampaignParticipation::STATUS_APPROVED);
 
         $home = $this->get(route('home'))
             ->assertOk()
             ->assertSee('Campaigns & Offers')
             ->assertSee('All Campaigns')
-            ->assertSee('View all deals')
+            ->assertSee('View all campaigns')
             ->assertSee('data-campaign-filter="all"', false)
             ->assertSee('data-campaign-filter="payday_sale"', false)
             ->assertSee('data-campaign-filter="piso_sale"', false)
-            ->assertSee('data-campaign-card data-campaign-type="payday_sale"', false)
-            ->assertSee('data-campaign-tone="payday_sale"', false)
+            ->assertSee('data-campaign-type="payday_sale"', false)
             ->assertSee('Payday Rush')
+            ->assertSee('Bearly-funded campaign')
+            ->assertSee($payday->startsAt()->format('M j, Y'))
+            ->assertSee($payday->endsAt()->format('M j, Y'))
+            ->assertSee('View Details')
+            ->assertSee('aria-label="View details for Payday Rush"', false)
             ->assertSee('10.10 Sale')
+            ->assertSee('data-hero-campaign-id="'.$payday->id.'"', false)
+            ->assertSee('data-hero-campaign-id="'.$doubleDate->id.'"', false)
+            ->assertSee(Storage::disk('public')->url('campaigns/banners/buyer-home-payday.webp'), false)
+            ->assertSee(Storage::disk('public')->url('campaigns/banners/buyer-home-piso.webp'), false)
             ->assertSee(route('campaigns.show', $payday))
             ->assertSee(route('campaigns.show', $doubleDate))
+            ->assertSee(route('campaigns.index'), false)
+            ->assertSee('Featured Campaign Without Shoppable Products')
+            ->assertDontSee('Buyer Home Voucher')
+            ->assertDontSee('data-offer-tone="voucher"', false)
+            ->assertDontSee('live-platform-offers', false)
+            ->assertSee('Open My Vouchers')
+            ->assertSee('Open shipping vouchers in My Vouchers')
+            ->assertSee('sidebar-perk-copy"><strong>Vouchers</strong>', false)
+            ->assertSee('sidebar-perk-copy"><strong>Free Shipping</strong>', false)
+            ->assertDontSee('BEARLY100')
+            ->assertDontSee('₱100 off your')
+            ->assertSee('data-hero-campaign-id="'.$emptyFeatured->id.'"', false)
+            ->assertDontSee('Paused Featured Campaign')
+            ->assertDontSee('Expired Featured Campaign')
+            ->assertDontSee('data-offer-tone="campaign"', false)
             ->assertDontSee('Hidden Open Campaign')
             ->assertDontSee('Ended Campaign From Buyer Listing')
             ->assertDontSee('Brand Deals')
@@ -179,6 +485,10 @@ class BuyerCampaignDisplayTest extends TestCase
             ->assertDontSee('11.11 Big Sale');
 
         $home->assertSeeInOrder(['Payday Rush', '10.10 Sale']);
+        $homeHtml = $home->getContent();
+        $this->assertSame(1, substr_count($homeHtml, 'data-hero-campaign-id="'.$payday->id.'"'));
+        $this->assertSame(5, substr_count($homeHtml, 'class="bearly-promo-slide '));
+        $this->assertSame(5, preg_match_all('/data-slide="\d+"/', $homeHtml));
 
         $flashDeals = $this->get(route('flash-deals'))
             ->assertOk()
@@ -222,6 +532,137 @@ class BuyerCampaignDisplayTest extends TestCase
         $this->assertStringContainsString('href="'.url('/flash-deals').'"', $fallbackHtml);
         $this->assertStringContainsString('View Details', $fallbackHtml);
         $this->assertStringContainsString('live-platform-offer-fallback', $fallbackHtml);
+    }
+
+    public function test_buyer_all_campaigns_page_lists_all_currently_eligible_campaigns_beyond_four_and_preserves_visibility_rules(): void
+    {
+        $this->get(route('campaigns.index'))->assertRedirect(route('login'));
+
+        $buyer = $this->buyer();
+        $campaignNames = [
+            ['name' => 'Flash Event', 'type' => PlatformPromotion::CAMPAIGN_FLASH_DEAL],
+            ['name' => 'Payday Event', 'type' => PlatformPromotion::CAMPAIGN_PAYDAY_SALE],
+            ['name' => 'Monthly Event', 'type' => PlatformPromotion::CAMPAIGN_MONTHLY_DEAL],
+            ['name' => 'Double Date Event', 'type' => PlatformPromotion::CAMPAIGN_DOUBLE_DATE],
+            ['name' => 'Mega Sale', 'type' => PlatformPromotion::CAMPAIGN_PAYDAY_SALE],
+        ];
+
+        foreach ($campaignNames as $position => $campaignData) {
+            $this->campaign([
+                'name' => $campaignData['name'],
+                'campaign_type' => $campaignData['type'],
+                'position' => $position,
+            ]);
+        }
+
+        $pisoSale = $this->campaign([
+            'name' => 'Eligible Piso Sale',
+            'campaign_type' => PlatformPromotion::CAMPAIGN_PISO_SALE,
+            'position' => 5,
+        ]);
+        $this->campaign([
+            'name' => 'Private Campaign Must Stay Hidden',
+            'campaign_type' => PlatformPromotion::CAMPAIGN_MONTHLY_DEAL,
+            'is_public' => false,
+        ]);
+        $this->campaign([
+            'name' => 'Paused Campaign Must Stay Hidden',
+            'campaign_type' => PlatformPromotion::CAMPAIGN_DOUBLE_DATE,
+            'status' => PlatformPromotion::STATUS_PAUSED,
+        ]);
+        $this->campaign([
+            'name' => 'Expired Campaign Must Stay Hidden',
+            'campaign_type' => PlatformPromotion::CAMPAIGN_MONTHLY_DEAL,
+            'ends_on' => now('Asia/Manila')->subDay()->toDateString(),
+        ]);
+
+        $response = $this->actingAs($buyer)->get(route('campaigns.index'))
+            ->assertOk()
+            ->assertSee('All Campaigns')
+            ->assertSee('Back to Home')
+            ->assertSee('Live campaigns')
+            ->assertSee('Mega Sale')
+            ->assertSee(route('campaigns.show', $pisoSale), false)
+            ->assertSee('Eligible Piso Sale')
+            ->assertDontSee('Private Campaign Must Stay Hidden')
+            ->assertDontSee('Paused Campaign Must Stay Hidden')
+            ->assertDontSee('Expired Campaign Must Stay Hidden');
+
+        $this->assertSame(6, substr_count($response->getContent(), 'class="campaign-index-card"'));
+        foreach ($campaignNames as $campaignData) {
+            $response->assertSee($campaignData['name']);
+        }
+
+        $buyer->forceFill(['created_at' => now()->subDays(31)])->saveQuietly();
+        $agedBuyerResponse = $this->actingAs($buyer->fresh())->get(route('campaigns.index'))
+            ->assertOk()
+            ->assertSee('Mega Sale')
+            ->assertDontSee('Eligible Piso Sale');
+
+        $this->assertSame(5, substr_count($agedBuyerResponse->getContent(), 'class="campaign-index-card"'));
+    }
+
+    public function test_buyer_home_carousel_prioritizes_featured_banners_and_caps_campaign_slides_at_four(): void
+    {
+        Storage::fake('public');
+        $buyer = $this->buyer();
+
+        $campaigns = collect([
+            $this->campaign([
+                'name' => 'Earlier Unfeatured Banner',
+                'campaign_type' => PlatformPromotion::CAMPAIGN_PAYDAY_SALE,
+                'position' => 0,
+                'banner_path' => 'campaigns/banners/unfeatured-early.webp',
+                'banner_disk' => 'public',
+            ]),
+            $this->campaign([
+                'name' => 'Featured Banner One',
+                'campaign_type' => PlatformPromotion::CAMPAIGN_PAYDAY_SALE,
+                'is_featured' => true,
+                'position' => 4,
+                'banner_path' => 'campaigns/banners/featured-one.webp',
+                'banner_disk' => 'public',
+            ]),
+            $this->campaign([
+                'name' => 'Middle Unfeatured Banner',
+                'campaign_type' => PlatformPromotion::CAMPAIGN_PAYDAY_SALE,
+                'position' => 2,
+                'banner_path' => 'campaigns/banners/unfeatured-middle.webp',
+                'banner_disk' => 'public',
+            ]),
+            $this->campaign([
+                'name' => 'Featured Banner Two',
+                'campaign_type' => PlatformPromotion::CAMPAIGN_PAYDAY_SALE,
+                'is_featured' => true,
+                'position' => 5,
+                'banner_path' => 'campaigns/banners/featured-two.webp',
+                'banner_disk' => 'public',
+            ]),
+            $this->campaign([
+                'name' => 'Last Unfeatured Banner',
+                'campaign_type' => PlatformPromotion::CAMPAIGN_PAYDAY_SALE,
+                'position' => 6,
+                'banner_path' => 'campaigns/banners/unfeatured-last.webp',
+                'banner_disk' => 'public',
+            ]),
+        ]);
+
+        foreach ($campaigns as $campaign) {
+            Storage::disk('public')->put($campaign->banner_path, 'campaign banner');
+        }
+
+        $home = $this->actingAs($buyer)->get(route('home'))->assertOk();
+        $homeHtml = $home->getContent();
+        preg_match_all('/data-hero-campaign-id="(\d+)"/', $homeHtml, $matches);
+
+        $this->assertSame([
+            (string) $campaigns[1]->id,
+            (string) $campaigns[3]->id,
+            (string) $campaigns[0]->id,
+            (string) $campaigns[2]->id,
+        ], $matches[1]);
+        $this->assertSame(6, substr_count($homeHtml, 'class="bearly-promo-slide '));
+        $this->assertSame(6, preg_match_all('/data-slide="\d+"/', $homeHtml));
     }
 
     public function test_home_hides_campaign_flash_and_ranking_sections_without_live_results(): void
@@ -329,6 +770,19 @@ class BuyerCampaignDisplayTest extends TestCase
         $flashProduct = $this->product($store, $category, 'Eligible Flash Product');
         $flashVariant = $this->variant($flashProduct, 'FLASH-LANDING-001', 10000);
         $flashParticipation = $this->participation($flashCampaign, $store, $seller, $flashProduct, $flashVariant, PlatformCampaignParticipation::STATUS_APPROVED);
+        $limitedCampaignItem = PlatformCampaignParticipationItem::query()
+            ->where('platform_campaign_participation_id', $flashParticipation->id)
+            ->where('product_id', $flashProduct->id)
+            ->firstOrFail();
+        $limitedCampaignItem->update(['stock_limit' => 20]);
+        $this->recordCampaignOrderItem($buyer, $store, $flashProduct, $flashVariant, $limitedCampaignItem, 7, SellerOrderStatus::Completed->value);
+        $this->recordCampaignOrderItem($buyer, $store, $flashProduct, $flashVariant, $limitedCampaignItem, 9, SellerOrderStatus::Packing->value);
+
+        for ($productNumber = 2; $productNumber <= 7; $productNumber++) {
+            $additionalFlashProduct = $this->product($store, $category, "Eligible Flash Product {$productNumber}");
+            $additionalFlashVariant = $this->variant($additionalFlashProduct, "FLASH-LANDING-00{$productNumber}", 10000);
+            $this->campaignItem($flashParticipation, $additionalFlashProduct, $additionalFlashVariant);
+        }
 
         $paydayCampaign = $this->campaign([
             'name' => 'Payday Discount Campaign',
@@ -401,12 +855,20 @@ class BuyerCampaignDisplayTest extends TestCase
         $unavailableVariant = $this->variant($unavailableProduct, 'FLASH-LANDING-UNAVAILABLE-001', 10000);
         $this->campaignItem($flashParticipation, $unavailableProduct, $unavailableVariant);
 
+        $campaignEndsAt = $flashCampaign->endsAt()->toIso8601String();
         $response = $this->get(route('flash-deals'))
             ->assertOk()
             ->assertSee('Live Flash Product Drop')
             ->assertSee($flashCampaign->schedulePeriod())
+            ->assertSee('data-campaign-countdown', false)
+            ->assertSee('data-campaign-ends-at="'.$campaignEndsAt.'"', false)
+            ->assertSee('data-campaign-countdown-value', false)
             ->assertSee('Eligible Flash Product')
             ->assertSee('₱80.00')
+            ->assertSee('7 SOLD')
+            ->assertSee('aria-label="7 of 20 campaign units sold"', false)
+            ->assertSee('aria-valuenow="7"', false)
+            ->assertSee('style="--campaign-sales-progress: 35%"', false)
             ->assertSee(route('campaigns.show', $flashCampaign))
             ->assertSee(route('products.show', $flashProduct))
             ->assertSee('Other live offers')
@@ -422,12 +884,26 @@ class BuyerCampaignDisplayTest extends TestCase
         $this->assertStringNotContainsString('Out-of-stock Flash Product', $response->getContent());
         $this->assertStringNotContainsString('Unavailable Flash Product', $response->getContent());
         $this->assertStringContainsString('Payday Discount Campaign', $response->getContent());
+        $this->assertSame(1, substr_count($response->getContent(), 'role="progressbar"'));
+        $this->assertStringContainsString('0 SOLD', $response->getContent(), 'Uncapped products show a count without a misleading stock progress meter.');
 
-        $this->get(route('home'))
+        $homeResponse = $this->get(route('home'))
             ->assertOk()
             ->assertSee('class="flash-deals-preview home-flash-deals', false)
+            ->assertSee('data-campaign-countdown', false)
+            ->assertSee('data-campaign-ends-at="'.$campaignEndsAt.'"', false)
             ->assertSee('Live Flash Product Drop')
-            ->assertSee('Eligible Flash Product');
+            ->assertSee('Eligible Flash Product')
+            ->assertSee('7 SOLD')
+            ->assertSee('aria-label="7 of 20 campaign units sold"', false)
+            ->assertSee('aria-valuenow="7"', false)
+            ->assertSee('style="--campaign-sales-progress: 35%"', false);
+
+        $homeHtml = $homeResponse->getContent();
+        $this->assertSame(6, substr_count($homeHtml, 'class="home-flash-product-card discovery-card"'));
+        $this->assertSame(1, substr_count($homeHtml, 'role="progressbar"'));
+        $this->assertStringContainsString('0 SOLD', $homeHtml, 'Uncapped homepage products show a count without a misleading stock progress meter.');
+        $this->assertStringNotContainsString('class="text-button top-view-all" href="'.url('/flash-deals').'"', $homeHtml);
 
         $this->get(route('home'))
             ->assertOk()
@@ -506,14 +982,14 @@ class BuyerCampaignDisplayTest extends TestCase
         $cards = app(BuyerCatalogService::class)->cards(collect([
             $campaignProduct->fresh(),
             $discountProduct->fresh(),
-        ]));
+        ]), $buyer);
         $cardsByProduct = collect($cards)->keyBy('product_id');
 
         $this->assertSame('campaign', $cardsByProduct[$campaignProduct->id]['price_source']);
         $this->assertSame('10.10 Sale', $cardsByProduct[$campaignProduct->id]['campaign_name']);
         $this->assertSame(10_000, $cardsByProduct[$campaignProduct->id]['regular_price_minor']);
-        $this->assertSame(8000, $cardsByProduct[$campaignProduct->id]['price_minor']);
-        $this->assertSame(20, $cardsByProduct[$campaignProduct->id]['discount_percent']);
+        $this->assertSame(PlatformPromotion::PISO_SALE_PRICE_MINOR, $cardsByProduct[$campaignProduct->id]['price_minor']);
+        $this->assertSame(99, $cardsByProduct[$campaignProduct->id]['discount_percent']);
 
         $this->assertSame('product_discount', $cardsByProduct[$discountProduct->id]['price_source']);
         $this->assertSame('Weekend Markdown', $cardsByProduct[$discountProduct->id]['product_discount_name']);
@@ -522,15 +998,15 @@ class BuyerCampaignDisplayTest extends TestCase
             ->assertOk()
             ->assertSee('10.10 Sale')
             ->assertSee('data-price-campaign>10.10 Sale', false)
-            ->assertSee('₱100.00')
-            ->assertSee('20% OFF');
+            ->assertSee('₱1.00')
+            ->assertSee('99% OFF');
 
         $this->get(route('products.show', $campaignProduct))
             ->assertOk()
             ->assertSee('10.10 Sale')
             ->assertSee('data-price-campaign>10.10 Sale', false)
             ->assertSee('data-detail-promotion-name>10.10 Sale', false)
-            ->assertSee('20% OFF');
+            ->assertSee('99% OFF');
 
         $this->get(route('products.show', $discountProduct))
             ->assertOk()
@@ -553,7 +1029,7 @@ class BuyerCampaignDisplayTest extends TestCase
 
         $this->getJson(route('cart.data'))
             ->assertOk()
-            ->assertJsonPath('data.items.0.price_minor', 8000)
+            ->assertJsonPath('data.items.0.price_minor', PlatformPromotion::PISO_SALE_PRICE_MINOR)
             ->assertJsonPath('data.items.0.campaign_name', '10.10 Sale');
     }
 
@@ -675,7 +1151,7 @@ class BuyerCampaignDisplayTest extends TestCase
             'ends_time' => '23:59:59',
             'join_deadline' => $manila->copy()->subDays(2)->toDateString(),
             'requires_approval' => true,
-            'budget_minor' => null,
+            'budget_minor' => 5_000_000,
             'is_claimable' => false,
             'is_public' => true,
             'is_featured' => false,
@@ -722,6 +1198,64 @@ class BuyerCampaignDisplayTest extends TestCase
             'discount_percent' => null,
             'stock_limit' => null,
             'per_buyer_limit' => null,
+        ]);
+    }
+
+    private function recordCampaignOrderItem(
+        User $buyer,
+        Store $store,
+        Product $product,
+        ProductVariant $variant,
+        PlatformCampaignParticipationItem $campaignItem,
+        int $quantity,
+        string $sellerOrderStatus,
+    ): void {
+        $completed = $sellerOrderStatus === SellerOrderStatus::Completed->value;
+        $unitPriceMinor = (int) $campaignItem->campaign_price_minor;
+        $subtotalMinor = $unitPriceMinor * $quantity;
+        $completedAt = $completed ? now() : null;
+        $order = Order::query()->create([
+            'order_no' => 'ORDER-FLASH-SALES-'.(++$this->sequence),
+            'buyer_id' => $buyer->id,
+            'recipient_name' => $buyer->name,
+            'recipient_phone' => '+639171234567',
+            'address_line' => '1 Flash Deal Street',
+            'barangay' => 'Poblacion',
+            'city_municipality' => 'San Pablo City',
+            'province' => 'Laguna',
+            'currency' => 'PHP',
+            'subtotal_minor' => $subtotalMinor,
+            'shipping_fee_minor' => 0,
+            'discount_minor' => 0,
+            'total_minor' => $subtotalMinor,
+            'status' => $completed ? 'completed' : 'processing',
+            'payment_status' => $completed ? 'paid' : 'unpaid',
+            'placed_at' => now()->subDay(),
+            'completed_at' => $completedAt,
+        ]);
+        $sellerOrder = SellerOrder::query()->create([
+            'seller_order_no' => 'SELLER-FLASH-SALES-'.(++$this->sequence),
+            'order_id' => $order->id,
+            'store_id' => $store->id,
+            'status' => $sellerOrderStatus,
+            'subtotal_minor' => $subtotalMinor,
+            'discount_minor' => 0,
+            'shipping_fee_minor' => 0,
+            'total_minor' => $subtotalMinor,
+            'completed_at' => $completedAt,
+        ]);
+        OrderItem::query()->create([
+            'seller_order_id' => $sellerOrder->id,
+            'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
+            'platform_campaign_participation_item_id' => $campaignItem->id,
+            'product_name' => $product->name,
+            'variant_name' => $variant->name,
+            'sku' => $variant->sku,
+            'unit_price_minor' => $unitPriceMinor,
+            'quantity' => $quantity,
+            'discount_minor' => 0,
+            'subtotal_minor' => $subtotalMinor,
         ]);
     }
 }

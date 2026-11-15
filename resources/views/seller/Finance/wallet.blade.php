@@ -133,7 +133,7 @@
     <div class="seller-wallet-pagination">{{ $withdrawals->links() }}</div>
 </section>
 
-<section class="seller-panel seller-wallet-section" aria-labelledby="wallet-ledger-title">
+<section id="wallet-activity" class="seller-panel seller-wallet-section" aria-labelledby="wallet-ledger-title">
     <div class="seller-panel-heading wallet-ledger-heading">
         <div><span class="section-kicker">Auditable wallet ledger</span><h3 id="wallet-ledger-title">Wallet Activity</h3><p>Each row records a centavo-based balance movement and its reference.</p></div>
         <a href="{{ route('seller.finance.transactions') }}">Earnings history</a>
@@ -195,7 +195,32 @@
             </tbody>
         </table>
     </div>
-    <div class="seller-wallet-pagination">{{ $transactions->links() }}</div>
+    @if ($transactions->hasPages())
+        <div class="seller-wallet-pagination">
+            <span class="seller-wallet-pagination-summary">
+                Showing {{ $transactions->firstItem() }}–{{ $transactions->lastItem() }} of {{ $transactions->total() }} wallet entries
+            </span>
+            <nav class="seller-wallet-pagination-controls" aria-label="Wallet activity pages">
+                @if ($transactions->onFirstPage())
+                    <span class="is-disabled" aria-disabled="true">Previous</span>
+                @else
+                    <a href="{{ $transactions->previousPageUrl() }}" rel="prev">Previous</a>
+                @endif
+                @foreach ($transactions->getUrlRange(max(1, $transactions->currentPage() - 2), min($transactions->lastPage(), $transactions->currentPage() + 2)) as $page => $url)
+                    @if ($page === $transactions->currentPage())
+                        <span class="is-current" aria-current="page">{{ $page }}</span>
+                    @else
+                        <a href="{{ $url }}" aria-label="Go to wallet activity page {{ $page }}">{{ $page }}</a>
+                    @endif
+                @endforeach
+                @if ($transactions->hasMorePages())
+                    <a href="{{ $transactions->nextPageUrl() }}" rel="next">Next</a>
+                @else
+                    <span class="is-disabled" aria-disabled="true">Next</span>
+                @endif
+            </nav>
+        </div>
+    @endif
 </section>
 
 <div class="seller-modal wallet-withdrawal-modal" data-modal="wallet-withdrawal" @if(!$errors->any()) hidden @endif>

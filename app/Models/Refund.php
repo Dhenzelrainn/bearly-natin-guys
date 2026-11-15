@@ -25,9 +25,42 @@ class Refund extends Model
         return $query->where('status', 'completed')->whereNotNull('completed_at');
     }
 
+    /**
+     * Refunds whose external or cash payout has actually been recorded.
+     * `processing` is reserved here for a sent external payout awaiting Buyer
+     * receipt confirmation; it is not evidence that the case is resolved.
+     */
+    public function scopePayoutSent(Builder $query): Builder
+    {
+        return $query->where(function (Builder $payouts): void {
+            $payouts
+                ->where(function (Builder $processing): void {
+                    $processing->where('status', 'processing')
+                        ->whereNotNull('payout_amount_minor')
+                        ->whereNotNull('processed_at')
+                        ->whereColumn('payout_amount_minor', 'amount_minor')
+                        ->whereIn('method', ['gcash', 'bank_transfer', 'other']);
+                })
+                ->orWhere(function (Builder $completed): void {
+                    $completed->where('status', 'completed')
+                        ->whereNotNull('completed_at');
+                });
+        });
+    }
+
     public function isCompleted(): bool
     {
         return $this->status === 'completed' && $this->completed_at !== null;
+    }
+
+    public function isPayoutSent(): bool
+    {
+        return ($this->status === 'processing'
+                && $this->payout_amount_minor !== null
+                && $this->processed_at !== null
+                && (int) $this->payout_amount_minor === (int) $this->amount_minor
+                && in_array($this->method, ['gcash', 'bank_transfer', 'other'], true))
+            || $this->isCompleted();
     }
 
     public function returnRequest()

@@ -98,6 +98,10 @@
 
                     <h3>{{ $offer['name'] }}</h3>
 
+                    @if (! empty($offer['piso_sale_reserved']))
+                        <p class="live-platform-offer-reserved" role="status">Reserved in your current order</p>
+                    @endif
+
                     @if (filled($offer['discount_label'] ?? null))
                         <p class="live-platform-offer-value">{{ $offer['discount_label'] }}</p>
                     @endif

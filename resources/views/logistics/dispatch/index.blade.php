@@ -35,6 +35,16 @@
     </div>
 </div>
 
+@if(session('dispatch_conflict'))
+    <div class="flash-banner is-danger" role="alert" data-dispatch-conflict>
+        <i data-lucide="circle-alert" aria-hidden="true"></i>
+        <span>{{ session('dispatch_conflict') }}</span>
+        <button type="button" data-dismiss aria-label="Dismiss assignment conflict">
+            <i data-lucide="x" aria-hidden="true"></i>
+        </button>
+    </div>
+@endif
+
 <section class="metric-strip">
     <article class="metric-item">
         <span class="metric-icon">
@@ -152,6 +162,11 @@
 
             <tbody>
                 @forelse($zones as $zone)
+                    @php
+                        $hasDispatchConflict = session()->has('dispatch_conflict_zone_id');
+                        $restoreDispatchInput = ! $hasDispatchConflict
+                            || (int) session('dispatch_conflict_zone_id') === (int) $zone['id'];
+                    @endphp
                     <tr>
                         <td>
                             <span class="cell-title">
@@ -218,7 +233,7 @@
                                             @if(count($zone['riders']) > 0)
                                                 <optgroup label="Assigned to this zone">
                                                     @foreach($zone['riders'] as $rider)
-                                                        <option value="{{ $rider['id'] }}">
+                                                        <option value="{{ $rider['id'] }}" @selected($hasDispatchConflict && $restoreDispatchInput && (string) old('rider_profile_id') === (string) $rider['id'])>
                                                             {{ $rider['name'] }} · {{ $rider['specialization'] }} · {{ $rider['remaining'] }} slots remaining
                                                         </option>
                                                     @endforeach
@@ -228,7 +243,7 @@
                                             @if(count($zone['nearby_riders']) > 0)
                                                 <optgroup label="Nearby-zone fallback · Logistics approval required">
                                                     @foreach($zone['nearby_riders'] as $rider)
-                                                        <option value="{{ $rider['id'] }}" data-assignment-mode="nearby_zone">
+                                                        <option value="{{ $rider['id'] }}" data-assignment-mode="nearby_zone" @selected($hasDispatchConflict && $restoreDispatchInput && (string) old('rider_profile_id') === (string) $rider['id'])>
                                                             {{ $rider['name'] }} · {{ $rider['zone_code'] }} · {{ $rider['remaining'] }} slots
                                                             @if($rider['distance_label'])
                                                                 · {{ $rider['distance_label'] }}
@@ -248,7 +263,7 @@
                                         <div class="dispatch-overflow-details">
                                             <p class="dispatch-proximity-note" role="status">{{ $zone['proximity_message'] }}</p>
                                             <label for="dispatch-reason-{{ $zone['id'] }}">Reason for nearby-zone assignment <span>(required when selecting a Rider from another zone)</span></label>
-                                            <textarea id="dispatch-reason-{{ $zone['id'] }}" name="assignment_reason" rows="2" minlength="5" maxlength="1000" required aria-describedby="dispatch-reason-help-{{ $zone['id'] }}">{{ old('assignment_reason') }}</textarea>
+                                            <textarea id="dispatch-reason-{{ $zone['id'] }}" name="assignment_reason" rows="2" minlength="5" maxlength="1000" required aria-describedby="dispatch-reason-help-{{ $zone['id'] }}">{{ $restoreDispatchInput ? old('assignment_reason') : '' }}</textarea>
                                             <small id="dispatch-reason-help-{{ $zone['id'] }}">Nearby assignments are one-time overflow; the Rider’s home zone will not change.</small>
                                             @error('assignment_reason')<small role="alert">{{ $message }}</small>@enderror
                                         </div>
@@ -264,7 +279,7 @@
                                                 type="datetime-local"
                                                 name="planned_window_start"
                                                 min="{{ now()->format('Y-m-d\TH:i') }}"
-                                                value="{{ old('planned_window_start') }}"
+                                                value="{{ $restoreDispatchInput ? old('planned_window_start') : '' }}"
                                                 required
                                                 @disabled($zone['ready'] === 0 || (count($zone['riders']) === 0 && count($zone['nearby_riders']) === 0))
                                             >
@@ -278,7 +293,7 @@
                                                 type="datetime-local"
                                                 name="planned_window_end"
                                                 min="{{ now()->format('Y-m-d\TH:i') }}"
-                                                value="{{ old('planned_window_end') }}"
+                                                value="{{ $restoreDispatchInput ? old('planned_window_end') : '' }}"
                                                 required
                                                 @disabled($zone['ready'] === 0 || (count($zone['riders']) === 0 && count($zone['nearby_riders']) === 0))
                                             >

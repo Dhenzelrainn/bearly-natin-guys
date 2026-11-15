@@ -4,12 +4,14 @@ namespace Tests\Feature;
 
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\ProductImage;
 use App\Models\ProductVariant;
 use App\Models\SellerProfile;
 use App\Models\Store;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -98,6 +100,118 @@ class BuyerCatalogSearchTest extends TestCase
             ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('product_variant_id');
+    }
+
+    public function test_public_landing_uses_live_catalog_cards_with_only_preview_fields(): void
+    {
+        Storage::fake('public');
+
+        $category = $this->category();
+        $store = $this->store($category, 'Private Seller Store');
+        $product = $this->product($category, $store, 'Live Landing Headphones');
+        $product->update(['description' => 'LANDING_PRIVATE_DESCRIPTION_SENTINEL']);
+        $variant = $product->variants()->firstOrFail();
+        $variant->update(['sku' => 'LANDING_PRIVATE_SKU_SENTINEL']);
+
+        $imagePath = 'seller-products/live-landing-headphones.jpg';
+        Storage::disk('public')->put($imagePath, 'test image');
+        ProductImage::query()->create([
+            'product_id' => $product->id,
+            'path' => $imagePath,
+            'disk' => 'public',
+            'purpose' => 'primary',
+            'alt_text' => 'Live product image',
+            'position' => 0,
+            'is_primary' => true,
+        ]);
+
+        $escapedImageUrl = str_replace('/', '\\/', Storage::disk('public')->url($imagePath));
+        $escapedPreviewUrl = str_replace('/', '\\/', route('products.preview', $product));
+
+        $this->get(route('shop.home'))
+            ->assertOk()
+            ->assertSee($product->name)
+            ->assertSee($escapedImageUrl, false)
+            ->assertSee('"price_minor":159900', false)
+            ->assertSee($escapedPreviewUrl, false)
+            ->assertDontSee('LANDING_PRIVATE_DESCRIPTION_SENTINEL')
+            ->assertDontSee('LANDING_PRIVATE_SKU_SENTINEL')
+            ->assertDontSee($store->name)
+            ->assertDontSee('Everyday Cotton T-Shirt');
+    }
+
+    public function test_guest_product_preview_shows_only_name_image_and_price(): void
+    {
+        Storage::fake('public');
+
+        $category = $this->category();
+        $store = $this->store($category, 'Preview Private Store');
+        $product = $this->product($category, $store, 'Guest Preview Product');
+        $product->update(['description' => 'PREVIEW_PRIVATE_DESCRIPTION_SENTINEL']);
+        $variant = $product->variants()->firstOrFail();
+        $variant->update([
+            'sku' => 'PREVIEW_PRIVATE_SKU_SENTINEL',
+            'name' => 'PREVIEW_PRIVATE_VARIANT_SENTINEL',
+            'options' => ['Color' => 'PREVIEW_PRIVATE_OPTION_SENTINEL'],
+        ]);
+
+        $imagePath = 'seller-products/guest-preview.jpg';
+        Storage::disk('public')->put($imagePath, 'test image');
+        ProductImage::query()->create([
+            'product_id' => $product->id,
+            'path' => $imagePath,
+            'disk' => 'public',
+            'purpose' => 'primary',
+            'alt_text' => 'Guest preview product image',
+            'position' => 0,
+            'is_primary' => true,
+        ]);
+
+        $this->get(route('products.preview', $product))
+            ->assertOk()
+            ->assertSee($product->name)
+            ->assertSee('₱1,599.00')
+            ->assertSee(Storage::disk('public')->url($imagePath), false)
+            ->assertSee(route('products.show', $product), false)
+            ->assertDontSee('PREVIEW_PRIVATE_DESCRIPTION_SENTINEL')
+            ->assertDontSee('PREVIEW_PRIVATE_SKU_SENTINEL')
+            ->assertDontSee('PREVIEW_PRIVATE_VARIANT_SENTINEL')
+            ->assertDontSee('PREVIEW_PRIVATE_OPTION_SENTINEL')
+            ->assertDontSee($store->name);
+
+        $this->get(route('products.show', $product))
+            ->assertRedirect(route('login'));
+
+        $this->actingAs($this->buyer())
+            ->get(route('products.preview', $product))
+            ->assertRedirect(route('products.show', $product));
+    }
+
+    public function test_buyer_login_returns_to_the_product_detail_requested_by_a_guest(): void
+    {
+        $category = $this->category();
+        $store = $this->store($category, 'Guest Return Store');
+        $product = $this->product($category, $store, 'Guest Return Product');
+        $buyer = $this->buyer();
+
+        $this->get(route('products.show', $product))
+            ->assertRedirect(route('login'));
+
+        $this->post(route('login.submit'), [
+            'email' => $buyer->email,
+            'password' => 'Password123',
+        ])->assertRedirect(route('products.show', $product));
+    }
+
+    public function test_public_product_preview_rejects_products_not_orderable_in_the_buyer_catalog(): void
+    {
+        $category = $this->category();
+        $store = $this->store($category, 'Preview COD Store');
+        $product = $this->product($category, $store, 'Preview Online Only Product');
+        $product->update(['payment_methods' => ['online']]);
+
+        $this->get(route('products.preview', $product))
+            ->assertNotFound();
     }
 
     public function test_product_detail_store_count_matches_the_cod_orderable_store_catalog(): void

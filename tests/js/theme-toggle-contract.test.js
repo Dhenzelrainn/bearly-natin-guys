@@ -7,6 +7,7 @@ const preloadView = await readFile(new URL('../../resources/views/partials/theme
 const logoView = await readFile(new URL('../../resources/views/partials/theme-aware-logo.blade.php', import.meta.url), 'utf8');
 const themeScript = await readFile(new URL('../../resources/js/theme.js', import.meta.url), 'utf8');
 const themeCss = await readFile(new URL('../../resources/css/theme.css', import.meta.url), 'utf8');
+const adminCss = await readFile(new URL('../../resources/css/admin.css', import.meta.url), 'utf8');
 const buyerCss = await readFile(new URL('../../resources/css/buyer.css', import.meta.url), 'utf8');
 const buyerStoreView = await readFile(new URL('../../resources/views/buyer/stores/show.blade.php', import.meta.url), 'utf8');
 const buyerProductDetailCss = await readFile(new URL('../../resources/css/product-detail.css', import.meta.url), 'utf8');
@@ -69,9 +70,27 @@ test('theme preference is applied before page styles and synchronized across bro
     assert.match(themeScript, /addEventListener\('storage'/);
 });
 
+test('Admin campaign targeting surfaces and guidance remain readable in dark mode', () => {
+    assert.match(themeCss, /:root\[data-theme="dark"\]\s+body\.admin-body\s+\.campaign-advanced-settings\s*\{[^}]*background:\s*var\(--theme-surface-soft\)/s);
+    assert.match(themeCss, /\.campaign-advanced-settings\s*>\s*summary\s+strong\s*\{[^}]*color:\s*#efbd71/s);
+    assert.match(themeCss, /\.campaign-advanced-options\s+label\s*\{[^}]*color:\s*var\(--theme-text\)/s);
+    assert.match(themeCss, /\.campaign-advanced-options\s*>\s*small\s*\{[^}]*color:\s*var\(--theme-muted\)/s);
+    assert.match(themeCss, /\.campaign-advanced-content\s+\.admin-multi-dropdown-trigger\s*\{[^}]*background:\s*var\(--theme-input\)/s);
+    assert.match(themeCss, /\.campaign-advanced-content\s+\.admin-multi-dropdown-panel\s*\{[^}]*background:\s*var\(--theme-surface\)/s);
+    assert.match(themeCss, /\.campaign-advanced-content\s+input\[type="checkbox"\]\s*\{[^}]*box-shadow:\s*none/s);
+    assert.match(themeCss, /\.campaign-advanced-content\s+input\[type="checkbox"\]:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--theme-accent\)/s);
+    assert.match(adminCss, /\.admin-body \.campaign-advanced-settings\{[^}]*background:#fffdfa\}/);
+});
+
 test('toggle motion has a reduced-motion fallback', () => {
     assert.match(themeCss, /prefers-reduced-motion:\s*reduce/);
     assert.match(themeCss, /theme-switch-thumb/);
+});
+
+test('dark category toolbar controls show hover and keyboard-focus feedback', () => {
+    assert.match(themeCss, /body\.bc #bc-main :is\(\.sorts button, \.views button, \.saved-filter\):not\(\[aria-pressed="true"\]\):hover\s*\{[^}]*background:\s*#45331d;[^}]*color:\s*#fff8ef;/s);
+    assert.match(themeCss, /body\.bc #bc-main :is\(\.sorts button, \.views button, \.saved-filter\)\[aria-pressed="true"\]:hover\s*\{[^}]*background:\s*#ffd27a;[^}]*color:\s*#251a10;/s);
+    assert.match(themeCss, /body\.bc #bc-main :is\(\.sorts button, \.views button, \.saved-filter\):focus-visible\s*\{[^}]*outline:\s*2px solid var\(--theme-accent\)/s);
 });
 
 test('standalone registration screens replace their light background in dark mode', () => {
@@ -160,6 +179,8 @@ test('dark Landing, Sign In, and Buyer/Logistics/Rider registration surfaces pre
     assert.match(themeCss, /body\.bearly-landing\s+\.lp-slide::after/);
     assert.match(themeCss, /body\.bearly-landing\s+\.lp-header::before/);
     assert.match(themeCss, /body\.bearly-landing\s+\.lp-hero-wordmark\s*\{[^}]*display:\s*none/s);
+    assert.match(themeCss, /:root\[data-theme="dark"\]\s+body\.bearly-landing\s+\.lp-guest-login\s*\{[^}]*background:\s*var\(--theme-surface-soft\);[^}]*color:\s*var\(--theme-text\);/s);
+    assert.match(themeCss, /:root\[data-theme="dark"\]\s+body\.bearly-landing\s+\.lp-guest-login:hover\s*\{[^}]*background:\s*#3b3027;[^}]*color:\s*#fff8ef;/s);
     assert.match(themeCss, /body\.auth-body\s+\.login-surface/);
     assert.match(loginView, /class="login-bear(?:\s|\")/);
     assert.match(loginView, /class="login-truck(?:\s|\")/);
@@ -211,6 +232,11 @@ test('dark Seller styling covers the full workspace and preserves status and ima
     assert.match(sellerDarkModeCss, /\.fulfillment-status\.is-failed[\s\S]*?background-color:\s*#452521/);
     assert.match(sellerDarkModeCss, /\.product-media-gallery-stage:has\(img:not\(\[hidden\]\)\)[\s\S]*?background-color:\s*#fff/);
     assert.match(sellerDarkModeCss, /\.campaign-card-media img/);
+    [
+        '.campaign-product-row', '.campaign-sku-preview', '.campaign-terms',
+        '.campaign-terms-check', '.campaign-empty-state',
+    ].forEach((surface) => assert.ok(sellerDarkModeCss.includes(surface), `Missing campaign dark-mode fix: ${surface}`));
+    assert.match(sellerDarkModeCss, /\.campaign-product-row, \.campaign-terms, \.campaign-empty-state[\s\S]*?background-color:\s*var\(--seller-surface-soft\)/);
     assert.match(sellerDarkModeCss, /\.messages-standard-page[\s\S]*?background:\s*var\(--seller-surface\) !important/);
     assert.match(sellerDarkModeCss, /\.tracking-table td[\s\S]*?background:\s*var\(--seller-surface\) !important/);
     assert.match(sellerDarkModeCss, /\.message-order-reference:not\(\.is-dispute\)[\s\S]*?background:\s*#efbd71/);
@@ -419,12 +445,19 @@ test('Buyer dashboard, catalog, profile, and chat each receive page-specific dar
     assert.match(themeCss, /body\.bh:not\(\.bc\)\s+\.discover \.section-heading h2\s*\{[^}]*color:\s*#fff8ef/s);
     assert.match(themeCss, /body\.bh:not\(\.bc\)\.buyer-campaign-page \.campaign-back\s*\{[^}]*color:\s*#fff8ef/s);
     assert.match(themeCss, /body\.bh:not\(\.bc\)\.buyer-campaign-page \.campaign-products \.buyer-search-section-heading h2\s*\{[^}]*color:\s*#fff8ef/s);
+    assert.match(themeCss, /body\.bh:not\(\.bc\)\.buyer-campaign-page \.campaign-hero\s*\{[^}]*border-color:\s*var\(--theme-border\);[^}]*background:\s*var\(--theme-surface\)/s);
+    assert.match(themeCss, /body\.bh:not\(\.bc\)\.buyer-campaign-page \.campaign-hero-copy h1\s*\{[^}]*color:\s*#fff8ef/s);
+    assert.match(themeCss, /body\.bh:not\(\.bc\)\.buyer-campaign-page \.campaign-hero-funding\s*\{[^}]*background:\s*#45331d;[^}]*color:\s*#efbd71/s);
+    assert.match(themeCss, /body\.bh:not\(\.bc\)\.buyer-campaign-page \.campaign-reserved-notice\s*\{[^}]*background:\s*#30241d;[^}]*color:\s*#f1d8ae/s);
     assert.match(buyerCss, /\.buyer-campaign-page \.campaign-back\{[^}]*border:0[^}]*background:transparent/);
     assert.match(buyerCss, /\.buyer-campaign-page \.campaign-back:hover\{[^}]*text-decoration:none/);
     assert.match(themeCss, /body\.bh:not\(\.bc\)\.buyer-campaign-page \.campaign-back\s*\{[^}]*border-color:\s*transparent;[^}]*background:\s*transparent/s);
+    assert.match(themeCss, /body\.bh:not\(\.bc\) \.home-campaign-status\s*\{[^}]*color:\s*#b8ddb8/s);
+    assert.match(themeCss, /body\.bh:not\(\.bc\) \.home-campaign-discount\s*\{[^}]*color:\s*#efbd71/s);
+    assert.match(themeCss, /:root\[data-theme="dark"\] body\.bh:not\(\.bc\) \.bearly-promo-campaign-banner\s*\{[^}]*background:\s*var\(--theme-surface-soft\)/s);
     assert.match(themeCss, /body\.profile-page\.bh\s*\{[^}]*--profile-ink:\s*var\(--theme-text\)/s);
     assert.match(themeCss, /body\.bearly-chat-page\s+\.bearly-chat-page-shell/);
-    assert.match(themeCss, /body\.bh:not\(\.bc\)\s+\.home-campaign-showcase/);
+    assert.match(themeCss, /body\.bh:not\(\.bc\)\s+\.home-campaign-card/);
 });
 
 test('the theme switch stays horizontal in role navigation headers', () => {

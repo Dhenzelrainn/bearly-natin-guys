@@ -79,7 +79,7 @@ class SellerFinanceEarningsTest extends TestCase
             'store_id' => $store->id,
             'request_type' => 'refund_only',
             'reason_code' => 'not_as_described',
-            'status' => 'approved',
+            'status' => 'refund_pending',
             'requested_amount_minor' => 10_000,
             'submitted_at' => now()->subDay(),
         ]);
@@ -89,11 +89,12 @@ class SellerFinanceEarningsTest extends TestCase
             'payment_id' => $payment->id,
             'order_id' => $order->id,
             'amount_minor' => 10_000,
-            'status' => 'completed',
+            'status' => 'processing',
             'method' => 'gcash',
+            'payout_amount_minor' => 10_000,
             'approved_at' => now()->subHour(),
             'processed_at' => now()->subHour(),
-            'completed_at' => now()->subHour(),
+            'external_paid_on' => now()->toDateString(),
         ]);
         $reversal = PlatformCommission::query()->create([
             'seller_order_id' => $sellerOrder->id,

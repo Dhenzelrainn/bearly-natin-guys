@@ -190,6 +190,74 @@ class ReturnRefundService
             ->contains(fn (int $quantity): bool => $quantity > 0);
     }
 
+    /**
+     * Escalate unanswered Seller cases after their response deadline. The
+     * status check under the same Order/ReturnRequest locks makes scheduler
+     * retries idempotent and serializes them against a Seller response.
+     */
+    public function escalateOverdueSellerResponses(): int
+    {
+        $now = CarbonImmutable::now(config('app.timezone'));
+        $legacyCutoff = $now->subDays(2);
+        $escalatedCount = 0;
+
+        ReturnRequest::query()
+            ->where('status', ReturnRequestStatus::AwaitingSeller->value)
+            ->whereNull('seller_responded_at')
+            ->where(function ($query) use ($now, $legacyCutoff): void {
+                $query->where('response_due_at', '<=', $now)
+                    ->orWhere(function ($legacy) use ($legacyCutoff): void {
+                        $legacy->whereNull('response_due_at')
+                            ->where(function ($submitted) use ($legacyCutoff): void {
+                                $submitted->where('submitted_at', '<=', $legacyCutoff)
+                                    ->orWhere(function ($created) use ($legacyCutoff): void {
+                                        $created->whereNull('submitted_at')
+                                            ->where('created_at', '<=', $legacyCutoff);
+                                    });
+                            });
+                    });
+            })
+            ->select('id')
+            ->orderBy('id')
+            ->chunkById(100, function ($cases) use ($now, &$escalatedCount): void {
+                foreach ($cases as $candidate) {
+                    $escalated = DB::transaction(function () use ($candidate, $now): bool {
+                        $stub = ReturnRequest::query()->whereKey($candidate->id)->first();
+                        if (! $stub) {
+                            return false;
+                        }
+
+                        Order::query()->whereKey($stub->order_id)->lockForUpdate()->firstOrFail();
+                        $returnRequest = ReturnRequest::query()
+                            ->whereKey($stub->id)
+                            ->lockForUpdate()
+                            ->firstOrFail();
+
+                        if ($returnRequest->status !== ReturnRequestStatus::AwaitingSeller->value
+                            || $returnRequest->seller_responded_at !== null
+                            || filled($returnRequest->seller_response)) {
+                            return false;
+                        }
+
+                        $deadline = $this->sellerResponseDeadline($returnRequest);
+                        if (! $deadline || $deadline->greaterThan($now)) {
+                            return false;
+                        }
+
+                        $this->escalateSellerResponseDeadline($returnRequest, $deadline);
+
+                        return true;
+                    }, attempts: 3);
+
+                    if ($escalated) {
+                        $escalatedCount++;
+                    }
+                }
+            }, column: 'id');
+
+        return $escalatedCount;
+    }
+
     /** @param array<int|string, int|string> $itemQuantities
      * @param  array<int, UploadedFile>  $evidenceFiles
      */
@@ -398,13 +466,22 @@ class ReturnRefundService
         $storedPaths = [];
 
         try {
-            return DB::transaction(function () use ($seller, $storeId, $returnRequestId, $response, $evidenceFiles, &$storedPaths): ReturnRequest {
+            [$returnRequest, $deadlineMissed] = DB::transaction(function () use ($seller, $storeId, $returnRequestId, $response, $evidenceFiles, &$storedPaths): array {
                 $stub = ReturnRequest::query()->whereKey($returnRequestId)->where('store_id', $storeId)->firstOrFail();
                 Order::query()->whereKey($stub->order_id)->lockForUpdate()->firstOrFail();
                 $returnRequest = ReturnRequest::query()->whereKey($stub->id)->where('store_id', $storeId)->lockForUpdate()->firstOrFail();
 
                 if ($returnRequest->status !== ReturnRequestStatus::AwaitingSeller->value) {
                     throw ValidationException::withMessages(['return' => 'This case is no longer awaiting a Seller response.']);
+                }
+                $deadline = $this->sellerResponseDeadline($returnRequest);
+                if ($returnRequest->seller_responded_at === null
+                    && blank($returnRequest->seller_response)
+                    && $deadline
+                    && $deadline->lessThanOrEqualTo(CarbonImmutable::now(config('app.timezone')))) {
+                    $this->escalateSellerResponseDeadline($returnRequest, $deadline);
+
+                    return [$returnRequest->fresh(['items.orderItem', 'evidence', 'events']), true];
                 }
                 if ($evidenceFiles === []) {
                     throw ValidationException::withMessages([
@@ -421,8 +498,16 @@ class ReturnRefundService
                 $this->storeEvidence($returnRequest, $seller, $evidenceFiles, 'seller', $storedPaths);
                 $this->event($returnRequest, $seller, 'seller_response_submitted', $fromStatus, ReturnRequestStatus::UnderReview->value, trim($response));
 
-                return $returnRequest->fresh(['items.orderItem', 'evidence', 'events']);
+                return [$returnRequest->fresh(['items.orderItem', 'evidence', 'events']), false];
             }, attempts: 3);
+
+            if ($deadlineMissed) {
+                throw ValidationException::withMessages([
+                    'return' => 'The response deadline passed and this case was escalated to Admin review. You may still reply to an additional evidence request from Admin.',
+                ]);
+            }
+
+            return $returnRequest;
         } catch (Throwable $exception) {
             if ($storedPaths !== []) {
                 Storage::disk('local')->delete($storedPaths);
@@ -539,7 +624,7 @@ class ReturnRefundService
             $returnRequest = ReturnRequest::query()->whereKey($stub->id)->lockForUpdate()->with(['sellerOrder.items', 'store.sellerProfile.pickupAddress'])->firstOrFail();
 
             if ($returnRequest->status !== ReturnRequestStatus::UnderReview->value) {
-                throw ValidationException::withMessages(['return' => 'The Seller must respond before Admin can decide this case.']);
+                throw ValidationException::withMessages(['return' => 'This case is not ready for an Admin decision.']);
             }
 
             if (Refund::query()->where('return_request_id', $returnRequest->id)->exists()) {
@@ -785,6 +870,139 @@ class ReturnRefundService
         ));
     }
 
+    private function notifySellerOfMissedResponseDeadline(ReturnRequest $returnRequest): void
+    {
+        $this->notifySellerOfReturnUpdate(
+            $returnRequest,
+            'Seller response deadline passed',
+            "The response deadline for {$returnRequest->return_no} passed. Admin review can continue without your initial response; you may still answer a later evidence request.",
+            'warning',
+        );
+    }
+
+    private function notifySellerOfReturnUpdate(ReturnRequest $returnRequest, string $title, string $body, string $type = 'info'): void
+    {
+        $seller = $returnRequest->store?->sellerProfile?->user;
+        if (! $seller) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($seller, new WorkflowNotification(
+            eventKey: 'seller_return_updates',
+            title: $title,
+            body: $body,
+            actionUrl: route('seller.orders.returns.show', ['caseId' => $returnRequest->return_no]),
+            type: $type,
+            meta: ['return_request_id' => (int) $returnRequest->id],
+        ));
+    }
+
+    private function notifyAdminsOfReturnInspectionComplete(ReturnRequest $returnRequest): void
+    {
+        $this->notifications->sendManyAfterCommit(
+            $this->notifications->admins(),
+            new WorkflowNotification(
+                eventKey: 'admin_return_ready_for_refund',
+                title: 'Return ready for refund review',
+                body: "Seller inspection for {$returnRequest->return_no} is complete. The case is ready for Admin refund review.",
+                actionUrl: route('admin.compliance.returns-refunds'),
+                type: 'info',
+                meta: ['return_request_id' => (int) $returnRequest->id],
+            ),
+        );
+    }
+
+    private function notifyLogisticsOfReturnDelivery(ReturnRequest $returnRequest, User $actor): void
+    {
+        $shipment = $returnRequest->returnShipment;
+        $providerUser = $shipment?->logisticsProfile?->user;
+
+        if (! $providerUser || ! $shipment) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($providerUser, new WorkflowNotification(
+            eventKey: 'logistics_return_delivery_completed',
+            title: 'Return delivered to Seller',
+            body: "Rider {$actor->name} delivered return {$returnRequest->return_no} to the Seller. Seller inspection is now pending.",
+            actionUrl: route('logistics.dispatch.monitoring'),
+            type: 'info',
+            meta: [
+                'return_request_id' => (int) $returnRequest->id,
+                'shipment_id' => (int) $shipment->id,
+                'shipment_no' => (string) $shipment->shipment_no,
+            ],
+        ));
+    }
+
+    private function notifyAdminsOfMissedResponseDeadline(ReturnRequest $returnRequest): void
+    {
+        $this->notifications->sendManyAfterCommit(
+            $this->notifications->admins(),
+            new WorkflowNotification(
+                eventKey: 'admin_return_response_overdue',
+                title: 'Seller response deadline missed',
+                body: "Seller did not respond to {$returnRequest->return_no} by the deadline. The case is ready for Admin review without Seller evidence.",
+                actionUrl: route('admin.compliance.returns-refunds'),
+                type: 'warning',
+                meta: ['return_request_id' => (int) $returnRequest->id],
+            ),
+        );
+    }
+
+    private function sellerResponseDeadline(ReturnRequest $returnRequest): ?CarbonImmutable
+    {
+        if ($returnRequest->response_due_at) {
+            return CarbonImmutable::parse($returnRequest->response_due_at);
+        }
+
+        $submittedAt = $returnRequest->submitted_at ?? $returnRequest->created_at;
+
+        return $submittedAt
+            ? CarbonImmutable::parse($submittedAt)->addDays(2)
+            : null;
+    }
+
+    private function escalateSellerResponseDeadline(ReturnRequest $returnRequest, CarbonImmutable $deadline): void
+    {
+        $fromStatus = $returnRequest->status;
+        $note = 'Seller did not respond by the 48-hour deadline. The case was escalated to Admin review without Seller evidence.';
+
+        $returnRequest->update(['status' => ReturnRequestStatus::UnderReview->value]);
+        $this->event(
+            $returnRequest,
+            null,
+            'seller_response_deadline_missed',
+            $fromStatus,
+            ReturnRequestStatus::UnderReview->value,
+            $note,
+            ['response_due_at' => $deadline->toIso8601String()],
+        );
+        $this->audit->record(
+            action: 'return.seller_response_deadline_missed',
+            module: 'Returns & Refunds',
+            subject: $returnRequest,
+            description: "{$returnRequest->return_no} was escalated to Admin review after the Seller response deadline passed.",
+            oldValues: ['status' => $fromStatus],
+            newValues: [
+                'status' => ReturnRequestStatus::UnderReview->value,
+                'response_due_at' => $deadline->toIso8601String(),
+                'seller_response_received' => false,
+            ],
+            severity: 'warning',
+            systemActor: true,
+        );
+
+        $this->notifyBuyerOfReturnUpdate(
+            $returnRequest,
+            'Your case moved to Admin review',
+            "The Seller did not respond to {$returnRequest->return_no} by the deadline. Admin review will continue without a Seller response.",
+            'info',
+        );
+        $this->notifySellerOfMissedResponseDeadline($returnRequest);
+        $this->notifyAdminsOfMissedResponseDeadline($returnRequest);
+    }
+
     public function adminRequestEvidence(User $admin, int $returnRequestId, string $note, string $requestedFrom, Request $request): ReturnRequest
     {
         return DB::transaction(function () use ($admin, $returnRequestId, $note, $requestedFrom, $request): ReturnRequest {
@@ -844,6 +1062,7 @@ class ReturnRefundService
     public function recordReturnDelivered(int $shipmentId, User $actor): void
     {
         $returnRequest = ReturnRequest::query()
+            ->with(['buyer', 'store.sellerProfile.user', 'returnShipment.logisticsProfile.user'])
             ->where('return_shipment_id', $shipmentId)
             ->lockForUpdate()
             ->first();
@@ -863,6 +1082,13 @@ class ReturnRefundService
             'Return delivered to Seller',
             "{$returnRequest->return_no} was delivered to the Seller for inspection.",
         );
+        $this->notifySellerOfReturnUpdate(
+            $returnRequest,
+            'Return delivered for inspection',
+            "Return {$returnRequest->return_no} was delivered to your Store. Inspect the returned items to move the case to Admin refund review.",
+            'warning',
+        );
+        $this->notifyLogisticsOfReturnDelivery($returnRequest, $actor);
     }
 
     /** @param array<int, array{condition_code: string, resolution: string}> $dispositions */
@@ -920,7 +1146,24 @@ class ReturnRefundService
                 $item->update([
                     'condition_code' => $condition,
                     'resolution' => $resolution,
+                    'quarantine_review_status' => $resolution === 'quarantine' ? 'pending' : null,
                 ]);
+
+                if ($resolution === 'quarantine') {
+                    $this->event(
+                        $returnRequest,
+                        $seller,
+                        'seller_quarantine_review_requested',
+                        $returnRequest->status,
+                        $returnRequest->status,
+                        'Returned item was held out of sellable stock for Seller review.',
+                        [
+                            'return_item_id' => (int) $item->id,
+                            'condition_code' => $condition,
+                            'quantity' => (int) $item->quantity,
+                        ],
+                    );
+                }
 
                 if ($resolution !== 'restock') {
                     continue;
@@ -955,9 +1198,498 @@ class ReturnRefundService
                 'resolution' => 'Seller inspection recorded. Admin may now make the approved manual refund payout.',
             ]);
             $this->event($returnRequest, $seller, 'seller_inspection_completed', $fromStatus, ReturnRequestStatus::RefundPending->value, 'Seller recorded condition and disposition for every returned item.');
+            $this->notifyBuyerOfReturnUpdate(
+                $returnRequest,
+                'Seller inspection completed',
+                "Seller inspection for {$returnRequest->return_no} is complete. The case is ready for Admin refund review.",
+            );
+            $this->notifyAdminsOfReturnInspectionComplete($returnRequest);
 
             return $returnRequest->fresh(['items.orderItem', 'events']);
         }, attempts: 3);
+    }
+
+    public function finalizeQuarantineReview(
+        User $seller,
+        int $returnItemId,
+        string $finalCondition,
+        string $finalResolution,
+        string $note,
+    ): ReturnRequest {
+        $storeId = $seller->sellerProfile?->store?->id;
+        abort_unless($storeId, 404, 'Seller Store not found.');
+
+        $note = trim($note);
+        if (mb_strlen($note) < 5) {
+            throw ValidationException::withMessages(['note' => 'Add a meaningful review note of at least 5 characters.']);
+        }
+
+        if (! in_array($finalCondition, ['sellable', 'damaged', 'opened', 'missing_parts'], true)
+            || ! in_array($finalResolution, ['restock', 'dispose'], true)
+            || ($finalResolution === 'restock' && $finalCondition !== 'sellable')
+            || ($finalResolution === 'dispose' && $finalCondition === 'sellable')) {
+            throw ValidationException::withMessages([
+                'final_condition_code' => 'Only a sellable item may be restocked. Dispose of items whose final condition is not sellable.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($seller, $storeId, $returnItemId, $finalCondition, $finalResolution, $note): ReturnRequest {
+            $itemStub = ReturnItem::query()
+                ->whereKey($returnItemId)
+                ->whereHas('returnRequest', fn ($query) => $query->where('store_id', $storeId))
+                ->firstOrFail();
+            $caseStub = ReturnRequest::query()
+                ->whereKey($itemStub->return_request_id)
+                ->where('store_id', $storeId)
+                ->firstOrFail();
+
+            Order::query()->whereKey($caseStub->order_id)->lockForUpdate()->firstOrFail();
+            $returnRequest = ReturnRequest::query()
+                ->whereKey($caseStub->id)
+                ->where('store_id', $storeId)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $item = ReturnItem::query()
+                ->whereKey($itemStub->id)
+                ->where('return_request_id', $returnRequest->id)
+                ->lockForUpdate()
+                ->with('orderItem')
+                ->firstOrFail();
+
+            if ($item->quarantine_review_status === 'completed') {
+                if ($item->quarantine_final_condition_code === $finalCondition
+                    && $item->quarantine_final_resolution === $finalResolution
+                    && $item->quarantine_review_note === $note) {
+                    return $returnRequest->fresh(['items.orderItem', 'events']);
+                }
+
+                throw ValidationException::withMessages(['return_item' => 'This quarantine review has already been completed.']);
+            }
+
+            if ($item->resolution !== 'quarantine' || $item->quarantine_review_status !== 'pending') {
+                throw ValidationException::withMessages(['return_item' => 'This item is not awaiting quarantine review.']);
+            }
+
+            $variant = null;
+            if ($finalResolution === 'restock') {
+                $variantId = $item->orderItem?->product_variant_id;
+                $variant = $variantId
+                    ? ProductVariant::query()
+                        ->whereKey($variantId)
+                        ->whereHas('product', fn ($query) => $query->where('store_id', $storeId))
+                        ->lockForUpdate()
+                        ->first()
+                    : null;
+
+                if (! $variant) {
+                    throw ValidationException::withMessages([
+                        'return_item' => 'This item cannot be restocked because its original Seller variant is no longer available.',
+                    ]);
+                }
+
+                $newBalance = (int) $variant->stock_on_hand + (int) $item->quantity;
+                if ($newBalance > 4_294_967_295) {
+                    throw ValidationException::withMessages(['return_item' => 'Restocking this item exceeds the supported stock balance.']);
+                }
+
+                $variant->update(['stock_on_hand' => $newBalance]);
+            }
+
+            $reviewedAt = now();
+            $item->update([
+                'quarantine_review_status' => 'completed',
+                'quarantine_final_condition_code' => $finalCondition,
+                'quarantine_final_resolution' => $finalResolution,
+                'quarantine_review_note' => $note,
+                'quarantine_reviewed_by' => $seller->id,
+                'quarantine_reviewed_at' => $reviewedAt,
+            ]);
+
+            if ($variant) {
+                InventoryMovement::query()->create([
+                    'variant_id' => $variant->id,
+                    'type' => 'return_restock',
+                    'quantity_delta' => (int) $item->quantity,
+                    'balance_after' => (int) $variant->stock_on_hand,
+                    'reference_type' => ReturnItem::class,
+                    'reference_id' => $item->id,
+                    'reason' => "Quarantine review restocked item from {$returnRequest->return_no}",
+                    'created_by' => $seller->id,
+                    'occurred_at' => $reviewedAt,
+                ]);
+            }
+
+            $this->event(
+                $returnRequest,
+                $seller,
+                'seller_quarantine_review_completed',
+                $returnRequest->status,
+                $returnRequest->status,
+                $note,
+                [
+                    'return_item_id' => (int) $item->id,
+                    'original_condition_code' => $item->condition_code,
+                    'original_resolution' => $item->resolution,
+                    'final_condition_code' => $finalCondition,
+                    'final_resolution' => $finalResolution,
+                    'quantity' => (int) $item->quantity,
+                ],
+            );
+            $returnRequest->touch();
+
+            return $returnRequest->fresh(['items.orderItem', 'events']);
+        }, attempts: 3);
+    }
+
+    public function recordExternalPayoutSent(
+        User $admin,
+        int $refundId,
+        string $method,
+        string $reference,
+        string $externalPaidOn,
+        UploadedFile $receipt,
+        Request $request,
+    ): Refund {
+        if (! in_array($method, ['gcash', 'bank_transfer', 'other'], true)) {
+            throw ValidationException::withMessages([
+                'method' => 'Choose GCash, bank transfer, or other. Cash refunds must use the Finance-to-Logistics cash custody workflow.',
+            ]);
+        }
+        if (trim($reference) === '') {
+            throw ValidationException::withMessages(['provider_reference' => 'Enter the successful external payout reference.']);
+        }
+        if (! $request->boolean('payout_sent_confirmed')) {
+            throw ValidationException::withMessages([
+                'payout_sent_confirmed' => 'Confirm that the external provider shows this payout as successfully sent.',
+            ]);
+        }
+        if (! $receipt->isValid() || ! in_array($receipt->getMimeType(), ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'], true)) {
+            throw ValidationException::withMessages(['receipt' => 'Upload a valid JPG, PNG, WebP, or PDF payout receipt.']);
+        }
+
+        $stub = Refund::query()->findOrFail($refundId);
+        $receiptPath = $receipt->store('refund-payout-receipts/'.$stub->refund_no, 'local');
+        if (! $receiptPath) {
+            throw ValidationException::withMessages(['receipt' => 'The payout receipt could not be stored. Please try again.']);
+        }
+
+        try {
+            $recorded = DB::transaction(function () use ($admin, $refundId, $method, $reference, $externalPaidOn, $receipt, $receiptPath, $request): Refund {
+                $stub = Refund::query()->findOrFail($refundId);
+                $order = Order::query()->whereKey($stub->order_id)->lockForUpdate()->firstOrFail();
+                $refund = Refund::query()->whereKey($stub->id)->lockForUpdate()->firstOrFail();
+                $returnRequest = ReturnRequest::query()
+                    ->whereKey($refund->return_request_id)
+                    ->lockForUpdate()
+                    ->with(['buyer', 'store.sellerProfile.user'])
+                    ->firstOrFail();
+
+                if (RefundCashPayout::query()->where('refund_id', $refund->id)->lockForUpdate()->exists()) {
+                    throw ValidationException::withMessages(['refund' => 'This refund is assigned to the separate cash-custody workflow.']);
+                }
+                if ($refund->status !== 'pending' || $returnRequest->status !== ReturnRequestStatus::RefundPending->value) {
+                    throw ValidationException::withMessages(['refund' => 'This refund is not waiting for an external payout to be recorded.']);
+                }
+                if (! in_array($refund->financially_responsible_party, ['seller', 'platform'], true)) {
+                    throw ValidationException::withMessages(['refund' => 'Record who is financially responsible before recording the external payout.']);
+                }
+                if ($returnRequest->request_type === 'return_refund' && $returnRequest->items()
+                    ->where(function ($query): void {
+                        $query->whereNull('condition_code')
+                            ->orWhereNotIn('resolution', ['restock', 'quarantine', 'dispose']);
+                    })
+                    ->exists()) {
+                    throw ValidationException::withMessages(['refund' => 'Seller inspection must be complete before recording this return refund.']);
+                }
+
+                try {
+                    $paidOn = CarbonImmutable::createFromFormat('!Y-m-d', $externalPaidOn, config('app.timezone'));
+                } catch (Throwable) {
+                    $paidOn = null;
+                }
+                if (! $paidOn || $paidOn->greaterThan(CarbonImmutable::today(config('app.timezone')))) {
+                    throw ValidationException::withMessages(['external_paid_on' => 'Enter the actual payout date; future dates are not allowed.']);
+                }
+
+                $payment = Payment::query()->whereKey($refund->payment_id)->where('order_id', $order->id)->lockForUpdate()->firstOrFail();
+                if ($payment->method !== 'cod' || ! in_array($payment->status, ['paid', 'partially_refunded'], true) || ! $payment->paid_at) {
+                    throw ValidationException::withMessages(['refund' => 'The original order does not have a recorded paid COD payment.']);
+                }
+
+                $priorRefundedMinor = (int) Refund::query()
+                    ->where('order_id', $order->id)
+                    ->where('id', '!=', $refund->id)
+                    ->payoutSent()
+                    ->sum('amount_minor');
+                $capturedMinor = $this->capturedAmountMinor($order);
+                if ($priorRefundedMinor + (int) $refund->amount_minor > $capturedMinor) {
+                    throw ValidationException::withMessages(['refund' => 'The payout would exceed the remaining captured order amount.']);
+                }
+
+                $financialEffect = $this->postRefundLedger($refund, $returnRequest, $payment);
+                $processedAt = now();
+                $refund->update([
+                    'status' => 'processing',
+                    'payout_amount_minor' => (int) $refund->amount_minor,
+                    'method' => $method,
+                    'provider_reference' => trim($reference),
+                    'external_paid_on' => $paidOn->toDateString(),
+                    'payout_receipt_disk' => 'local',
+                    'payout_receipt_path' => $receiptPath,
+                    'payout_receipt_mime_type' => $receipt->getMimeType(),
+                    'payout_receipt_original_name' => $this->safeOriginalName($receipt->getClientOriginalName()),
+                    'payout_receipt_size_bytes' => $receipt->getSize(),
+                    'processed_by' => $admin->id,
+                    'processed_at' => $processedAt,
+                    'completed_at' => null,
+                    'failed_at' => null,
+                    'failure_reason' => null,
+                ]);
+
+                $refundedTotal = $priorRefundedMinor + (int) $refund->amount_minor;
+                $paymentStatus = $refundedTotal >= $capturedMinor ? 'refunded' : 'partially_refunded';
+                $payment->update([
+                    'status' => $paymentStatus,
+                    'refunded_at' => $paymentStatus === 'refunded' ? $processedAt : $payment->refunded_at,
+                ]);
+                $order->update(['payment_status' => $paymentStatus]);
+                if ($paymentStatus === 'refunded' || $this->orderItemsFullyRefunded($order)) {
+                    $this->promotions->releaseForOrder($order, PromotionRedemption::STATUS_REFUNDED);
+                }
+
+                // Seller case polling versions include ReturnRequest.updated_at;
+                // the case status remains refund_pending, but the payout stage changed.
+                $returnRequest->touch();
+                $note = 'Admin recorded a successful external payout. The case remains open until the Buyer confirms receipt; Bearly did not transfer funds.';
+                $this->event($returnRequest, $admin, 'external_refund_payout_sent', ReturnRequestStatus::RefundPending->value, ReturnRequestStatus::RefundPending->value, $note, [
+                    'refund_id' => (int) $refund->id,
+                    'refund_no' => (string) $refund->refund_no,
+                    'method' => $method,
+                    'reference' => trim($reference),
+                    'external_paid_on' => $paidOn->toDateString(),
+                    'amount_minor' => (int) $refund->amount_minor,
+                    'payout_amount_minor' => (int) $refund->payout_amount_minor,
+                ]);
+                $this->audit->record(
+                    action: 'refund.external_payout_sent_recorded',
+                    module: 'Returns & Refunds',
+                    subject: $refund,
+                    description: "External refund payout {$refund->refund_no} was recorded as sent; Buyer receipt confirmation is still pending.",
+                    oldValues: ['status' => 'pending', 'return_status' => ReturnRequestStatus::RefundPending->value],
+                    newValues: [
+                        'status' => 'processing',
+                        'return_status' => ReturnRequestStatus::RefundPending->value,
+                        'method' => $method,
+                        'reference' => trim($reference),
+                        'external_paid_on' => $paidOn->toDateString(),
+                        'amount_minor' => (int) $refund->amount_minor,
+                        'payout_amount_minor' => (int) $refund->payout_amount_minor,
+                        'financially_responsible_party' => $refund->financially_responsible_party,
+                        'seller_recovery_amount_minor' => $financialEffect['seller_recovery_minor'],
+                        'receipt_original_name' => $refund->payout_receipt_original_name,
+                        'receipt_size_bytes' => $refund->payout_receipt_size_bytes,
+                        'processed_by' => $admin->id,
+                        'payment_status' => $paymentStatus,
+                        'buyer_confirmation_pending' => true,
+                    ],
+                    severity: 'warning',
+                    request: $request,
+                );
+
+                $this->notifyBuyerOfReturnUpdate(
+                    $returnRequest,
+                    'Refund payout sent — please confirm receipt',
+                    'Admin recorded your ₱'.number_format((int) $refund->payout_amount_minor / 100, 2).' refund as sent via '.str_replace('_', ' ', $method).'. Open your case to confirm when the full amount reaches you, or report a problem.',
+                    'info',
+                );
+                $this->notifySellerOfReturnUpdate(
+                    $returnRequest,
+                    'External refund payout recorded',
+                    "Admin recorded the payout for {$returnRequest->return_no}. The case remains open while the Buyer confirms receipt.",
+                );
+
+                return $refund->fresh(['returnRequest', 'payment', 'sellerTransactions', 'commissions', 'sellerRecovery.events.sellerPayout']);
+            }, attempts: 3);
+        } catch (Throwable $exception) {
+            Storage::disk('local')->delete($receiptPath);
+            throw $exception;
+        }
+
+        try {
+            $this->wallets->recordRefundAdjustment($recorded, $admin);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+
+        return $recorded;
+    }
+
+    public function confirmExternalRefundReceipt(User $buyer, int $returnRequestId, Request $request): bool
+    {
+        if (! $request->boolean('buyer_received_confirmed')) {
+            throw ValidationException::withMessages([
+                'buyer_received_confirmed' => 'Confirm that you received the full approved refund amount.',
+            ]);
+        }
+
+        $stub = ReturnRequest::query()
+            ->whereKey($returnRequestId)
+            ->where('buyer_id', $buyer->id)
+            ->firstOrFail();
+
+        return DB::transaction(function () use ($buyer, $stub, $request): bool {
+            Order::query()->whereKey($stub->order_id)->where('buyer_id', $buyer->id)->lockForUpdate()->firstOrFail();
+            $returnRequest = ReturnRequest::query()
+                ->whereKey($stub->id)
+                ->where('buyer_id', $buyer->id)
+                ->lockForUpdate()
+                ->with('buyer')
+                ->firstOrFail();
+            $refund = Refund::query()->where('return_request_id', $returnRequest->id)->orderByDesc('id')->lockForUpdate()->firstOrFail();
+
+            if ($refund->status === 'completed' && $returnRequest->status === ReturnRequestStatus::Resolved->value) {
+                return false;
+            }
+            if ($refund->status !== 'processing'
+                || $returnRequest->status !== ReturnRequestStatus::RefundPending->value
+                || ! in_array($refund->method, ['gcash', 'bank_transfer', 'other'], true)
+                || ! $refund->isPayoutSent()
+                || (int) $refund->payout_amount_minor !== (int) $refund->amount_minor
+                || RefundCashPayout::query()->where('refund_id', $refund->id)->exists()) {
+                throw ValidationException::withMessages(['refund' => 'This external payout is not awaiting Buyer receipt confirmation.']);
+            }
+
+            $confirmedAt = now();
+            $refund->update([
+                'status' => 'completed',
+                'completed_at' => $confirmedAt,
+            ]);
+            $returnRequest->update([
+                'status' => ReturnRequestStatus::Resolved->value,
+                'resolved_at' => $confirmedAt,
+                'resolution' => 'Buyer confirmed receipt of the full external refund of ₱'.number_format((int) $refund->payout_amount_minor / 100, 2).'. Admin recorded the external transfer; Bearly did not transfer funds.',
+            ]);
+            $this->event($returnRequest, $buyer, 'buyer_refund_receipt_confirmed', ReturnRequestStatus::RefundPending->value, ReturnRequestStatus::Resolved->value, 'Buyer confirmed receiving the full approved external refund.', [
+                'refund_id' => (int) $refund->id,
+                'refund_no' => (string) $refund->refund_no,
+                'amount_minor' => (int) $refund->payout_amount_minor,
+                'method' => $refund->method,
+                'reference' => $refund->provider_reference,
+                'external_paid_on' => $refund->external_paid_on?->toDateString(),
+                'buyer_confirmed_at' => $confirmedAt->toIso8601String(),
+            ]);
+            $this->audit->record(
+                action: 'refund.buyer_receipt_confirmed',
+                module: 'Returns & Refunds',
+                subject: $refund,
+                description: "Buyer confirmed receipt of external refund {$refund->refund_no}.",
+                oldValues: ['refund_status' => 'processing', 'return_status' => ReturnRequestStatus::RefundPending->value],
+                newValues: [
+                    'refund_status' => 'completed',
+                    'return_status' => ReturnRequestStatus::Resolved->value,
+                    'amount_minor' => (int) $refund->payout_amount_minor,
+                    'buyer_id' => (int) $buyer->id,
+                    'buyer_confirmed_at' => $confirmedAt->toIso8601String(),
+                ],
+                severity: 'info',
+                request: $request,
+            );
+            $this->notifyAdminsOfBuyerRefundAction(
+                $returnRequest,
+                'Buyer confirmed refund receipt',
+                "Buyer confirmed receiving the full payout for {$returnRequest->return_no}. The case is now resolved.",
+                'success',
+            );
+
+            return true;
+        }, attempts: 3);
+    }
+
+    public function reportExternalRefundNotReceived(User $buyer, int $returnRequestId, string $note, Request $request): bool
+    {
+        $note = trim($note);
+        if (mb_strlen($note) < 5 || mb_strlen($note) > 1000) {
+            throw ValidationException::withMessages(['note' => 'Explain the payout issue in 5 to 1,000 characters.']);
+        }
+
+        $stub = ReturnRequest::query()
+            ->whereKey($returnRequestId)
+            ->where('buyer_id', $buyer->id)
+            ->firstOrFail();
+
+        return DB::transaction(function () use ($buyer, $stub, $note, $request): bool {
+            Order::query()->whereKey($stub->order_id)->where('buyer_id', $buyer->id)->lockForUpdate()->firstOrFail();
+            $returnRequest = ReturnRequest::query()
+                ->whereKey($stub->id)
+                ->where('buyer_id', $buyer->id)
+                ->lockForUpdate()
+                ->with('buyer')
+                ->firstOrFail();
+            $refund = Refund::query()->where('return_request_id', $returnRequest->id)->orderByDesc('id')->lockForUpdate()->firstOrFail();
+
+            if ($refund->status !== 'processing'
+                || $returnRequest->status !== ReturnRequestStatus::RefundPending->value
+                || ! in_array($refund->method, ['gcash', 'bank_transfer', 'other'], true)
+                || ! $refund->isPayoutSent()
+                || RefundCashPayout::query()->where('refund_id', $refund->id)->exists()) {
+                throw ValidationException::withMessages(['refund' => 'This external payout cannot be reported as awaiting Buyer confirmation.']);
+            }
+
+            if (ReturnEvent::query()
+                ->where('return_request_id', $returnRequest->id)
+                ->where('actor_user_id', $buyer->id)
+                ->where('event_type', 'buyer_refund_receipt_not_received')
+                ->exists()) {
+                return false;
+            }
+
+            $this->event($returnRequest, $buyer, 'buyer_refund_receipt_not_received', ReturnRequestStatus::RefundPending->value, ReturnRequestStatus::RefundPending->value, $note, [
+                'refund_id' => (int) $refund->id,
+                'refund_no' => (string) $refund->refund_no,
+                'amount_minor' => (int) $refund->payout_amount_minor,
+                'method' => $refund->method,
+                'reference' => $refund->provider_reference,
+            ]);
+            $this->audit->record(
+                action: 'refund.buyer_reported_not_received',
+                module: 'Returns & Refunds',
+                subject: $refund,
+                description: "Buyer reported not receiving external refund {$refund->refund_no}.",
+                oldValues: ['refund_status' => 'processing', 'return_status' => ReturnRequestStatus::RefundPending->value],
+                newValues: [
+                    'refund_status' => 'processing',
+                    'return_status' => ReturnRequestStatus::RefundPending->value,
+                    'buyer_id' => (int) $buyer->id,
+                    'note' => $note,
+                    'admin_follow_up_required' => true,
+                ],
+                severity: 'warning',
+                request: $request,
+            );
+            $this->notifyAdminsOfBuyerRefundAction(
+                $returnRequest,
+                'Buyer reports refund not received',
+                "Buyer reported a problem receiving {$returnRequest->return_no}. Review the case and payout reference; the case remains open.",
+                'warning',
+            );
+
+            return true;
+        }, attempts: 3);
+    }
+
+    private function notifyAdminsOfBuyerRefundAction(ReturnRequest $returnRequest, string $title, string $body, string $type): void
+    {
+        $this->notifications->sendManyAfterCommit(
+            $this->notifications->admins(),
+            new WorkflowNotification(
+                eventKey: 'admin_return_buyer_refund_updates',
+                title: $title,
+                body: $body,
+                actionUrl: route('admin.compliance.returns-refunds'),
+                type: $type,
+                meta: ['return_request_id' => (int) $returnRequest->id],
+            ),
+        );
     }
 
     public function recordManualPayout(
@@ -971,11 +1703,10 @@ class ReturnRefundService
         ?int $cashPayoutId = null,
         ?string $completionReason = null,
     ): Refund {
-        $isExternalPayoutMethod = in_array($method, ['gcash', 'bank_transfer', 'other'], true);
         $isCustodyCashCompletion = $method === 'cash' && $cashPayoutId !== null;
-        if (! $isExternalPayoutMethod && ! $isCustodyCashCompletion) {
+        if (! $isCustodyCashCompletion) {
             throw ValidationException::withMessages([
-                'method' => 'Choose GCash, bank transfer, or other for a completed external payout. Cash refunds must use the Finance-to-Logistics cash custody workflow.',
+                'method' => 'Cash refunds must be completed through the verified Finance-to-Logistics cash custody workflow. External payouts use the Buyer-confirmation flow.',
             ]);
         }
         if (trim($reference) === '') {
@@ -983,7 +1714,7 @@ class ReturnRefundService
         }
         if (! $request->boolean('external_payout_confirmed')) {
             throw ValidationException::withMessages([
-                'external_payout_confirmed' => 'Confirm that the external payout has already been made before recording it.',
+                'external_payout_confirmed' => 'Finance must complete the cash refund only after Logistics verifies the Buyer acknowledgment.',
             ]);
         }
         if (! $receipt->isValid() || ! in_array($receipt->getMimeType(), ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'], true)) {
@@ -1055,7 +1786,7 @@ class ReturnRefundService
 
                 $priorRefundedMinor = (int) Refund::query()
                     ->where('order_id', $order->id)
-                    ->where('status', 'completed')
+                    ->payoutSent()
                     ->where('id', '!=', $refund->id)
                     ->sum('amount_minor');
                 $capturedMinor = $this->capturedAmountMinor($order);
@@ -1105,9 +1836,9 @@ class ReturnRefundService
                 $returnRequest->update([
                     'status' => ReturnRequestStatus::Resolved->value,
                     'resolved_at' => $processedAt,
-                    'resolution' => 'External payout of ₱'.number_format((int) $refund->amount_minor / 100, 2).' recorded by Admin via '.str_replace('_', ' ', $method).' on '.$paidOn->format('M j, Y').'. '.ucfirst($refund->financially_responsible_party).' is financially responsible. Bearly did not transfer funds.',
+                    'resolution' => 'Cash refund of ₱'.number_format((int) $refund->amount_minor / 100, 2).' completed by Finance after Logistics verified the Buyer acknowledgment on '.$paidOn->format('M j, Y').'. '.ucfirst($refund->financially_responsible_party).' is financially responsible. Bearly did not transfer funds.',
                 ]);
-                $this->event($returnRequest, $admin, 'manual_refund_recorded', ReturnRequestStatus::RefundPending->value, ReturnRequestStatus::Resolved->value, 'Admin recorded the completed external payout. Bearly did not transfer funds.', [
+                $this->event($returnRequest, $admin, 'manual_refund_recorded', ReturnRequestStatus::RefundPending->value, ReturnRequestStatus::Resolved->value, 'Finance completed the cash refund after Logistics verified the Buyer acknowledgment. Bearly did not transfer funds.', [
                     'refund_id' => $refund->id,
                     'method' => $method,
                     'reference' => trim($reference),
@@ -1160,8 +1891,10 @@ class ReturnRefundService
                 if ($refund->returnRequest) {
                     $this->notifyBuyerOfReturnUpdate(
                         $refund->returnRequest,
-                        'Refund sent',
-                        "Refund {$refund->refund_no} was recorded as paid via {$method}.",
+                        $cashPayoutId !== null ? 'Cash refund completed' : 'Refund sent',
+                        $cashPayoutId !== null
+                            ? "Finance completed cash refund {$refund->refund_no} after Logistics verified the signed Buyer receipt."
+                            : "Refund {$refund->refund_no} was recorded as paid via {$method}.",
                         'success',
                     );
                 }
@@ -1235,7 +1968,7 @@ class ReturnRefundService
                 || ! $returnRequest
                 || ! $recovery
                 || $recovery->status === 'voided'
-                || ($component === 'refund_recovery' && $refund->status !== 'completed')
+                || ($component === 'refund_recovery' && ! $refund->isPayoutSent())
                 || ($component === 'return_shipping_fee' && ! $returnShippingSettlement)
                 || $componentOutstandingMinor < 1) {
                 throw ValidationException::withMessages(['refund' => 'There is no outstanding Seller recovery to record for this refund.']);
@@ -1409,7 +2142,7 @@ class ReturnRefundService
         $saleCommissionMinor = (int) ($saleCommission?->amount_minor
             ?? round($commissionBaseMinor * $rateBps / 10000));
         $priorRefundsMinor = (int) Refund::query()
-            ->where('status', 'completed')
+            ->payoutSent()
             ->where('financially_responsible_party', 'seller')
             ->where('id', '!=', $refund->id)
             ->whereHas('returnRequest', fn ($query) => $query->where('seller_order_id', $sellerOrder->id))
@@ -2271,7 +3004,7 @@ class ReturnRefundService
                     ->where('order_item_id', $item->id)
                     ->whereHas('returnRequest', fn ($query) => $query
                         ->where('order_id', $order->id)
-                        ->whereHas('refunds', fn ($refunds) => $refunds->completed()))
+                        ->whereHas('refunds', fn ($refunds) => $refunds->payoutSent()))
                     ->sum('quantity');
 
                 if ($refundedQuantity < (int) $item->quantity) {

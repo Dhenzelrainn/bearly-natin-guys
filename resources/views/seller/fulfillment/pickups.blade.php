@@ -122,7 +122,7 @@
                     @forelse ($eligibleOrders as $order)
                         <label class="pickup-order-option">
                             <input type="checkbox" name="order_ids[]" value="{{ $order['id'] }}" data-pickup-order data-allowed-provider-ids="{{ implode(',', $order['allowed_provider_ids']) }}" @checked(in_array($order['id'], (array) old('order_ids', [])))>
-                            <span>
+                            <div class="pickup-order-option-copy">
                                 <strong>{{ $order['order'] }}</strong>
                                 <small>{{ $order['packages'] }} {{ $order['packages'] === 1 ? 'parcel' : 'parcels' }} · {{ $order['weight'] }} · {{ $order['destination'] }} · Waybill {{ $order['waybill'] }} printed</small>
                                 <small>
@@ -131,7 +131,17 @@
                                         · Previous provider rejected this pickup
                                     @endif
                                 </small>
-                            </span>
+                                @if (! empty($order['products']))
+                                    <div class="pickup-order-product-previews" data-pickup-order-product-preview>
+                                        @include('partials.order-item-preview-list', ['items' => $order['products']])
+                                        @if ($order['product_count'] > count($order['products']))
+                                            <small class="pickup-order-more-products">+ {{ $order['product_count'] - count($order['products']) }} more {{ $order['product_count'] - count($order['products']) === 1 ? 'product' : 'products' }}</small>
+                                        @endif
+                                    </div>
+                                @else
+                                    <small class="pickup-order-products-unavailable">Product details unavailable</small>
+                                @endif
+                            </div>
                         </label>
                     @empty
                         <p>No orders are currently eligible for a new pickup request.</p>

@@ -185,6 +185,12 @@ class DispatchService
                     '=',
                     'dispatch_batch_parcels.dispatch_batch_id'
                 )
+                ->join(
+                    'parcels',
+                    'parcels.id',
+                    '=',
+                    'dispatch_batch_parcels.parcel_id'
+                )
                 ->where(
                     'dispatch_batches.rider_profile_id',
                     $rider->id
@@ -196,6 +202,10 @@ class DispatchService
                         'cancelled',
                     ]
                 )
+                ->whereNotIn('parcels.status', [
+                    ParcelStatus::Delivered->value,
+                    ParcelStatus::Returned->value,
+                ])
                 ->count();
 
             $remainingCapacity = $capacity - $activeLoad;

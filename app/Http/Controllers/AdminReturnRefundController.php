@@ -58,20 +58,20 @@ class AdminReturnRefundController extends Controller
     public function recordPayout(Request $request, Refund $refund, ReturnRefundService $returns): RedirectResponse
     {
         $data = $request->validate([
-            'external_payout_confirmed' => ['required', 'accepted'],
+            'payout_sent_confirmed' => ['required', 'accepted'],
             'method' => ['required', Rule::in(['gcash', 'bank_transfer', 'other'])],
             'provider_reference' => ['required', 'string', 'max:150'],
             'external_paid_on' => ['required', 'date_format:Y-m-d', 'before_or_equal:today'],
             'receipt' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
         ], [
             'method.in' => 'Choose GCash, bank transfer, or other for an external payout. Cash refunds must use the Finance-to-Logistics cash custody workflow.',
-            'external_payout_confirmed.required' => 'Confirm that the external payout has already been made before recording it.',
-            'external_payout_confirmed.accepted' => 'Confirm that the external payout has already been made before recording it.',
-            'receipt.required' => 'Upload the payout receipt or Buyer acknowledgment before recording the completed payout.',
+            'payout_sent_confirmed.required' => 'Confirm that the provider shows the external payout was successfully sent.',
+            'payout_sent_confirmed.accepted' => 'Confirm that the provider shows the external payout was successfully sent.',
+            'receipt.required' => 'Upload the external payout receipt before recording the payout as sent.',
             'receipt.mimes' => 'The payout receipt must be a JPG, PNG, WebP, or PDF file.',
         ]);
 
-        $recorded = $returns->recordManualPayout(
+        $recorded = $returns->recordExternalPayoutSent(
             $request->user(),
             (int) $refund->id,
             $data['method'],
@@ -81,7 +81,7 @@ class AdminReturnRefundController extends Controller
             $request,
         );
 
-        return back()->with('success', "{$recorded->refund_no} payout was recorded. Bearly did not initiate the external transfer.");
+        return back()->with('success', "{$recorded->refund_no} payout was recorded as sent. The case remains open until the Buyer confirms receipt.");
     }
 
     public function recordResponsibility(Request $request, Refund $refund, ReturnRefundService $returns): RedirectResponse
@@ -137,7 +137,7 @@ class AdminReturnRefundController extends Controller
 
     public function downloadPayoutReceipt(Request $request, Refund $refund, AuditService $audit): BinaryFileResponse
     {
-        abort_unless($refund->status === 'completed'
+        abort_unless(in_array($refund->status, ['processing', 'completed'], true)
             && $refund->payout_receipt_disk === 'local'
             && filled($refund->payout_receipt_path)
             && Storage::disk('local')->exists($refund->payout_receipt_path), 404);

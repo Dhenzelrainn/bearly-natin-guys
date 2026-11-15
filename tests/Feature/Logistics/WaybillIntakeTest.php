@@ -1400,7 +1400,8 @@ class WaybillIntakeTest extends TestCase
 
         $this->actingAs($courierUser)
             ->post(route('rider.courier.runs.start-loading', $run))
-            ->assertRedirect();
+            ->assertRedirect()
+            ->assertSessionHas('courierRunActionComplete', true);
         Notification::assertSentTo(
             $this->logisticsA,
             WorkflowNotification::class,
@@ -1409,7 +1410,8 @@ class WaybillIntakeTest extends TestCase
         );
         $this->actingAs($courierUser)
             ->post(route('rider.courier.runs.loaded', $run))
-            ->assertRedirect();
+            ->assertRedirect()
+            ->assertSessionHas('courierRunActionComplete', true);
         Notification::assertSentTo(
             $this->logisticsA,
             WorkflowNotification::class,
@@ -1418,7 +1420,8 @@ class WaybillIntakeTest extends TestCase
         );
         $this->actingAs($courierUser)
             ->post(route('rider.courier.runs.depart', $run))
-            ->assertRedirect();
+            ->assertRedirect()
+            ->assertSessionHas('courierRunActionComplete', true);
         Notification::assertSentTo(
             $this->logisticsA,
             WorkflowNotification::class,
@@ -1491,7 +1494,8 @@ class WaybillIntakeTest extends TestCase
 
         $this->actingAs($courierUser)
             ->post(route('rider.courier.runs.arrive', $run))
-            ->assertRedirect();
+            ->assertRedirect()
+            ->assertSessionHas('courierRunActionComplete', true);
         $this->assertSame('arrived', $run->fresh()->status);
         Notification::assertSentTo(
             $this->logisticsB,

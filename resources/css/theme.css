@@ -14,11 +14,354 @@
     --theme-switch-thumb: #ffffff;
 }
 
+.dashboard-context {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    width: 100%;
+    max-width: 770px;
+    margin-top: 18px;
+    padding: 12px 15px;
+    border: 1px solid var(--theme-border);
+    border-left: 4px solid var(--theme-accent);
+    border-radius: 12px;
+    background: var(--theme-surface);
+    color: var(--theme-text);
+    box-shadow: 0 5px 14px rgba(54, 37, 25, .05);
+}
+
+.dashboard-context-time {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 13px;
+    flex: 0 0 auto;
+}
+
+.dashboard-context-time > svg {
+    width: 23px;
+    height: 23px;
+    flex: 0 0 auto;
+    color: var(--theme-text);
+    stroke-width: 1.8;
+}
+
+.dashboard-context-time-copy {
+    display: grid;
+    gap: 2px;
+}
+
+.dashboard-context-label {
+    color: var(--theme-muted);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.25;
+}
+
+.dashboard-context-time-value {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dashboard-context-time-value time {
+    color: var(--theme-text);
+    font-size: 17px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+}
+
+.dashboard-context-zone {
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--theme-accent-soft);
+    color: var(--theme-text);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    line-height: 1.2;
+}
+
+.dashboard-context-divider {
+    width: 1px;
+    height: 42px;
+    flex: 0 0 1px;
+    background: var(--theme-border);
+}
+
+.dashboard-context-weather {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.dashboard-context-weather-main {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 12px;
+}
+
+.dashboard-weather-illustration {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 auto;
+    color: var(--theme-accent);
+    stroke-width: 1.6;
+}
+
+.dashboard-context-weather-copy {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+}
+
+.dashboard-context-location {
+    color: var(--theme-muted);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.2;
+}
+
+.dashboard-context-weather-reading {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+}
+
+.dashboard-weather-temperature {
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+    color: var(--theme-text);
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+}
+
+.dashboard-weather-unit {
+    font-size: .9em;
+    font-weight: 600;
+}
+
+.dashboard-weather-condition {
+    color: var(--theme-text);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+
+.dashboard-context-attribution {
+    display: flex;
+    min-width: 0;
+    flex: 0 1 auto;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    color: var(--theme-muted);
+    font-size: 11px;
+    line-height: 1.35;
+    text-align: right;
+}
+
+.dashboard-weather-attribution {
+    flex: 0 0 auto;
+    color: var(--theme-text);
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.dashboard-weather-attribution:hover {
+    color: var(--theme-accent);
+}
+
+.dashboard-weather-attribution:focus-visible {
+    border-radius: 2px;
+    outline: 2px solid var(--theme-accent);
+    outline-offset: 3px;
+}
+
+.dashboard-context-weather[data-state="unavailable"] .dashboard-weather-condition {
+    color: var(--theme-muted);
+}
+
+.dashboard-context-weather[data-state="loading"] .dashboard-weather-temperature {
+    color: var(--theme-muted);
+}
+
+html[data-theme="dark"] .dashboard-context {
+    border-color: #604a3b;
+    border-left-color: #e9a72f;
+    background: #35251e;
+    color: #f1e9e1;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, .18);
+}
+
+html[data-theme="dark"] .dashboard-context-zone {
+    background: #4b3428;
+    color: #f1e9e1;
+}
+
+html[data-theme="dark"] .dashboard-context-weather[data-state="loading"] .dashboard-weather-temperature {
+    color: #c0b2a5;
+}
+
+.dashboard-greeting {
+    color: var(--theme-text);
+    font-weight: 600;
+}
+
+@media (max-width: 600px) {
+    .dashboard-context {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+        max-width: none;
+        padding: 13px 14px;
+    }
+
+    .dashboard-context-divider {
+        display: none;
+    }
+
+    .dashboard-context-weather {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+    }
+
+    .dashboard-context-attribution {
+        max-width: 170px;
+    }
+}
+
+@media (max-width: 480px) {
+    .dashboard-context {
+        gap: 11px;
+        padding: 12px;
+        border-radius: 11px;
+    }
+
+    .dashboard-context-weather {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .dashboard-context-attribution {
+        max-width: none;
+        justify-content: flex-start;
+        margin-left: 54px;
+        text-align: left;
+    }
+}
+
 .theme-logo-dark { display: none !important; }
 .theme-logo-light { display: block; }
 
 html[data-theme="dark"] .theme-logo-light { display: none !important; }
 html[data-theme="dark"] .theme-logo-dark { display: block !important; }
+
+/* Keep account/profile photos consistently round across role interfaces. */
+body :is(
+    .avatar,
+    .admin-avatar,
+    .seller-avatar,
+    .account-avatar,
+    .sidebar-avatar,
+    .profile-avatar,
+    .navbar-profile-avatar,
+    .store-avatar,
+    .buyer-store-avatar,
+    .storefront-profile-placeholder
+) {
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+    border-radius: 50%;
+}
+
+body :is(
+    .avatar,
+    .admin-avatar,
+    .seller-avatar,
+    .account-avatar,
+    .sidebar-avatar,
+    .profile-avatar,
+    .navbar-profile-avatar,
+    .store-avatar,
+    .buyer-store-avatar,
+    .storefront-profile-placeholder
+) > img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: center;
+}
+
+body img.avatar-photo {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    clip-path: circle(50% at 50% 50%);
+    object-fit: cover;
+    object-position: center;
+}
+
+/* Match the Logistics and Rider compact profile controls to the other role headers. */
+body .profile-button {
+    display: flex;
+    min-height: 46px;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 5px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+}
+
+body .profile-button > .avatar {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    place-items: center;
+    border: 2px solid #72845a;
+    border-radius: 50%;
+    color: #72845a;
+    background: #fafbf7;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+body .profile-button .profile-copy strong {
+    display: block;
+    max-width: 150px;
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body .profile-button .profile-copy small {
+    display: none;
+}
+
+body .profile-button:focus-visible {
+    outline: 2px solid var(--theme-accent);
+    outline-offset: 2px;
+}
 
 :root[data-theme="dark"] {
     color-scheme: dark;
@@ -740,9 +1083,7 @@ html body.registration-body .registration-theme-toggle > button.theme-switch {
 :root[data-theme="dark"] body.bh:not(.bc) .sidebar,
 :root[data-theme="dark"] body.bh:not(.bc) .sidebar-categories-card,
 :root[data-theme="dark"] body.bh:not(.bc) .sidebar-perks,
-:root[data-theme="dark"] body.bh:not(.bc) .home-campaign-showcase,
 :root[data-theme="dark"] body.bh:not(.bc) .home-campaign-card,
-:root[data-theme="dark"] body.bh:not(.bc) .home-flash-campaign,
 :root[data-theme="dark"] body.bh:not(.bc) .home-flash-product-card,
 :root[data-theme="dark"] body.bh:not(.bc) .top-product-card,
 :root[data-theme="dark"] body.bh:not(.bc) .home-ranking-product,
@@ -758,6 +1099,7 @@ html body.registration-body .registration-theme-toggle > button.theme-switch {
 :root[data-theme="dark"] body.bh:not(.bc) .category-button,
 :root[data-theme="dark"] body.bh:not(.bc) .home-campaigns-heading h2,
 :root[data-theme="dark"] body.bh:not(.bc) .home-campaign-title-row strong,
+:root[data-theme="dark"] body.bh:not(.bc) .home-campaign-meta,
 :root[data-theme="dark"] body.bh:not(.bc) .home-flash-campaign-heading h3,
 :root[data-theme="dark"] body.bh:not(.bc) .home-flash-product-copy h4 a,
 :root[data-theme="dark"] body.bh:not(.bc) .top-products-heading h2,
@@ -789,6 +1131,7 @@ html body.registration-body .registration-theme-toggle > button.theme-switch {
 
 :root[data-theme="dark"] body.bh:not(.bc) .home-campaigns-view-all,
 :root[data-theme="dark"] body.bh:not(.bc) .home-flash-campaign-heading > a,
+:root[data-theme="dark"] body.bh:not(.bc) .home-flash-campaign-details,
 :root[data-theme="dark"] body.bh:not(.bc) .top-view-all {
     color: #e6b36e;
 }
@@ -802,6 +1145,41 @@ html body.registration-body .registration-theme-toggle > button.theme-switch {
 
 :root[data-theme="dark"] body.bh:not(.bc) .home-campaign-filters button.is-active {
     border-color: #8a6139;
+    background: #68472e;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.bh:not(.bc) .home-campaign-status {
+    border-color: #456a4d;
+    background: #263b2a;
+    color: #b8ddb8;
+}
+
+:root[data-theme="dark"] body.bh:not(.bc) .home-campaign-discount {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.bh:not(.bc) .home-campaign-meta {
+    background: var(--theme-surface);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.bh:not(.bc) .home-campaign-meta .home-campaign-title-row strong {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.bh:not(.bc) .home-campaign-meta .home-campaign-date {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.bh:not(.bc) .home-campaign-cta {
+    border-color: #d88b12;
+    background: #4b3428;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.bh:not(.bc) .home-campaign-cta:hover {
+    border-color: #efbd71;
     background: #68472e;
     color: #fff8ef;
 }
@@ -845,6 +1223,41 @@ html body.registration-body .registration-theme-toggle > button.theme-switch {
     color: #efbd71;
 }
 
+:root[data-theme="dark"] body.bh:not(.bc).buyer-campaign-page .campaign-hero {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+    box-shadow: none;
+}
+
+:root[data-theme="dark"] body.bh:not(.bc).buyer-campaign-page .campaign-hero-banner {
+    background: var(--theme-surface-soft);
+}
+
+:root[data-theme="dark"] body.bh:not(.bc).buyer-campaign-page .campaign-hero-copy h1 {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.bh:not(.bc).buyer-campaign-page .campaign-hero-period,
+:root[data-theme="dark"] body.bh:not(.bc).buyer-campaign-page .campaign-hero-meta,
+:root[data-theme="dark"] body.bh:not(.bc).buyer-campaign-page .campaign-hero-description {
+    color: #d5c2ad;
+}
+
+:root[data-theme="dark"] body.bh:not(.bc).buyer-campaign-page .campaign-hero-funding {
+    background: #45331d;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.bh:not(.bc).buyer-campaign-page .campaign-reserved-notice {
+    border-color: #806334;
+    background: #30241d;
+    color: #f1d8ae;
+}
+
+:root[data-theme="dark"] body.bh:not(.bc).buyer-campaign-page .campaign-reserved-notice .material-symbols-outlined {
+    color: #efbd71;
+}
+
 :root[data-theme="dark"] body.bh:not(.bc).buyer-campaign-page .campaign-products .buyer-search-section-heading h2 {
     color: #fff8ef;
 }
@@ -860,8 +1273,45 @@ html body.registration-body .registration-theme-toggle > button.theme-switch {
     background-color: var(--theme-surface-soft);
 }
 
+:root[data-theme="dark"] body.bh:not(.bc) .bearly-promo-campaign-banner {
+    background: var(--theme-surface-soft);
+}
+
 :root[data-theme="dark"] body.bh:not(.bc) .home-flash-product-copy > strong,
 :root[data-theme="dark"] body.bh:not(.bc) .top-product-bottom strong {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.bh:not(.bc) .home-flash-countdown {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.bh:not(.bc) .home-flash-deals .flash-deals-heading h2 {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.bh:not(.bc) .home-flash-countdown time {
+    background: #3b2a20;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.bh:not(.bc) .campaign-sales-indicator--limited {
+    background: #654039;
+}
+
+:root[data-theme="dark"] body.bh:not(.bc) .campaign-sales-indicator--unlimited {
+    border-color: #755247;
+    background: #3b2a25;
+    color: #ffd2c4;
+}
+
+:root[data-theme="dark"] body.flash-page .flash-campaign-countdown {
+    border-color: var(--theme-border);
+    background: var(--theme-surface-soft);
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.flash-page .flash-campaign-countdown time {
     color: #efbd71;
 }
 
@@ -943,6 +1393,30 @@ html body.registration-body .registration-theme-toggle > button.theme-switch {
     border-color: var(--theme-accent);
     background: var(--theme-accent);
     color: #251a10;
+}
+
+:root[data-theme="dark"] body.bc #bc-main :is(.sorts button, .views button, .saved-filter) {
+    transition: background-color .16s ease, border-color .16s ease, color .16s ease, box-shadow .16s ease;
+}
+
+:root[data-theme="dark"] body.bc #bc-main :is(.sorts button, .views button, .saved-filter):focus-visible {
+    outline: 2px solid var(--theme-accent);
+    outline-offset: 2px;
+}
+
+@media (hover: hover) {
+    :root[data-theme="dark"] body.bc #bc-main :is(.sorts button, .views button, .saved-filter):not([aria-pressed="true"]):hover {
+        border-color: #c99a5b;
+        background: #45331d;
+        color: #fff8ef;
+        box-shadow: 0 0 0 1px rgba(240, 184, 77, .2);
+    }
+
+    :root[data-theme="dark"] body.bc #bc-main :is(.sorts button, .views button, .saved-filter)[aria-pressed="true"]:hover {
+        border-color: #ffd27a;
+        background: #ffd27a;
+        color: #251a10;
+    }
 }
 
 /* Buyer account: account navigation, vouchers, purchases, and shared panels. */
@@ -2333,6 +2807,18 @@ html body.registration-body .registration-theme-toggle > button.theme-switch {
 :root[data-theme="dark"] body.bearly-landing .lp-hero-copy .lp-button,
 :root[data-theme="dark"] body.bearly-landing .lp-signup .lp-button {
     background: #775333;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.bearly-landing .lp-guest-login {
+    border-color: var(--theme-border);
+    background: var(--theme-surface-soft);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.bearly-landing .lp-guest-login:hover {
+    border-color: #806c58;
+    background: #3b3027;
     color: #fff8ef;
 }
 
@@ -4067,6 +4553,105 @@ html[data-theme-transition] body * {
     border-color: var(--theme-border);
     background: #2b241f;
     color: #d8cabd;
+}
+
+/* Admin campaign targeting: replace the light accordion and dropdown surfaces
+   while keeping labels and optional guidance readable in dark mode. */
+:root[data-theme="dark"] body.admin-body .campaign-advanced-settings {
+    border-color: var(--theme-border);
+    background: var(--theme-surface-soft);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.admin-body .campaign-advanced-settings > summary {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.admin-body .campaign-advanced-settings > summary strong {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.admin-body .campaign-advanced-settings > summary small,
+:root[data-theme="dark"] body.admin-body .campaign-advanced-content .form-field > span small,
+:root[data-theme="dark"] body.admin-body .campaign-advanced-content .form-field > small,
+:root[data-theme="dark"] body.admin-body .campaign-advanced-options > small {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.admin-body .campaign-advanced-settings > summary > i {
+    color: var(--theme-accent);
+}
+
+:root[data-theme="dark"] body.admin-body .campaign-advanced-settings > summary:focus-visible {
+    outline-color: var(--theme-accent);
+}
+
+:root[data-theme="dark"] body.admin-body .campaign-advanced-settings[open] > summary,
+:root[data-theme="dark"] body.admin-body .campaign-advanced-options {
+    border-color: var(--theme-border);
+}
+
+:root[data-theme="dark"] body.admin-body .campaign-advanced-content,
+:root[data-theme="dark"] body.admin-body .campaign-advanced-content .form-field > span,
+:root[data-theme="dark"] body.admin-body .campaign-advanced-options label {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.admin-body .campaign-advanced-content input[type="checkbox"] {
+    accent-color: var(--theme-accent);
+    box-shadow: none;
+}
+
+:root[data-theme="dark"] body.admin-body .campaign-advanced-content input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--theme-accent);
+    outline-offset: 2px;
+}
+
+:root[data-theme="dark"] body.admin-body .campaign-advanced-content input[type="file"]::file-selector-button {
+    border: 0;
+    border-right: 1px solid var(--theme-border);
+    background: var(--theme-surface-soft);
+    color: var(--theme-text);
+    cursor: pointer;
+}
+
+:root[data-theme="dark"] body.admin-body .campaign-advanced-content .admin-multi-dropdown-trigger {
+    border-color: var(--theme-border);
+    background: var(--theme-input);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.admin-body .campaign-advanced-content .admin-multi-dropdown-trigger:focus-visible,
+:root[data-theme="dark"] body.admin-body .campaign-advanced-content .admin-multi-dropdown[open] .admin-multi-dropdown-trigger {
+    border-color: var(--theme-accent);
+    box-shadow: 0 0 0 2px rgba(239, 189, 113, .22);
+}
+
+:root[data-theme="dark"] body.admin-body .campaign-advanced-content .admin-multi-dropdown-chevron {
+    color: var(--theme-accent);
+}
+
+:root[data-theme="dark"] body.admin-body .campaign-advanced-content .admin-multi-dropdown-panel {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, .32);
+}
+
+:root[data-theme="dark"] body.admin-body .campaign-advanced-content .admin-multi-dropdown-note,
+:root[data-theme="dark"] body.admin-body .campaign-advanced-content .admin-multi-dropdown-empty {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.admin-body .campaign-advanced-content .admin-multi-dropdown .admin-multi-dropdown-option {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.admin-body .campaign-advanced-content .admin-multi-dropdown .admin-multi-dropdown-option:hover {
+    background: var(--theme-surface-soft);
+}
+
+:root[data-theme="dark"] body.admin-body .campaign-advanced-content .admin-multi-dropdown-option input[type="checkbox"] {
+    accent-color: var(--theme-accent);
 }
 
 :root[data-theme="dark"] body.admin-body .campaign-review-budget-estimate strong,

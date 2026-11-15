@@ -22,10 +22,28 @@ test('Rider delivery completion requires an explicit per-Parcel verification wor
     assert.match(deliveryView, /Scanning verifies the Parcels; it does not complete delivery/);
 });
 
+test('Rider delivery proof accepts a selected photo as well as a camera capture on mobile', () => {
+    const proofInput = deliveryView.match(/<input\b[^>]*id="delivery-proof-photo"[^>]*>/)?.[0];
+
+    assert.ok(proofInput, 'The required delivery-proof file input should be present.');
+    assert.match(proofInput, /type="file"/);
+    assert.match(proofInput, /name="proof_photo"/);
+    assert.match(proofInput, /accept="image\/jpeg,image\/png,image\/webp"/);
+    assert.doesNotMatch(proofInput, /\bcapture(?:\s|=|>)/);
+});
+
 test('Rider delivery scanner reuses stable exact Code 128 reads and accepts only assigned codes', () => {
     assert.match(riderEntry, /import '\.\/rider-delivery-scanner\.js'/);
     assert.match(scanner, /observeBarcodeRead\(candidateState, rawValue, performance\.now\(\)\)/);
-    assert.match(scanner, /new window\.BarcodeDetector\(\{ formats: \['code_128'\] \}\)/);
+    assert.match(scanner, /createNativeCode128Detector\(window\.BarcodeDetector\)/);
+    assert.match(scanner, /await import\('html5-qrcode'\)/);
+    assert.match(scanner, /formatsToSupport:\s*\[Html5QrcodeSupportedFormats\.CODE_128\]/);
+    assert.match(scanner, /useBarCodeDetectorIfSupported:\s*false/);
+    assert.match(scanner, /new Html5Qrcode\(fallbackHost\.id/);
+    assert.match(scanner, /await stopSoftwareScanner\(softwareScanner\)/);
+    assert.match(scanner, /Camera access requires HTTPS/);
+    assert.match(scanner, /permission denied/i);
+    assert.match(deliveryView, /data-delivery-camera-fallback/);
     assert.match(scanner, /parcelItemsByCode\.has\(barcode\)/);
     assert.match(scanner, /method: 'POST'/);
     assert.match(scanner, /'X-CSRF-TOKEN': csrfToken\(\)/);

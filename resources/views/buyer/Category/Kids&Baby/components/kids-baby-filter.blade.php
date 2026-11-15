@@ -67,18 +67,11 @@
     </details>
 
     <details open>
-        <summary>Delivery & offers</summary>
+        <summary>Offers</summary>
         <div class="checks">
-            <label>
-                <input type="checkbox" data-field="shipping" value="1">
-                Free shipping
-            </label>
-            <label>
-                <input type="checkbox" data-field="voucher" value="1">
-                Has voucher
-            </label>
+            <label><input type="checkbox" data-field="voucher" value="1"> Has an active Store Voucher</label>
         </div>
-        <small>When offered by seller</small>
+        <small>Public Store Vouchers attached to voucher-eligible products.</small>
     </details>
 
     <details open>

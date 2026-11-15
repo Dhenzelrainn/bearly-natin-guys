@@ -39,6 +39,7 @@ class BuyerAccountIntegrationTest extends TestCase
             ->get('/profile')
             ->assertOk()
             ->assertSee('Ava Buyer')
+            ->assertSee('class="buyer-avatar-initials">AB</span>', false)
             ->assertSee('buyer@example.test')
             ->assertSee('Personal Information')
             ->assertSee('Profile Photo')
@@ -64,6 +65,7 @@ class BuyerAccountIntegrationTest extends TestCase
         $this->actingAs($buyer)
             ->get('/home')
             ->assertOk()
+            ->assertSee('class="buyer-avatar-initials">AB</span>', false)
             ->assertDontSee('class="flash-deals-preview home-flash-deals', false)
             ->assertDontSee('data-home-ranking-section', false)
             ->assertDontSee('No live product rankings are available yet')
@@ -95,6 +97,35 @@ class BuyerAccountIntegrationTest extends TestCase
             ->assertSee('data-chat-filter', false)
             ->assertSee('data-chat-attachment-button', false)
             ->assertSee('data-chat-emoji', false);
+    }
+
+    public function test_buyer_header_has_an_accessible_account_menu_with_profile_destinations(): void
+    {
+        $buyer = $this->makeBuyer('account-menu@example.test', 'Menu Buyer');
+
+        foreach (['/home', '/profile'] as $path) {
+            $this->actingAs($buyer)
+                ->get($path)
+                ->assertOk()
+                ->assertSee('data-buyer-account-menu', false)
+                ->assertSee('data-buyer-account-trigger', false)
+                ->assertSee('aria-expanded="false"', false)
+                ->assertSee('aria-controls="buyer-account-dropdown"', false)
+                ->assertSee('aria-label="Open Buyer account menu"', false)
+                ->assertSee('data-buyer-account-menu-identity', false)
+                ->assertSee('href="'.route('buyer.profile').'#addresses"', false)
+                ->assertSee('href="'.route('buyer.profile').'#likes"', false)
+                ->assertSee('href="'.route('buyer.profile').'#purchases"', false)
+                ->assertSee('href="'.route('buyer.profile').'#reviews"', false)
+                ->assertSee('href="'.route('notifications.center', ['source' => 'profile']).'"', false)
+                ->assertSee('href="'.route('buyer.profile').'#vouchers"', false)
+                ->assertSee('href="'.route('buyer.profile').'#help"', false)
+                ->assertSee('Help Center')
+                ->assertSee('data-notification-badge="dot"', false)
+                ->assertSee('action="'.route('logout').'"', false)
+                ->assertSee('Log Out')
+                ->assertDontSee('Administrator');
+        }
     }
 
     public function test_buyer_header_badge_counts_only_the_authenticated_buyers_active_marketplace_orders(): void
@@ -318,6 +349,11 @@ class BuyerAccountIntegrationTest extends TestCase
 
         $this->assertNotEmpty($uploadedPath);
         Storage::disk('public')->assertExists($uploadedPath);
+
+        $this->actingAs($buyer)
+            ->get('/home')
+            ->assertOk()
+            ->assertSee(Storage::disk('public')->url($uploadedPath), false);
 
         $this->actingAs($buyer)
             ->postJson('/profile', [

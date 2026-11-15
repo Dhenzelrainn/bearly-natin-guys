@@ -26,13 +26,41 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class LogisticsCashController extends Controller
 {
-    public function index(Request $request, RefundCashPayoutService $cash): View
+    public function index(
+        Request $request,
+        RefundCashPayoutService $cash,
+        BuyerCatalogService $catalog,
+    ): View
     {
         $user = $request->user();
         $workspace = $cash->logisticsWorkspace($user);
+        $workspace['refundPayouts'] = $workspace['refundPayouts']
+            ->map(function (RefundCashPayout $payout) use ($catalog): RefundCashPayout {
+                $items = ($payout->returnRequest?->items ?? collect())
+                    ->map(fn (ReturnItem $returnItem): array => [
+                        'item' => $returnItem->orderItem,
+                        'quantity' => (int) $returnItem->quantity,
+                    ])
+                    ->filter(fn (array $entry): bool => $entry['item'] instanceof OrderItem)
+                    ->values();
+
+                $payout->setAttribute('product_count', $items->count());
+                $payout->setAttribute('product_previews', $items
+                    ->take(3)
+                    ->map(fn (array $entry): array => [
+                        'name' => trim((string) $entry['item']->product_name) ?: 'Purchased item',
+                        'variant' => trim((string) $entry['item']->variant_name),
+                        'quantity' => $entry['quantity'],
+                        'image_url' => $catalog->orderItemImageUrl($entry['item']),
+                    ])
+                    ->all());
+
+                return $payout;
+            });
         $remittanceCandidates = $workspace['codCollections']
             ->where('status', 'received_by_logistics');
         $selectedCodCollection = null;
@@ -266,9 +294,8 @@ class LogisticsCashController extends Controller
     {
         $data = $request->validate([
             'actual_amount' => ['required', 'string', 'regex:/^\d{1,8}(?:\.\d{1,2})?$/'],
-            'reference' => ['required', 'string', 'max:150'],
         ]);
-        $cash->receiveAtLogistics($request->user(), (int) $payout->id, $this->amountToMinor($data['actual_amount']), trim($data['reference']));
+        $cash->receiveAtLogistics($request->user(), (int) $payout->id, $this->amountToMinor($data['actual_amount']));
 
         return back()->with('success', "Refund cash {$payout->payout_no} was received by Logistics.");
     }
@@ -277,10 +304,16 @@ class LogisticsCashController extends Controller
     {
         $data = $request->validate([
             'rider_user_id' => ['required', 'integer', 'exists:users,id'],
+            'assignment_reason' => ['nullable', 'string', 'max:1000'],
         ]);
-        $payout = $cash->assignRider($request->user(), (int) $payout->id, (int) $data['rider_user_id']);
+        $payout = $cash->assignRider(
+            $request->user(),
+            (int) $payout->id,
+            (int) $data['rider_user_id'],
+            isset($data['assignment_reason']) ? trim($data['assignment_reason']) : null,
+        );
 
-        return back()->with('success', "Rider assigned to {$payout->payout_no}. Print acknowledgment {$payout->acknowledgment_reference} and give it to the Rider with the cash.");
+        return back()->with('success', "Rider assigned to {$payout->payout_no}. Print acknowledgment form {$payout->acknowledgment_reference} and give it to the Rider with the cash.");
     }
 
     public function prepareRefundAcknowledgmentSlip(Request $request, RefundCashPayout $payout, RefundCashPayoutService $cash): RedirectResponse
@@ -289,12 +322,18 @@ class LogisticsCashController extends Controller
 
         return redirect()
             ->route('logistics.cash.refunds.acknowledgment-slip', $payout)
-            ->with('success', "Acknowledgment {$payout->acknowledgment_reference} is ready to print or save as PDF.");
+            ->with('success', "Acknowledgment form {$payout->acknowledgment_reference} is ready to print or save as PDF.");
     }
 
-    public function refundAcknowledgmentSlip(Request $request, RefundCashPayout $payout, RefundCashPayoutService $cash): View
+    public function refundAcknowledgmentSlip(Request $request, RefundCashPayout $payout, RefundCashPayoutService $cash): View|RedirectResponse
     {
-        $payout = $cash->acknowledgmentSlipForLogistics($request->user(), (int) $payout->id);
+        try {
+            $payout = $cash->acknowledgmentSlipForLogistics($request->user(), (int) $payout->id);
+        } catch (ConflictHttpException $exception) {
+            return redirect()
+                ->route('logistics.cash.index')
+                ->with('error', $exception->getMessage());
+        }
 
         return view('logistics.cash.acknowledgment-slip', $this->layoutData($request) + ['payout' => $payout]);
     }

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    @include('partials.favicon')
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'Seller Dashboard') | Bearly</title>
@@ -94,17 +95,20 @@
                 <section class="seller-nav-group {{ ($group['active'] ?? false) ? 'is-active' : '' }}" data-seller-nav-group="{{ $group['key'] }}">
                     @php($groupLanding = $group['children'][0] ?? [])
                     @php($groupHref = isset($groupLanding['route']) ? route($groupLanding['route'], $groupLanding['query'] ?? []) : route('seller.dashboard'))
-                    <a href="{{ $groupHref }}" class="seller-nav-link seller-nav-heading" aria-label="{{ $group['label'] }}" title="{{ $group['label'] }}">
+                    @php($groupTaskCount = collect($group['children'])->sum(fn ($child) => (int) (($navigationTaskCounts ?? [])[$child['route'] ?? ''] ?? 0)))
+                    <a href="{{ $groupHref }}" class="seller-nav-link seller-nav-heading" aria-label="{{ $group['label'] }}{{ $groupTaskCount > 0 ? ', '.$groupTaskCount.' actionable '.($groupTaskCount === 1 ? 'task' : 'tasks') : '' }}" title="{{ $group['label'] }}{{ $groupTaskCount > 0 ? ' · '.$groupTaskCount.' actionable '.($groupTaskCount === 1 ? 'task' : 'tasks') : '' }}">
                         <i class="seller-ui-icon" data-lucide="{{ $group['icon'] }}" aria-hidden="true"></i>
                         <span>{{ $group['label'] }}</span>
+                        @include('partials.navigation-task-count', ['count' => $groupTaskCount, 'class' => 'seller-nav-group-task-count'])
                     </a>
                     <div class="seller-nav-children">
                         @foreach ($group['children'] as $child)
                             @php($childHref = isset($child['route']) ? route($child['route'], $child['query'] ?? []) : '#')
                             @php($childStatus = $child['query']['status'] ?? null)
                             @php($childActive = isset($child['route']) && (request()->routeIs($child['route']) || ($child['route'] === 'seller.orders.returns' && request()->routeIs('seller.orders.returns.*')) || ($child['route'] === 'seller.products.pricing' && request()->routeIs('seller.products.pricing.*'))) && ($childStatus ? request()->query('status') === $childStatus : true))
+                            @php($childTaskCount = (int) (($navigationTaskCounts ?? [])[$child['route'] ?? ''] ?? 0))
                             @php($previewAttr = !isset($child['route']) ? ' data-preview-link="' . e($child['label']) . '"' : '')
-                            <a href="{{ $childHref }}" class="seller-nav-child {{ $childActive ? 'is-active' : '' }}" {!! $previewAttr !!}>{{ $child['label'] }}</a>
+                            <a href="{{ $childHref }}" class="seller-nav-child {{ $childActive ? 'is-active' : '' }}" {!! $previewAttr !!} @if ($childTaskCount > 0) aria-label="{{ $child['label'] }}, {{ $childTaskCount }} actionable {{ $childTaskCount === 1 ? 'task' : 'tasks' }}" title="{{ $child['label'] }} · {{ $childTaskCount }} actionable {{ $childTaskCount === 1 ? 'task' : 'tasks' }}" @endif>{{ $child['label'] }}@include('partials.navigation-task-count', ['count' => $childTaskCount, 'class' => 'seller-nav-task-count'])</a>
                         @endforeach
                     </div>
                 </section>

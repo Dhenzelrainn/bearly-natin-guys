@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Enums\SellerOrderStatus;
+use App\Events\SellerCampaignParticipationUpdated;
 use App\Models\PlatformCampaignParticipation;
 use App\Models\PlatformCampaignParticipationItem;
 use App\Models\PlatformPromotion;
@@ -14,8 +16,10 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class CampaignService
 {
@@ -23,6 +27,8 @@ class CampaignService
         private readonly SellerProductService $products,
         private readonly ProductPricingService $pricing,
         private readonly AuditService $audit,
+        private readonly CampaignAvailabilityNotificationService $campaignNotifications,
+        private readonly PisoSaleEligibilityService $pisoSaleEligibility,
     ) {}
 
     /**
@@ -84,6 +90,68 @@ class CampaignService
             ->values();
     }
 
+    public function joinableCountFor(User $seller): int
+    {
+        $store = $this->products->storeFor($seller);
+
+        if ($store->publication_status !== 'published') {
+            return 0;
+        }
+
+        $at = now('Asia/Manila');
+
+        return PlatformPromotion::query()
+            ->campaigns()
+            ->whereIn('status', [PlatformPromotion::STATUS_OPEN, PlatformPromotion::STATUS_ACTIVE])
+            ->notEndedAt($at)
+            ->whereNotNull('join_deadline')
+            ->whereDate('join_deadline', '>=', $at->toDateString())
+            ->where(function ($query) use ($store): void {
+                $query->whereDoesntHave('stores')
+                    ->orWhereHas('stores', fn ($stores) => $stores->whereKey($store->id));
+            })
+            ->whereDoesntHave('participations', fn ($query) => $query
+                ->where('store_id', $store->id)
+                ->whereIn('status', [
+                    PlatformCampaignParticipation::STATUS_PENDING_REVIEW,
+                    PlatformCampaignParticipation::STATUS_APPROVED,
+                    PlatformCampaignParticipation::STATUS_WITHDRAWN,
+                ]))
+            ->where(function ($query): void {
+                $query->whereNull('campaign_type')
+                    ->orWhere('campaign_type', '!=', PlatformPromotion::CAMPAIGN_PISO_SALE)
+                    ->orWhere(function ($pisoSale): void {
+                        $pisoSale->where('funding_type', PlatformPromotion::FUNDING_PLATFORM)
+                            ->whereNotNull('budget_minor')
+                            ->where('budget_minor', '>', 0);
+                    });
+            })
+            ->select([
+                'id',
+                'status',
+                'campaign_type',
+                'funding_type',
+                'budget_minor',
+                'join_deadline',
+                'ends_on',
+                'ends_time',
+                'max_participating_stores',
+            ])
+            ->withCount([
+                'participations as reserved_participations_count' => fn ($query) => $query
+                    ->where('store_id', '!=', $store->id)
+                    ->whereIn('status', [
+                        PlatformCampaignParticipation::STATUS_PENDING_REVIEW,
+                        PlatformCampaignParticipation::STATUS_APPROVED,
+                    ]),
+            ])
+            ->get()
+            ->filter(fn (PlatformPromotion $campaign): bool => $campaign->isJoinable()
+                && ($campaign->max_participating_stores === null
+                    || (int) $campaign->reserved_participations_count < (int) $campaign->max_participating_stores))
+            ->count();
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -106,12 +174,42 @@ class CampaignService
             'participation' => $campaign->participations->first(),
             'eligible_products' => $this->eligibleProducts($campaign, $store),
             'can_join' => $campaign->isJoinable()
+                && ($campaign->campaign_type !== PlatformPromotion::CAMPAIGN_PISO_SALE
+                    || ($campaign->funding_type === PlatformPromotion::FUNDING_PLATFORM
+                        && $campaign->budget_minor !== null
+                        && (int) $campaign->budget_minor > 0))
                 && $store->publication_status === 'published'
                 && ! in_array($campaign->participations->first()?->status, [
                     PlatformCampaignParticipation::STATUS_PENDING_REVIEW,
                     PlatformCampaignParticipation::STATUS_APPROVED,
                 ], true),
             'store_published' => $store->publication_status === 'published',
+        ];
+    }
+
+    /** @return array{id: int, status: string, status_label: string, review_reason: ?string, can_withdraw: bool, updated_at: ?string}|null */
+    public function sellerCampaignParticipationStatus(User $seller, PlatformPromotion $campaign): ?array
+    {
+        $store = $this->products->storeFor($seller);
+        $participation = PlatformCampaignParticipation::query()
+            ->where('platform_promotion_id', $campaign->id)
+            ->where('store_id', $store->id)
+            ->first();
+
+        if (! $participation) {
+            return null;
+        }
+
+        return [
+            'id' => (int) $participation->id,
+            'status' => (string) $participation->status,
+            'status_label' => $participation->statusLabel(),
+            'review_reason' => $participation->review_reason,
+            'can_withdraw' => in_array($participation->status, [
+                PlatformCampaignParticipation::STATUS_PENDING_REVIEW,
+                PlatformCampaignParticipation::STATUS_APPROVED,
+            ], true),
+            'updated_at' => $participation->updated_at?->toIso8601String(),
         ];
     }
 
@@ -128,6 +226,16 @@ class CampaignService
             if (! $campaign->isJoinable()) {
                 throw ValidationException::withMessages([
                     'campaign' => 'This campaign is no longer accepting Seller participation.',
+                ]);
+            }
+            if (
+                $campaign->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE
+                && ($campaign->funding_type !== PlatformPromotion::FUNDING_PLATFORM
+                    || $campaign->budget_minor === null
+                    || (int) $campaign->budget_minor < 1)
+            ) {
+                throw ValidationException::withMessages([
+                    'campaign' => 'Piso Sale requires Bearly funding and a positive campaign budget. Create a new Bearly-funded campaign to use this fixed-price offer.',
                 ]);
             }
             $this->assertStoreEligible($campaign, $store);
@@ -272,19 +380,118 @@ class CampaignService
      *
      * @return Collection<int, PlatformPromotion>
      */
-    public function activeBuyerCampaigns(?Carbon $at = null): Collection
+    public function activeBuyerCampaigns(User $buyer, ?Carbon $at = null): Collection
     {
-        return PlatformPromotion::query()
+        $at ??= now('Asia/Manila');
+        $campaigns = PlatformPromotion::query()
             ->campaigns()
             ->where('status', PlatformPromotion::STATUS_ACTIVE)
             ->where('is_public', true)
-            ->withinScheduleAt($at ?? now('Asia/Manila'))
+            ->withinScheduleAt($at)
             ->orderBy('position')
             ->orderByDesc('is_featured')
             ->orderBy('ends_on')
             ->orderBy('ends_time')
             ->orderBy('id')
             ->get();
+
+        if (! $this->pisoSaleEligibility->canDisplay($buyer, $at)) {
+            return $campaigns
+                ->reject(fn (PlatformPromotion $campaign): bool => $campaign->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE)
+                ->values();
+        }
+
+        return $campaigns;
+    }
+
+    /**
+     * Buyer-home campaign cards and carousel banners. Campaign visibility and
+     * Buyer eligibility are shared; Admin-featured banners are prioritized in
+     * the carousel, which is capped to four active campaigns.
+     *
+     * @return array{campaigns: array<int, array<string, mixed>>, carousel: array<int, array<string, mixed>>}
+     */
+    public function buyerHomeCampaigns(User $buyer, ?Carbon $at = null): array
+    {
+        $at ??= now('Asia/Manila');
+        $campaigns = $this->activeBuyerCampaigns($buyer, $at)->values();
+
+        $discountsByCampaignId = $campaigns->isEmpty()
+            ? collect()
+            : DB::table('platform_campaign_participation_items as items')
+                ->join('platform_campaign_participations as participations', 'participations.id', '=', 'items.platform_campaign_participation_id')
+                ->whereIn('participations.platform_promotion_id', $campaigns->pluck('id')->all())
+                ->where('participations.status', PlatformCampaignParticipation::STATUS_APPROVED)
+                ->whereNotNull('items.discount_percent')
+                ->groupBy('participations.platform_promotion_id')
+                ->select('participations.platform_promotion_id')
+                ->selectRaw('MAX(items.discount_percent) as maximum_discount_percent')
+                ->pluck('maximum_discount_percent', 'participations.platform_promotion_id');
+
+        $summaries = $campaigns->map(function (PlatformPromotion $campaign) use ($buyer, $at, $discountsByCampaignId): array {
+            $summary = $this->buyerCampaignSummaryPayload($campaign, $buyer);
+            $statusKey = $campaign->statusKey($at);
+            $isPisoSale = $campaign->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE;
+            $discountPercent = $isPisoSale
+                ? 0
+                : (int) ($discountsByCampaignId->get($campaign->id) ?? 0);
+
+            $summary['status_key'] = $statusKey;
+            $summary['status_label'] = $statusKey === PlatformPromotion::STATUS_ACTIVE
+                ? 'Ongoing'
+                : ucfirst(str_replace('_', ' ', $statusKey));
+            $summary['discount_percent'] = ! $isPisoSale && $discountPercent > 0 ? $discountPercent : null;
+            $summary['discount_label'] = $isPisoSale
+                ? '₱1.00 fixed price'
+                : ($discountPercent > 0 ? "Up to {$discountPercent}% off" : null);
+
+            return $summary;
+        });
+
+        $carousel = $campaigns
+            ->filter(fn (PlatformPromotion $campaign): bool => filled($campaign->banner_path))
+            ->sortByDesc(fn (PlatformPromotion $campaign): bool => (bool) $campaign->is_featured)
+            ->take(4)
+            ->map(fn (PlatformPromotion $campaign): array => $summaries->firstWhere('id', (int) $campaign->id))
+            ->filter()
+            ->values()
+            ->all();
+
+        return [
+            'campaigns' => $summaries->values()->all(),
+            'carousel' => $carousel,
+        ];
+    }
+
+    /**
+     * Admin-featured campaigns for the public landing page. Campaign cards are
+     * shown while the campaign is active, public, and in schedule; the linked
+     * preview independently lists any currently shoppable approved products.
+     * Piso Sale remains Buyer-only and is never featured publicly.
+     *
+     * @return Collection<int, PlatformPromotion>
+     */
+    public function featuredBuyerCampaignsForLanding(int $limit = 4, ?Carbon $at = null): Collection
+    {
+        $limit = min(8, max(1, $limit));
+        $at ??= now('Asia/Manila');
+
+        return PlatformPromotion::query()
+            ->campaigns()
+            ->where('status', PlatformPromotion::STATUS_ACTIVE)
+            ->where('is_public', true)
+            ->where('is_featured', true)
+            ->where(fn (Builder $campaigns) => $campaigns
+                ->whereNull('campaign_type')
+                ->orWhere('campaign_type', '!=', PlatformPromotion::CAMPAIGN_PISO_SALE))
+            ->withinScheduleAt($at)
+            ->orderBy('position')
+            ->orderBy('ends_on')
+            ->orderBy('ends_time')
+            ->orderBy('id')
+            ->limit($limit)
+            ->get()
+            ->values();
     }
 
     /**
@@ -324,12 +531,25 @@ class CampaignService
      * needs. Inactive, private, and out-of-schedule campaigns are treated as
      * missing so their existence is not revealed.
      */
-    public function buyerCampaignDetail(PlatformPromotion $campaign, ?Carbon $at = null): PlatformPromotion
+    public function buyerCampaignDetail(
+        PlatformPromotion $campaign,
+        ?Carbon $at = null,
+        ?User $buyer = null,
+    ): PlatformPromotion
     {
+        $at ??= now('Asia/Manila');
+
         if (! $campaign->isCampaign()
             || $campaign->status !== PlatformPromotion::STATUS_ACTIVE
             || ! (bool) $campaign->is_public
-            || ! $campaign->isWithinScheduleAt($at ?? now('Asia/Manila'))) {
+            || ! $campaign->isWithinScheduleAt($at)) {
+            abort(404);
+        }
+
+        if (
+            $campaign->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE
+            && ($buyer === null || ! $this->pisoSaleEligibility->canDisplay($buyer, $at))
+        ) {
             abort(404);
         }
 
@@ -348,11 +568,12 @@ class CampaignService
      *
      * @return Collection<int, Product>
      */
-    public function buyerCampaignProducts(PlatformPromotion $campaign): Collection
+    public function buyerCampaignProducts(PlatformPromotion $campaign, User $buyer): Collection
     {
         return $this->campaignPricedProducts(
             $campaign,
             $this->buyerCampaignProductsQuery($campaign)->get(),
+            $buyer,
         );
     }
 
@@ -363,13 +584,17 @@ class CampaignService
      *
      * @return Collection<int, Product>
      */
-    public function buyerCampaignProductPreview(PlatformPromotion $campaign, int $limit = 12): Collection
+    public function buyerCampaignProductPreview(
+        PlatformPromotion $campaign,
+        int $limit = 12,
+        ?User $buyer = null,
+    ): Collection
     {
         $limit = min(24, max(1, $limit));
         $eligibleProducts = collect();
 
-        $this->buyerCampaignProductsQuery($campaign)->chunkById(36, function (Collection $candidates) use ($campaign, $limit, $eligibleProducts): bool {
-            foreach ($this->campaignPricedProducts($campaign, $candidates) as $product) {
+        $this->buyerCampaignProductsQuery($campaign)->chunkById(36, function (Collection $candidates) use ($campaign, $limit, $eligibleProducts, $buyer): bool {
+            foreach ($this->campaignPricedProducts($campaign, $candidates, $buyer) as $product) {
                 $eligibleProducts->push($product);
                 if ($eligibleProducts->count() >= $limit) {
                     return false;
@@ -380,6 +605,56 @@ class CampaignService
         });
 
         return $eligibleProducts->values();
+    }
+
+    /**
+     * Completed campaign-item sales and configured limits for Buyer-visible
+     * Flash Deal cards. The count follows the existing Buyer Top Sales rule.
+     *
+     * @param  array<int, int>  $campaignItemIds
+     * @return array<int, array{sold_units: int, stock_limit: int|null}>
+     */
+    public function buyerCampaignSalesIndicators(PlatformPromotion $campaign, array $campaignItemIds): array
+    {
+        $itemIds = collect($campaignItemIds)
+            ->map(fn ($id): int => (int) $id)
+            ->filter(fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($itemIds->isEmpty()) {
+            return [];
+        }
+
+        $completedSales = DB::table('order_items')
+            ->join('seller_orders', 'seller_orders.id', '=', 'order_items.seller_order_id')
+            ->where('seller_orders.status', SellerOrderStatus::Completed->value)
+            ->whereNotNull('seller_orders.completed_at')
+            ->whereIn('order_items.platform_campaign_participation_item_id', $itemIds->all())
+            ->select('order_items.platform_campaign_participation_item_id')
+            ->selectRaw('SUM(order_items.quantity) AS completed_units_sold')
+            ->groupBy('order_items.platform_campaign_participation_item_id');
+
+        return DB::table('platform_campaign_participation_items as campaign_items')
+            ->join('platform_campaign_participations as participations', 'participations.id', '=', 'campaign_items.platform_campaign_participation_id')
+            ->leftJoinSub($completedSales, 'campaign_sales', fn ($join) => $join
+                ->on('campaign_sales.platform_campaign_participation_item_id', '=', 'campaign_items.id'))
+            ->whereIn('campaign_items.id', $itemIds->all())
+            ->where('participations.platform_promotion_id', (int) $campaign->id)
+            ->where('participations.status', PlatformCampaignParticipation::STATUS_APPROVED)
+            ->select([
+                'campaign_items.id',
+                'campaign_items.stock_limit',
+            ])
+            ->selectRaw('COALESCE(campaign_sales.completed_units_sold, 0) AS sold_units')
+            ->get()
+            ->mapWithKeys(fn (object $item): array => [(int) $item->id => [
+                'sold_units' => max(0, (int) $item->sold_units),
+                'stock_limit' => $item->stock_limit !== null
+                    ? max(0, (int) $item->stock_limit)
+                    : null,
+            ]])
+            ->all();
     }
 
     private function buyerCampaignProductsQuery(PlatformPromotion $campaign): Builder
@@ -417,7 +692,11 @@ class CampaignService
      * @param  Collection<int, Product>  $products
      * @return Collection<int, Product>
      */
-    private function campaignPricedProducts(PlatformPromotion $campaign, Collection $products): Collection
+    private function campaignPricedProducts(
+        PlatformPromotion $campaign,
+        Collection $products,
+        ?User $buyer = null,
+    ): Collection
     {
         if ($products->isEmpty()) {
             return collect();
@@ -440,7 +719,7 @@ class CampaignService
             $campaignItemId = null;
 
             foreach ($product->variants as $variant) {
-                $price = $this->pricing->priceForVariant($product, $variant);
+                $price = $this->pricing->priceForVariant($product, $variant, buyer: $buyer);
                 $effectiveItemId = (int) ($price['campaign_participation_item_id'] ?? 0);
                 $effectiveItem = $campaignItems->firstWhere('id', $effectiveItemId);
 
@@ -480,7 +759,7 @@ class CampaignService
      *
      * @return array<string, mixed>
      */
-    public function buyerCampaignPayload(PlatformPromotion $campaign): array
+    public function buyerCampaignPayload(PlatformPromotion $campaign, ?User $buyer = null): array
     {
         return [
             'id' => (int) $campaign->id,
@@ -495,6 +774,7 @@ class CampaignService
             'period' => $campaign->schedulePeriod(),
             'banner_url' => $this->campaignBannerUrl($campaign),
             'banner_title' => $campaign->banner_title,
+            'piso_sale_reserved' => $this->pisoSaleIsReservedFor($campaign, $buyer),
             'store_names' => $campaign->relationLoaded('approvedParticipations')
                 ? $campaign->approvedParticipations
                     ->pluck('store.name')
@@ -511,19 +791,38 @@ class CampaignService
      *
      * @return array<string, mixed>
      */
-    public function buyerCampaignSummaryPayload(PlatformPromotion $campaign): array
+    public function buyerCampaignSummaryPayload(PlatformPromotion $campaign, ?User $buyer = null): array
     {
+        $startsAt = $campaign->startsAt();
+        $endsAt = $campaign->endsAt();
+
         return [
             'id' => (int) $campaign->id,
             'name' => (string) $campaign->name,
             'type_key' => $campaign->campaign_type ?: 'general',
             'type_label' => $campaign->campaignTypeLabel(),
+            'funding_label' => $campaign->funding_type === PlatformPromotion::FUNDING_SELLER
+                ? 'Seller-funded campaign'
+                : 'Bearly-funded campaign',
             'description' => $campaign->description,
-            'starts_at' => $campaign->startsAt()?->toIso8601String(),
-            'ends_at' => $campaign->endsAt()?->toIso8601String(),
+            'starts_at' => $startsAt?->toIso8601String(),
+            'starts_on' => $startsAt?->toDateString(),
+            'starts_on_label' => $startsAt?->format('M j, Y'),
+            'ends_at' => $endsAt?->toIso8601String(),
+            'ends_on' => $endsAt?->toDateString(),
+            'ends_on_label' => $endsAt?->format('M j, Y'),
             'banner_url' => $this->campaignBannerUrl($campaign),
             'banner_title' => $campaign->banner_title,
+            'piso_sale_reserved' => $this->pisoSaleIsReservedFor($campaign, $buyer),
         ];
+    }
+
+    private function pisoSaleIsReservedFor(PlatformPromotion $campaign, ?User $buyer): bool
+    {
+        return $campaign->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE
+            && $buyer !== null
+            && $this->pisoSaleEligibility->canDisplay($buyer)
+            && $this->pisoSaleEligibility->isReserved($buyer);
     }
 
     private function campaignBannerUrl(PlatformPromotion $campaign): ?string
@@ -668,9 +967,12 @@ class CampaignService
                 }
 
                 $soldUnits = (int) ($soldUnitsByItemId[(int) $item->id] ?? 0);
-                $campaignPrice = $this->pricing->savedCampaignPriceMinor($item);
+                $campaignPrice = $this->pricing->campaignPriceMinorFor($item, $campaign);
                 $baselinePrice = max(0, (int) $item->regular_price_minor);
-                $unitSubsidy = $campaignPrice !== null
+                $priceAvailable = $campaignPrice !== null
+                    && ($campaign->campaign_type !== PlatformPromotion::CAMPAIGN_PISO_SALE
+                        || $baselinePrice > PlatformPromotion::PISO_SALE_PRICE_MINOR);
+                $unitSubsidy = $priceAvailable
                     ? max(0, $baselinePrice - $campaignPrice)
                     : 0;
                 $stockLimited = $item->stock_limit !== null;
@@ -696,14 +998,14 @@ class CampaignService
                     'exposure_minor' => $exposure,
                     'inventory_based' => $inventoryBased,
                     'product_visible' => $productVisible,
-                    'price_available' => $campaignPrice !== null,
+                    'price_available' => $priceAvailable,
                     'basis_label' => $stockLimited
                         ? 'Remaining campaign limit, capped by current available inventory'
                         : 'Current available inventory; changeable',
                 ];
 
                 $participationExposure += $exposure;
-                if ($inventoryBased && $productVisible && $campaignPrice !== null) {
+                if ($inventoryBased && $productVisible && $priceAvailable) {
                     $participationInventoryBasedItems++;
                 }
             }
@@ -761,7 +1063,10 @@ class CampaignService
 
     public function createCampaign(User $admin, array $data, ?UploadedFile $banner = null): PlatformPromotion
     {
-        $minimumDiscount = $this->minimumDiscount($data['minimum_discount_percent'] ?? null, required: true);
+        $campaignType = (string) ($data['campaign_type'] ?? '');
+        $minimumDiscount = $campaignType === PlatformPromotion::CAMPAIGN_PISO_SALE
+            ? null
+            : $this->minimumDiscount($data['minimum_discount_percent'] ?? null, required: true);
         if (($data['funding_type'] ?? null) !== PlatformPromotion::FUNDING_PLATFORM) {
             throw ValidationException::withMessages([
                 'funding_type' => 'Admin campaigns are Bearly-funded. Sellers manage their own Store promotions independently.',
@@ -774,9 +1079,8 @@ class CampaignService
             ]);
         }
 
-        return DB::transaction(function () use ($admin, $data, $banner, $minimumDiscount, $budgetMinor): PlatformPromotion {
+        return DB::transaction(function () use ($admin, $data, $banner, $minimumDiscount, $budgetMinor, $campaignType): PlatformPromotion {
             $bannerPath = $banner?->store('campaigns/banners', 'public');
-            $campaignType = (string) $data['campaign_type'];
             $campaign = PlatformPromotion::query()->create([
                 'created_by' => $admin->id,
                 'name' => trim((string) $data['name']),
@@ -842,6 +1146,10 @@ class CampaignService
                 'info',
             );
 
+            if ($campaign->status === PlatformPromotion::STATUS_OPEN) {
+                $this->campaignNotifications->notifyWhenFirstOpened($campaign);
+            }
+
             return $campaign->load(['stores:id,name', 'categories:id,name', 'products:id,name']);
         }, attempts: 3);
     }
@@ -878,6 +1186,17 @@ class CampaignService
                 ]);
             }
 
+            $campaignType = (string) ($data['campaign_type'] ?? $campaign->campaign_type);
+            if (
+                $campaignType === PlatformPromotion::CAMPAIGN_PISO_SALE
+                && $newFunding !== PlatformPromotion::FUNDING_PLATFORM
+                && $campaign->campaign_type !== PlatformPromotion::CAMPAIGN_PISO_SALE
+            ) {
+                throw ValidationException::withMessages([
+                    'campaign_type' => 'Piso Sale must be Bearly-funded. Legacy Seller-funded campaign funding cannot be changed; create a new Bearly-funded Piso Sale campaign.',
+                ]);
+            }
+
             $budgetMinor = $newFunding === PlatformPromotion::FUNDING_PLATFORM
                 ? (array_key_exists('budget', $data) ? $this->minor($data['budget'], 'budget') : $campaign->budget_minor)
                 : null;
@@ -891,12 +1210,20 @@ class CampaignService
             $storedMinimum = $campaign->minimum_discount_percent !== null
                 ? (int) $campaign->minimum_discount_percent
                 : null;
-            $submittedMinimum = $data['minimum_discount_percent'] ?? null;
-            $minimumDiscount = $submittedMinimum !== null && $submittedMinimum !== ''
-                ? $this->minimumDiscount($submittedMinimum, required: false)
-                : $storedMinimum;
-            if ($minimumDiscount !== $storedMinimum) {
-                $this->assertExistingPricesMeetMinimum($campaign, $minimumDiscount);
+            if ($campaignType === PlatformPromotion::CAMPAIGN_PISO_SALE) {
+                $minimumDiscount = null;
+            } else {
+                $minimumRequired = $storedMinimum !== null
+                    || $campaign->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE;
+                $submittedMinimum = $data['minimum_discount_percent'] ?? null;
+                $minimumDiscount = $submittedMinimum !== null && $submittedMinimum !== ''
+                    ? $this->minimumDiscount($submittedMinimum, required: false)
+                    : ($minimumRequired
+                        ? $this->minimumDiscount(null, required: true)
+                        : $storedMinimum);
+                if ($minimumDiscount !== $storedMinimum) {
+                    $this->assertExistingPricesMeetMinimum($campaign, $minimumDiscount);
+                }
             }
 
             if (array_key_exists('scope_submitted', $data) && $campaign->participations()->exists()) {
@@ -962,7 +1289,6 @@ class CampaignService
                 }
             }
 
-            $campaignType = (string) ($data['campaign_type'] ?? $campaign->campaign_type);
             $oldBannerPath = $campaign->banner_path;
             $oldBannerDisk = $campaign->banner_disk ?: 'public';
             $bannerPath = $banner?->store('campaigns/banners', 'public');
@@ -1097,6 +1423,13 @@ class CampaignService
                 'info',
             );
 
+            if (
+                $oldStatus === PlatformPromotion::STATUS_DRAFT
+                && $status === PlatformPromotion::STATUS_OPEN
+            ) {
+                $this->campaignNotifications->notifyWhenFirstOpened($campaign);
+            }
+
             return $campaign->fresh();
         }, attempts: 3);
     }
@@ -1111,7 +1444,7 @@ class CampaignService
             throw ValidationException::withMessages(['decision' => 'Choose approve or reject.']);
         }
 
-        return DB::transaction(function () use ($admin, $participation, $decision, $reason): PlatformCampaignParticipation {
+        $reviewedParticipation = DB::transaction(function () use ($admin, $participation, $decision, $reason): PlatformCampaignParticipation {
             $campaignId = PlatformCampaignParticipation::query()
                 ->whereKey($participation->id)
                 ->value('platform_promotion_id');
@@ -1167,6 +1500,37 @@ class CampaignService
 
             return $participation->fresh('items');
         }, attempts: 3);
+
+        $this->broadcastParticipationUpdate($reviewedParticipation);
+
+        return $reviewedParticipation;
+    }
+
+    private function broadcastParticipationUpdate(PlatformCampaignParticipation $participation): void
+    {
+        $sellerUserId = (int) (Store::query()
+            ->whereKey($participation->store_id)
+            ->with('sellerProfile:id,user_id')
+            ->first()?->sellerProfile?->user_id ?? 0);
+
+        if ($sellerUserId < 1) {
+            return;
+        }
+
+        $event = new SellerCampaignParticipationUpdated(
+            sellerUserId: $sellerUserId,
+            campaignId: (int) $participation->platform_promotion_id,
+            participationId: (int) $participation->id,
+            updatedAt: $participation->updated_at?->toIso8601String() ?? now()->toIso8601String(),
+        );
+
+        DB::afterCommit(function () use ($event): void {
+            try {
+                Event::dispatch($event);
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        });
     }
 
     /**
@@ -1174,6 +1538,15 @@ class CampaignService
      */
     private function eligibleProducts(PlatformPromotion $campaign, Store $store): array
     {
+        if (
+            $campaign->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE
+            && ($campaign->funding_type !== PlatformPromotion::FUNDING_PLATFORM
+                || $campaign->budget_minor === null
+                || (int) $campaign->budget_minor < 1)
+        ) {
+            return [];
+        }
+
         $campaign->loadMissing(['categories:id', 'products:id']);
         $categoryIds = $campaign->categories->pluck('id')->map(fn ($id): int => (int) $id)->all();
         $productIds = $campaign->products->pluck('id')->map(fn ($id): int => (int) $id)->all();
@@ -1192,7 +1565,8 @@ class CampaignService
                 ->whereColumn('stock_on_hand', '>', 'stock_reserved'))
             ->orderBy('name')
             ->get()
-            ->map(function (Product $product): array {
+            ->map(function (Product $product) use ($campaign): ?array {
+                $isPisoSale = $campaign->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE;
                 $variants = $product->variants->map(function (ProductVariant $variant) use ($product): array {
                     $effectiveSellerPrice = (int) $this->pricing
                         ->priceForVariant($product, $variant)['seller_unit_price_minor'];
@@ -1204,7 +1578,13 @@ class CampaignService
                         'regular_price_minor' => $effectiveSellerPrice,
                         'stock' => (int) $variant->available_stock,
                     ];
-                })->values();
+                })->filter(fn (array $variant): bool => ! $isPisoSale
+                    || $variant['regular_price_minor'] > PlatformPromotion::PISO_SALE_PRICE_MINOR)
+                    ->values();
+
+                if ($variants->isEmpty()) {
+                    return null;
+                }
 
                 return [
                     'id' => (int) $product->id,
@@ -1215,6 +1595,7 @@ class CampaignService
                     'variants' => $variants->all(),
                 ];
             })
+            ->filter()
             ->values()
             ->all();
     }
@@ -1274,6 +1655,7 @@ class CampaignService
         }
 
         $rows = [];
+        $isPisoSale = $campaign->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE;
         foreach ($submittedItems as $submitted) {
             $product = $products->get((int) ($submitted['product_id'] ?? 0));
             if (! $product) {
@@ -1293,20 +1675,29 @@ class CampaignService
                 ]);
             }
 
-            $discountPercent = filter_var($submitted['discount_percent'] ?? null, FILTER_VALIDATE_INT);
-            if ($discountPercent === false || $discountPercent < 1 || $discountPercent > 90) {
+            if ($isPisoSale && array_key_exists('discount_percent', $submitted)) {
                 throw ValidationException::withMessages([
-                    'items' => "The discount for {$product->name} must be a whole percentage between 1 and 90.",
+                    'items' => 'Piso Sale uses a fixed ₱1.00 price; do not submit a discount percentage.',
                 ]);
             }
 
-            $minimumDiscount = $campaign->minimum_discount_percent !== null
-                ? (int) $campaign->minimum_discount_percent
-                : 1;
-            if ($discountPercent < $minimumDiscount) {
-                throw ValidationException::withMessages([
-                    'items' => "This campaign requires at least a {$minimumDiscount}% discount for {$product->name}.",
-                ]);
+            $discountPercent = null;
+            if (! $isPisoSale) {
+                $discountPercent = filter_var($submitted['discount_percent'] ?? null, FILTER_VALIDATE_INT);
+                if ($discountPercent === false || $discountPercent < 1 || $discountPercent > 90) {
+                    throw ValidationException::withMessages([
+                        'items' => "The discount for {$product->name} must be a whole percentage between 1 and 90.",
+                    ]);
+                }
+
+                $minimumDiscount = $campaign->minimum_discount_percent !== null
+                    ? (int) $campaign->minimum_discount_percent
+                    : 1;
+                if ($discountPercent < $minimumDiscount) {
+                    throw ValidationException::withMessages([
+                        'items' => "This campaign requires at least a {$minimumDiscount}% discount for {$product->name}.",
+                    ]);
+                }
             }
 
             $stockLimit = isset($submitted['stock_limit']) && $submitted['stock_limit'] !== ''
@@ -1327,13 +1718,22 @@ class CampaignService
                 ]);
             }
 
+            $productRowStart = count($rows);
             foreach ($variants as $variant) {
                 $regular = (int) $this->pricing
                     ->priceForVariant($product, $variant)['seller_unit_price_minor'];
-                $price = $this->discountedPriceMinor($regular, $discountPercent);
+                if ($isPisoSale && $regular <= PlatformPromotion::PISO_SALE_PRICE_MINOR) {
+                    continue;
+                }
+
+                $price = $isPisoSale
+                    ? PlatformPromotion::PISO_SALE_PRICE_MINOR
+                    : $this->discountedPriceMinor($regular, (int) $discountPercent);
                 if ($price < 1 || $price >= $regular) {
                     throw ValidationException::withMessages([
-                        'items' => "The discount for {$product->name} ({$variant->sku}) does not create a lower centavo price. Choose a higher discount.",
+                        'items' => $isPisoSale
+                            ? "Piso Sale cannot raise the price of {$product->name} ({$variant->sku}); its effective Seller price must be above ₱1.00."
+                            : "The discount for {$product->name} ({$variant->sku}) does not create a lower centavo price. Choose a higher discount.",
                     ]);
                 }
 
@@ -1347,6 +1747,12 @@ class CampaignService
                     'per_buyer_limit' => $perBuyerLimit,
                 ];
             }
+
+            if (count($rows) === $productRowStart) {
+                throw ValidationException::withMessages([
+                    'items' => "{$product->name} has no eligible SKU priced above ₱1.00 for Piso Sale.",
+                ]);
+            }
         }
 
         return $rows;
@@ -1357,6 +1763,7 @@ class CampaignService
      */
     public function sellerCampaignPayload(PlatformPromotion $campaign): array
     {
+        $isPisoSale = $campaign->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE;
         $participation = $campaign->relationLoaded('participations')
             ? $campaign->participations->first()
             : null;
@@ -1372,10 +1779,13 @@ class CampaignService
             'description' => $campaign->description,
             'terms' => $campaign->terms,
             'funding_type' => $campaign->funding_type,
-            'minimum_discount_percent' => $campaign->minimum_discount_percent !== null
+            'minimum_discount_percent' => ! $isPisoSale && $campaign->minimum_discount_percent !== null
                 ? (int) $campaign->minimum_discount_percent
                 : null,
-            'effective_minimum_discount_percent' => max(1, (int) ($campaign->minimum_discount_percent ?? 1)),
+            'effective_minimum_discount_percent' => $isPisoSale
+                ? null
+                : max(1, (int) ($campaign->minimum_discount_percent ?? 1)),
+            'piso_sale_price_minor' => $isPisoSale ? PlatformPromotion::PISO_SALE_PRICE_MINOR : null,
             'funding_label' => $campaign->funding_type === PlatformPromotion::FUNDING_SELLER
                 ? 'Seller-funded'
                 : 'Bearly-funded',
@@ -1414,9 +1824,11 @@ class CampaignService
                     'product_id' => (int) $item->product_id,
                     'product_name' => $item->product?->name,
                     'sku' => $item->variant?->sku,
-                    'campaign_price_minor' => (int) $item->campaign_price_minor,
+                    'campaign_price_minor' => (int) ($this->pricing->campaignPriceMinorFor($item, $campaign) ?? 0),
                     'regular_price_minor' => (int) $item->regular_price_minor,
-                    'discount_percent' => $item->discount_percent !== null ? (int) $item->discount_percent : null,
+                    'discount_percent' => ! $isPisoSale && $item->discount_percent !== null
+                        ? (int) $item->discount_percent
+                        : null,
                     'stock_limit' => $item->stock_limit,
                 ])->values()->all(),
             ] : null,

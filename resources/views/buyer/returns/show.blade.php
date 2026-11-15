@@ -24,7 +24,9 @@
         <section class="buyer-return-card"><div class="buyer-return-section-heading"><span class="material-symbols-outlined" aria-hidden="true">local_shipping</span><div><h2>Return shipment tracking</h2><p>Waybill {{ $case->returnShipment->waybill?->waybill_no ?? 'Preparing' }} · {{ Str::headline($case->returnShipment->status) }}</p></div></div>
             <ol class="buyer-return-timeline">@foreach ($case->returnShipment->events as $event)<li><strong>{{ Str::headline(str_replace(['shipment_', 'parcel_'], '', $event->event_type)) }}</strong><small>{{ $event->occurred_at?->format('M j, Y · g:i A') ?? 'Time unavailable' }}</small>@if($event->notes)<p>{{ $event->notes }}</p>@endif</li>@endforeach</ol>
             @if ($case->request_type === 'return_refund' && data_get($case->returnShipment->return_shipping_quote, 'quote_kind') === 'return_shipping_v1')
-                @php($refund = $case->refunds->sortByDesc('id')->first())
+                @php
+                    $refund = $case->refunds->sortByDesc('id')->first();
+                @endphp
                 <p class="buyer-return-policy">Return delivery fee: ₱{{ number_format((int) $case->returnShipment->shipping_fee_minor / 100, 2) }} · covered by {{ ucfirst($refund?->financially_responsible_party ?? 'the responsible party') }}. It is not deducted from your approved refund.</p>
             @endif
             @if ($case->return_delivery_method === 'buyer_dropoff' && $case->status === 'return_dropoff_pending')
@@ -75,23 +77,100 @@
     </section>
 
     @if ($case->refunds->isNotEmpty())
-        @php($refund = $case->refunds->sortByDesc('id')->first())
+        @php
+            $refund = $case->refunds->sortByDesc('id')->first();
+            $buyerRefundReceiptIssue = $case->events->where('event_type', 'buyer_refund_receipt_not_received')->last();
+            $isCashCustodyRefund = $refund->method === 'cash' && $case->cashPayout !== null;
+        @endphp
         <section class="buyer-return-card buyer-refund-transaction" aria-labelledby="buyer-refund-transaction-heading">
-            <div class="buyer-return-section-heading"><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><div><h2 id="buyer-refund-transaction-heading">Refund transaction</h2><p>{{ $refund->status === 'completed' ? 'Admin recorded the completed external payment.' : 'The approved refund has not been recorded as paid yet.' }}</p></div></div>
+            <div class="buyer-return-section-heading"><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><div><h2 id="buyer-refund-transaction-heading">Refund transaction</h2><p>{{ $refund->status === 'processing' ? 'Admin recorded this external payout as sent. Please confirm whether the full amount reached you.' : ($refund->status === 'completed' && in_array($refund->method, ['gcash', 'bank_transfer', 'other'], true) ? 'You confirmed receipt of the full external payout; the case is resolved.' : ($refund->status === 'completed' ? 'Finance completed the cash refund after Logistics verified the Buyer acknowledgment.' : 'The approved refund has not been recorded as paid yet.')) }}</p></div></div>
             <dl class="buyer-return-meta">
                 <div><dt>Refund number</dt><dd>{{ $refund->refund_no }}</dd></div>
-                <div><dt>{{ $refund->status === 'completed' ? 'Amount paid' : 'Approved amount' }}</dt><dd>₱{{ number_format((int) ($refund->payout_amount_minor ?? $refund->amount_minor) / 100, 2) }}</dd></div>
-                <div><dt>Status</dt><dd>{{ $refund->status === 'completed' ? 'Paid externally' : Str::headline($refund->status) }}</dd></div>
-                @if ($refund->status === 'completed')
+                <div><dt>{{ in_array($refund->status, ['processing', 'completed'], true) ? 'Payout amount recorded' : 'Approved amount' }}</dt><dd>₱{{ number_format((int) ($refund->payout_amount_minor ?? $refund->amount_minor) / 100, 2) }}</dd></div>
+                <div><dt>Status</dt><dd>{{ $refund->status === 'processing' ? 'Awaiting your receipt confirmation' : Str::headline($refund->status) }}</dd></div>
+                @if (in_array($refund->status, ['processing', 'completed'], true))
                     <div><dt>Payment method</dt><dd>{{ Str::headline(str_replace('_', ' ', $refund->method)) }}</dd></div>
-                    <div><dt>Transaction / receipt reference</dt><dd>{{ $refund->provider_reference ?: 'Not recorded' }}</dd></div>
+                    @unless ($isCashCustodyRefund)
+                        <div><dt>Transaction / receipt reference</dt><dd>{{ $refund->provider_reference ?: 'Not recorded' }}</dd></div>
+                    @endunless
                     <div><dt>Date paid</dt><dd>{{ $refund->external_paid_on?->format('M j, Y') ?? 'Not recorded' }}</dd></div>
                 @endif
             </dl>
-            @if ($refund->status === 'completed' && $refund->payout_receipt_path)
+            @if (! $isCashCustodyRefund && $refund->status === 'completed' && $refund->payout_receipt_path)
                 <a class="buyer-return-primary buyer-refund-receipt-link" href="{{ route('buyer.returns.refund-receipt', $refund->id) }}"><span class="material-symbols-outlined" aria-hidden="true">download</span>Download payout receipt</a>
+            @elseif (! $isCashCustodyRefund && $refund->status === 'processing' && $refund->payout_receipt_path)
+                <a class="buyer-return-primary buyer-refund-receipt-link" href="{{ route('buyer.returns.refund-receipt', $refund->id) }}"><span class="material-symbols-outlined" aria-hidden="true">download</span>Review payout receipt</a>
             @endif
-            <p class="buyer-return-info"><span class="material-symbols-outlined" aria-hidden="true">info</span><span>Admin sends the refund outside Bearly and records the completed transaction here. Bearly does not transfer funds.</span></p>
+            @if ($refund->status === 'processing' && $case->status === 'refund_pending' && in_array($refund->method, ['gcash', 'bank_transfer', 'other'], true))
+                <div class="buyer-refund-confirmation" aria-labelledby="buyer-refund-confirmation-heading">
+                    <h3 id="buyer-refund-confirmation-heading">Did you receive the full refund?</h3>
+                    <p>Confirm only if the full ₱{{ number_format((int) $refund->payout_amount_minor / 100, 2) }} has reached your account. Admin’s record and receipt are not your confirmation.</p>
+                    <form method="POST" action="{{ route('buyer.returns.refund-receipt.confirm', $case->id) }}" class="buyer-refund-confirm-form">
+                        @csrf
+                        <label><input type="checkbox" name="buyer_received_confirmed" value="1" required> I confirm I received the full refund amount shown above.</label>
+                        <button class="buyer-return-primary" type="submit">Confirm refund received</button>
+                    </form>
+                    @if ($buyerRefundReceiptIssue)
+                        <p class="buyer-refund-reported" role="status">You reported that the payout was not received on {{ $buyerRefundReceiptIssue->created_at?->format('M j, Y · g:i A') }}. Admin was notified; the case remains open. You can still confirm above if the full amount reaches you.</p>
+                    @else
+                        <form method="POST" action="{{ route('buyer.returns.refund-receipt.report-not-received', $case->id) }}" class="buyer-refund-report-form">
+                            @csrf
+                            <label for="buyer-refund-not-received-note">Haven’t received it or something is wrong?</label>
+                            <textarea id="buyer-refund-not-received-note" name="note" rows="3" minlength="5" maxlength="1000" required placeholder="Tell Admin what happened so they can follow up."></textarea>
+                            <button class="buyer-refund-report-button" type="submit">Report a payout problem</button>
+                        </form>
+                    @endif
+                </div>
+            @endif
+            <p class="buyer-return-info"><span class="material-symbols-outlined" aria-hidden="true">info</span><span>Admin records external transfers; Bearly does not move funds. A payout marked “processing” stays open until you confirm receipt.</span></p>
+        </section>
+    @endif
+    @if ($case->cashPayout)
+        @php
+            $cashRefundStatusLabels = [
+                'awaiting_logistics_receipt' => 'Logistics is confirming receipt of the refund cash',
+                'awaiting_rider_assignment' => 'Logistics is arranging Rider delivery',
+                'assigned_to_rider' => 'A Rider is assigned; cash handoff is pending',
+                'cash_with_rider' => 'The Rider has received the cash',
+                'out_for_delivery' => 'The Rider is out for delivery',
+                'cash_return_pending' => 'Delivery was unsuccessful; cash return to Logistics is pending',
+                'logistics_return_verification' => 'Logistics is verifying the returned cash',
+                'delivered_pending_verification' => 'The Rider reported delivery; Logistics verification is pending',
+                'awaiting_finance_completion' => 'Logistics verified delivery; Finance completion is pending',
+                'completed' => 'Finance completed the cash refund',
+            ];
+            $cashRefundEventLabels = [
+                'cash_issued_to_logistics' => 'Finance handed the refund cash to Logistics',
+                'cash_received_by_logistics' => 'Logistics received the refund cash',
+                'cash_assigned_to_rider' => 'A Rider was assigned for delivery',
+                'refund_cash_acknowledgment_reference_generated' => 'Logistics prepared the acknowledgment form',
+                'cash_received_by_rider' => 'The Rider received the cash handoff from Logistics',
+                'refund_cash_delivery_started' => 'The Rider started delivery',
+                'refund_cash_delivery_failed' => 'The Rider could not complete the delivery attempt',
+                'cash_returned_to_logistics' => 'The Rider returned the cash to Logistics',
+                'cash_return_received_by_logistics' => 'Logistics confirmed receipt of the returned cash',
+                'refund_cash_delivered_to_buyer' => 'The Rider reported the refund delivered',
+                'buyer_acknowledgment_verified_by_logistics' => 'Logistics verified the signed acknowledgment',
+                'cash_refund_completed_by_finance' => 'Finance completed the cash refund',
+            ];
+            $cashRefundCurrentStatus = $cashRefundStatusLabels[$case->cashPayout->status]
+                ?? Str::headline($case->cashPayout->status);
+        @endphp
+        <section class="buyer-return-card buyer-refund-cash-tracking" aria-labelledby="buyer-cash-refund-tracking-heading">
+            <div class="buyer-return-section-heading"><span class="material-symbols-outlined" aria-hidden="true">account_balance_wallet</span><div><h2 id="buyer-cash-refund-tracking-heading">Cash refund delivery tracking</h2><p>Status history for your COD cash refund. This is not live Rider location.</p></div></div>
+            <p class="buyer-refund-cash-current" role="status"><span>Current status</span><strong>{{ $cashRefundCurrentStatus }}</strong></p>
+            <p class="buyer-refund-cash-note">A Rider delivery report remains pending until Logistics verifies the acknowledgment and Finance completes the refund.</p>
+            <ol class="buyer-return-timeline" aria-label="Cash refund status history">
+                @forelse ($case->cashPayout->events as $cashEvent)
+                    @continue(! isset($cashRefundEventLabels[$cashEvent->event_type]))
+                    <li>
+                        <strong>{{ $cashRefundEventLabels[$cashEvent->event_type] }}</strong>
+                        <small>{{ $cashEvent->occurred_at?->format('M j, Y · g:i A') ?? 'Time unavailable' }}</small>
+                    </li>
+                @empty
+                    <li><strong>Cash refund tracking will appear here when Logistics begins processing it.</strong></li>
+                @endforelse
+            </ol>
         </section>
     @endif
 </main>

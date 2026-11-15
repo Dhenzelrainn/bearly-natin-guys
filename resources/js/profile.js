@@ -51,10 +51,27 @@ function avatar(photo){
  const navbarAvatar=$('#navbar-avatar');
   const value=String(photo||'');
   const safePhoto=/^(?:https?:\/\/|\/|data:image\/(?:jpeg|png|webp);base64,)/.test(value)?value:'';
- const html=safePhoto?`<img src="${safePhoto}" alt="Profile photo">`:`<span class="material-symbols-outlined">person</span>`;
- if(profileAvatar) profileAvatar.innerHTML=html;
- if(sidebarAvatar) sidebarAvatar.innerHTML=html;
- if(navbarAvatar) navbarAvatar.innerHTML=html;
+  const fullName=$('#full-name')?.value||$('#sidebar-name')?.textContent||'Buyer';
+  const initials=fullName.trim().split(/\s+/).slice(0,2).map(part=>Array.from(part)[0]||'').join('').toUpperCase()||'BY';
+  const photoHtml=safePhoto?`<img class="avatar-photo" src="${safePhoto}" alt="Profile photo">`:'';
+  const fallbackIcon='<span class="material-symbols-outlined">person</span>';
+  if(profileAvatar) profileAvatar.innerHTML=photoHtml||fallbackIcon;
+  if(sidebarAvatar) sidebarAvatar.innerHTML=photoHtml||fallbackIcon;
+  if(navbarAvatar) navbarAvatar.innerHTML=photoHtml||`<span class="buyer-avatar-initials">${initials}</span>`;
+  document.querySelectorAll('[data-buyer-account-avatar]').forEach(element=>{
+    if(safePhoto){
+      const image=document.createElement('img');
+      image.className='avatar-photo';
+      image.src=safePhoto;
+      image.alt='';
+      element.replaceChildren(image);
+      return;
+    }
+    const fallback=document.createElement('span');
+    fallback.className='buyer-avatar-initials';
+    fallback.textContent=initials;
+    element.replaceChildren(fallback);
+  });
 }
 function load(){
  const p=getProfile();
@@ -73,9 +90,12 @@ function load(){
  if(birthDay) birthDay.value=p.birthDay;
  if(birthYear) birthYear.value=p.birthYear;
  document.querySelectorAll('[name=gender]').forEach(r=>r.checked=r.value===p.gender);
- const sidebarName=$('#sidebar-name');
- if(sidebarName) sidebarName.textContent=p.fullName||defaults.fullName;
- avatar(p.photo);
+  const sidebarName=$('#sidebar-name');
+  if(sidebarName) sidebarName.textContent=p.fullName||defaults.fullName;
+  document.querySelectorAll('[data-buyer-account-name]').forEach(element=>{
+    element.textContent=p.fullName||defaults.fullName;
+  });
+  avatar(p.photo);
 }
 async function save(){
   const gender=document.querySelector('[name=gender]:checked')?.value||'';
@@ -142,7 +162,7 @@ function initVouchers(){
   walletRevision+=1;
   return true;
  };
- const updateCount=()=>{const count=allVouchers().filter(v=>v.claimed).length;wallet.claimed_count=count;const badge=$('#vouchers-nav-count');if(badge){badge.textContent=count;badge.hidden=count===0}const label=$('#voucher-claimed-count');if(label)label.textContent=`${count} claimed`;};
+  const updateCount=()=>{const count=allVouchers().filter(v=>v.claimed).length;wallet.claimed_count=count;document.querySelectorAll('#vouchers-nav-count, [data-buyer-account-vouchers-count]').forEach(badge=>{badge.textContent=count;badge.hidden=count===0});const label=$('#voucher-claimed-count');if(label)label.textContent=`${count} claimed`;};
  const notify=message=>{const toast=$('#voucher-toast');if(!toast)return;toast.textContent=message;toast.classList.add('show');clearTimeout(window.__bearlyVoucherToast);window.__bearlyVoucherToast=setTimeout(()=>toast.classList.remove('show'),2100)};
  const setCodeStatus=(message,tone='')=>{const node=$('#voucher-code-status');if(!node)return;node.textContent=message||'';node.dataset.tone=tone;node.hidden=!message};
    const voucherTypeLabel=voucher=>voucher.source==='store'?'Store Voucher':(voucher.kind==='free_shipping'?'Free Shipping':'Platform Voucher');
@@ -311,9 +331,10 @@ function initProfile(){
     if(name==='purchases'&&typeof window.renderMyPurchases==='function')window.renderMyPurchases();
     if(name==='reviews'&&typeof window.renderReviews==='function')window.renderReviews();
     if(name==='tracking'&&typeof window.renderOrderTracking==='function')window.renderOrderTracking();
-    if(name==='vouchers'&&typeof window.renderVouchers==='function')window.renderVouchers();
-    if(name==='help'&&typeof window.renderHelpCenter==='function')window.renderHelpCenter();
-    window.bearlyCurrentAccountPanel=name;
+     if(name==='vouchers'&&typeof window.renderVouchers==='function')window.renderVouchers();
+     if(name==='help'&&typeof window.renderHelpCenter==='function')window.renderHelpCenter();
+     window.bearlyCurrentAccountPanel=name;
+     window.dispatchEvent(new CustomEvent('bearly:account-panel-changed',{detail:{name}}));
   }
   initVouchers();
   initHelpCenter(showAccountPanel);
@@ -325,10 +346,25 @@ function initProfile(){
   if(location.hash==='#purchases')showAccountPanel('purchases');
   if(location.hash==='#history')showAccountPanel('purchases');
   if(location.hash==='#reviews')showAccountPanel('reviews');
-  if(location.hash==='#tracking')showAccountPanel('purchases');
-  if(location.hash==='#vouchers')showAccountPanel('vouchers');
-  if(location.hash==='#help')showAccountPanel('help');
-  window.bearlyShowAccountPanel=showAccountPanel;
+   if(location.hash==='#tracking')showAccountPanel('purchases');
+   if(location.hash==='#vouchers')showAccountPanel('vouchers');
+   if(location.hash==='#help')showAccountPanel('help');
+   window.addEventListener('hashchange',()=>{
+    const panels={
+     '':'profile',
+     '#addresses':'addresses',
+     '#likes':'likes',
+     '#purchases':'purchases',
+     '#history':'purchases',
+     '#reviews':'reviews',
+     '#tracking':'purchases',
+     '#vouchers':'vouchers',
+     '#help':'help',
+    };
+    const panel=panels[location.hash];
+    if(panel)showAccountPanel(panel);
+   });
+   window.bearlyShowAccountPanel=showAccountPanel;
 }
 
 if(document.readyState === 'loading'){

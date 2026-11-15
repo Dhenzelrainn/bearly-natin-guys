@@ -7,11 +7,16 @@
 @php
     $isCourierAvailable = $courierProfile->availability_status === 'available';
 @endphp
-<div class="page-header">
+<div
+    class="page-header"
+    data-courier-run-dashboard
+    @if(session('courierRunActionComplete')) data-courier-run-feedback="success" @endif
+>
     <div>
         <p class="page-kicker">Logistics-verified work type</p>
         <h2>Your assigned runs</h2>
-        <p>Follow the manifest in order. Destination Logistics changes custody only after its authorized acceptance scan.</p>
+        <p>@include('partials.dashboard-greeting') Follow the manifest in order. Destination Logistics changes custody only after its authorized acceptance scan.</p>
+        @include('partials.dashboard-context')
     </div>
     <div class="page-actions">
         <div class="rider-availability-control" data-rider-availability-control data-rider-verification-status="approved">
@@ -97,7 +102,7 @@
 </section>
 
 @forelse($runs as $run)
-    <section class="panel courier-run-card" style="margin-bottom:16px">
+    <section class="panel courier-run-card" style="margin-bottom:16px" data-courier-run-card="{{ $run->id }}">
         <div class="panel-header">
             <div>
                 <p class="page-kicker">{{ $run->run_no }}</p>
@@ -134,15 +139,15 @@
 
             <div class="form-actions courier-run-actions">
                 @if($run->status === 'assigned')
-                    <form class="courier-run-next-action" method="POST" action="{{ route('rider.courier.runs.start-loading', $run) }}">@csrf<button class="button button-primary" type="submit">Start loading</button></form>
+                    <form class="courier-run-next-action" method="POST" action="{{ route('rider.courier.runs.start-loading', $run) }}" data-courier-run-action data-single-submit>@csrf<button class="button button-primary" type="submit">Start loading</button></form>
                 @elseif($run->status === 'loading')
-                    <form class="courier-run-next-action" method="POST" action="{{ route('rider.courier.runs.loaded', $run) }}">@csrf<button class="button button-primary" type="submit">Confirm all cargo loaded</button></form>
+                    <form class="courier-run-next-action" method="POST" action="{{ route('rider.courier.runs.loaded', $run) }}" data-courier-run-action data-single-submit>@csrf<button class="button button-primary" type="submit">Confirm all cargo loaded</button></form>
                 @elseif($run->status === 'loaded')
-                    <form class="courier-run-next-action" method="POST" action="{{ route('rider.courier.runs.depart', $run) }}">@csrf<button class="button button-primary" type="submit">Record departure</button></form>
+                    <form class="courier-run-next-action" method="POST" action="{{ route('rider.courier.runs.depart', $run) }}" data-courier-run-action data-single-submit>@csrf<button class="button button-primary" type="submit">Record departure</button></form>
                 @elseif($run->status === 'departed')
-                    <form class="courier-run-next-action" method="POST" action="{{ route('rider.courier.runs.arrive', $run) }}">@csrf<button class="button button-primary" type="submit">Record arrival</button></form>
+                    <form class="courier-run-next-action" method="POST" action="{{ route('rider.courier.runs.arrive', $run) }}" data-courier-run-action data-single-submit>@csrf<button class="button button-primary" type="submit">Record arrival</button></form>
                 @elseif($run->status === 'exception')
-                    <form method="POST" action="{{ route('rider.courier.runs.exceptions.resolve', $run) }}" class="field courier-run-resolution-form">
+                    <form method="POST" action="{{ route('rider.courier.runs.exceptions.resolve', $run) }}" class="field courier-run-resolution-form" data-courier-run-action data-single-submit>
                         @csrf
                         <label for="resolution-{{ $run->id }}">Resolution notes</label>
                         <div class="courier-run-resolution-controls">
@@ -157,7 +162,7 @@
                 @endif
 
                 @if(! in_array($run->status, ['exception', 'completed'], true))
-                    <form method="POST" action="{{ route('rider.courier.runs.exceptions.store', $run) }}" class="field courier-run-exception-form">
+                    <form method="POST" action="{{ route('rider.courier.runs.exceptions.store', $run) }}" class="field courier-run-exception-form" data-courier-run-action data-single-submit>
                         @csrf
                         <label for="exception-{{ $run->id }}">Report a run exception</label>
                         <div class="courier-run-exception-controls">

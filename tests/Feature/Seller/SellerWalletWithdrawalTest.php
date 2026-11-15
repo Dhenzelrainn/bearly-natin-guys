@@ -20,6 +20,7 @@ use App\Models\SellerWithdrawal;
 use App\Models\Shipment;
 use App\Models\Store;
 use App\Models\User;
+use App\Services\CodCashCollectionService;
 use App\Services\SellerWalletService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -143,6 +144,40 @@ class SellerWalletWithdrawalTest extends TestCase
             ->assertSeeText('Paid earnings may move to Available after the 3-calendar-day return/refund period ends, counted from Seller Order completion.')
             ->assertSeeText('Return period ends Oct 23, 2026; may become Available after that if all other checks pass.')
             ->assertSeeText('Return period: 3 calendar days after order completion; other checks may extend the wait.');
+    }
+
+    public function test_wallet_activity_pagination_returns_to_the_activity_section(): void
+    {
+        [$seller, $profile] = $this->sellerFixture('Wallet pagination seller');
+        $wallet = app(SellerWalletService::class)->refreshForSeller($profile);
+
+        foreach (range(1, 25) as $index) {
+            SellerWalletTransaction::query()->create([
+                'transaction_no' => 'SWX-'.Str::upper((string) Str::ulid()),
+                'seller_wallet_id' => $wallet->id,
+                'type' => 'manual_adjustment',
+                'amount_minor' => 100,
+                'available_delta_minor' => 0,
+                'pending_delta_minor' => 0,
+                'reserved_delta_minor' => 0,
+                'withdrawn_delta_minor' => 0,
+                'available_balance_after_minor' => 0,
+                'pending_balance_after_minor' => 0,
+                'reserved_balance_after_minor' => 0,
+                'total_withdrawn_after_minor' => 0,
+                'created_at' => now()->subMinutes($index),
+            ]);
+        }
+
+        $this->actingAs($seller)
+            ->get(route('seller.finance.wallet', ['ledger_page' => 2]))
+            ->assertOk()
+            ->assertSee('id="wallet-activity"', false)
+            ->assertSee('aria-label="Wallet activity pages"', false)
+            ->assertSeeText('Showing 21–25 of 25 wallet entries')
+            ->assertSee('aria-current="page">2</span>', false)
+            ->assertSee('ledger_page=1', false)
+            ->assertSee('#wallet-activity', false);
     }
 
     public function test_wallet_migration_backfills_paid_legacy_payouts_and_refuses_data_loss_on_rollback(): void
@@ -702,7 +737,7 @@ class SellerWalletWithdrawalTest extends TestCase
         ]);
     }
 
-    public function test_cod_earnings_require_every_outbound_cod_shipment_to_be_finance_reconciled(): void
+    public function test_cod_earnings_require_finance_reconciliation_before_becoming_available(): void
     {
         [$seller, $profile, $store] = $this->sellerFixture('COD wallet seller');
         [$order, $sellerOrder, $payment, $transaction] = $this->saleFixture(
@@ -731,22 +766,14 @@ class SellerWalletWithdrawalTest extends TestCase
             'verification_status' => 'approved',
         ]);
 
-        $firstShipment = $this->codShipment($sellerOrder, $provider, 12_000);
-        $secondShipment = $this->codShipment($sellerOrder, $provider, 18_000);
-        $this->codCollection($firstShipment, $sellerOrder, $order, $payment, $provider, $riderProfile, $rider, 12_000, true);
-        $secondCollection = $this->codCollection($secondShipment, $sellerOrder, $order, $payment, $provider, $riderProfile, $rider, 18_000, false);
+        $shipment = $this->codShipment($sellerOrder, $provider, 30_000);
+        $collection = $this->codCollection($shipment, $sellerOrder, $order, $payment, $provider, $riderProfile, $rider, 30_000, false);
 
         $wallet = app(SellerWalletService::class)->refreshForSeller($profile);
         $this->assertSame(0, (int) $wallet->available_balance_minor);
         $this->assertSame(27_000, (int) $wallet->pending_balance_minor);
 
-        $secondCollection->update([
-            'status' => 'reconciled',
-            'amount_reconciled_minor' => 18_000,
-            'reconciled_at' => now(),
-            'reconciled_by' => $this->admin->id,
-            'finance_reference' => 'BFR-'.Str::upper(Str::random(10)),
-        ]);
+        app(CodCashCollectionService::class)->reconcileAtFinance($this->admin, (int) $collection->id, 30_000);
         $wallet = app(SellerWalletService::class)->refreshForSeller($profile);
 
         $this->assertSame(27_000, (int) $wallet->available_balance_minor);
@@ -1262,7 +1289,7 @@ class SellerWalletWithdrawalTest extends TestCase
         int $amountMinor,
         bool $reconciled,
     ): CodCashCollection {
-        return CodCashCollection::query()->create([
+        $collection = CodCashCollection::query()->create([
             'collection_no' => 'COD-'.Str::upper(Str::random(12)),
             'shipment_id' => $shipment->id,
             'payment_id' => $payment->id,
@@ -1276,17 +1303,29 @@ class SellerWalletWithdrawalTest extends TestCase
             'amount_received_by_logistics_minor' => $amountMinor,
             'amount_remitted_to_finance_minor' => $amountMinor,
             'amount_reconciled_minor' => $reconciled ? $amountMinor : null,
-            'status' => $reconciled ? 'reconciled' : 'received_by_logistics',
+            'status' => $reconciled ? 'reconciled' : 'remitted_to_finance',
             'collected_at' => now()->subDays(9),
             'collected_by' => $rider->id,
             'logistics_reference' => 'CODH-'.Str::upper(Str::random(10)),
             'logistics_received_at' => now()->subDays(9),
-            'finance_remittance_reference' => $reconciled ? 'L2F-'.Str::upper(Str::random(10)) : null,
-            'remitted_to_finance_at' => $reconciled ? now()->subDays(9) : null,
+            'finance_remittance_reference' => 'L2F-'.Str::upper(Str::random(10)),
+            'remitted_to_finance_at' => now()->subDays(9),
+            'remitted_to_finance_by' => $provider->user_id,
             'finance_reference' => $reconciled ? 'BFR-'.Str::upper(Str::random(10)) : null,
             'reconciled_at' => $reconciled ? now()->subDays(9) : null,
             'reconciled_by' => $reconciled ? $this->admin->id : null,
         ]);
+
+        $collection->allocations()->create([
+            'payment_id' => $payment->id,
+            'order_id' => $order->id,
+            'seller_order_id' => $sellerOrder->id,
+            'amount_due_minor' => $amountMinor,
+            'amount_collected_minor' => $amountMinor,
+            'amount_reconciled_minor' => $reconciled ? $amountMinor : null,
+        ]);
+
+        return $collection;
     }
 
     private function user(string $role, string $name): User

@@ -20,6 +20,7 @@ class Order extends Model
         return [
             'delivery_latitude' => 'float',
             'delivery_longitude' => 'float',
+            'piso_sale_used' => 'boolean',
         ];
     }
 

@@ -73,7 +73,7 @@
             </div>
             <div class="field span-2"><label>Receiving sorting center <span>*</span></label><select name="sorting_center_id" required><option value="">Select sorting center</option>@foreach($sortingCenters as $center)<option value="{{ $center->id }}" @selected((string) old('sorting_center_id') === (string) $center->id)>{{ $center->name }} ({{ $center->code }})</option>@endforeach</select>@error('sorting_center_id')<small>{{ $message }}</small>@enderror</div>
         </div>
-        <div class="waybill-camera-panel" data-waybill-camera-panel hidden><video data-waybill-camera-video playsinline muted></video><p class="waybill-camera-status" data-waybill-camera-status>Point the camera at the unique Code 128 Parcel barcode.</p><button type="button" class="button button-small" data-waybill-camera-close>Cancel camera</button></div>
+        <div class="waybill-camera-panel" data-waybill-camera-panel hidden><div class="waybill-camera-fallback" data-waybill-camera-fallback hidden></div><video data-waybill-camera-video playsinline muted></video><p class="waybill-camera-status" data-waybill-camera-status role="status" aria-live="polite">Point the camera at the unique Code 128 Parcel barcode.</p><button type="button" class="button button-small" data-waybill-camera-close>Cancel camera</button></div>
         <div class="form-actions"><button class="button" type="button" data-modal-close>Cancel</button><button class="button button-primary" type="submit" @disabled($sortingCenters->isEmpty())>Log parcel</button></div>
     </form>
 </section>

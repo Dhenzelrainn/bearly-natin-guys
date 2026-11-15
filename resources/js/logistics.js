@@ -4,6 +4,7 @@ import { restoreRegistrationDraft, setupRegistrationDraft } from './registration
 import { createAddressMapPicker } from './address-map-picker';
 import { emailVerificationFailure } from './email-verification-error.js';
 import './notification-center.js';
+import './dashboard-context.js';
 import './logistics-attendance-qr.js';
 import { setupLogisticsPickupMaps } from './logistics-pickup-map.js';
 import {

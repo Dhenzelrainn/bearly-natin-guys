@@ -85,6 +85,9 @@ if (userId > 0 && key) {
             .listen('.seller.return-status-updated', (payload) => {
                 window.dispatchEvent(new CustomEvent('bearly:seller-return-status-updated', { detail: payload }));
             })
+            .listen('.seller.campaign-participation-updated', (payload) => {
+                window.dispatchEvent(new CustomEvent('bearly:seller-campaign-participation-updated', { detail: payload }));
+            })
             .listen('.logistics.refund-cash-updated', (payload) => {
                 window.dispatchEvent(new CustomEvent('bearly:logistics-refund-cash-updated', { detail: payload }));
             })
@@ -127,6 +130,15 @@ if (userId > 0 && key) {
                     window.dispatchEvent(new CustomEvent('bearly:announcement-published', { detail: payload }));
                 });
         });
+
+        if (document.querySelector('[data-admin-campaign-participations]')) {
+            echo.private('admin.campaigns')
+                .listen('.campaign.participation-submitted', (payload) => {
+                    window.dispatchEvent(new CustomEvent('bearly:admin-campaign-participation-submitted', {
+                        detail: payload,
+                    }));
+                });
+        }
 
         /*
          * Expose connection state for diagnostics without exposing keys,

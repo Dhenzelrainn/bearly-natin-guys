@@ -41,6 +41,30 @@ class AdminDashboardTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_admin_greeting_and_clock_use_philippine_time(): void
+    {
+        $firstName = explode(' ', $this->admin->name)[0];
+        $cases = [
+            ['2026-10-17 03:59:00', 'Good morning'],
+            ['2026-10-17 04:00:00', 'Good afternoon'],
+            ['2026-10-17 10:00:00', 'Good evening'],
+        ];
+
+        foreach ($cases as [$utcInstant, $greeting]) {
+            Carbon::setTestNow(Carbon::parse($utcInstant, 'UTC'));
+
+            $html = $this->actingAs($this->admin)
+                ->get(route('admin.dashboard'))
+                ->assertOk()
+                ->getContent();
+
+            $this->assertStringContainsString("{$greeting}, {$firstName}.", $html);
+            $this->assertStringContainsString('data-ph-clock', $html);
+            $this->assertStringContainsString('data-time-zone="Asia/Manila"', $html);
+            $this->assertStringContainsString('data-dashboard-weather', $html);
+        }
+    }
+
     public function test_sales_trend_uses_net_completed_seller_order_items_by_completion_date(): void
     {
         [, , $store] = $this->sellerStore('Trend Store');

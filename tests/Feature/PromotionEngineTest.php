@@ -21,7 +21,9 @@ use App\Models\Store;
 use App\Models\StorePromotion;
 use App\Models\SystemSetting;
 use App\Models\User;
+use App\Services\CampaignService;
 use App\Services\CheckoutService;
+use App\Services\PisoSaleEligibilityService;
 use App\Services\PostalCodeLookup;
 use App\Services\ProductPricingService;
 use App\Services\PromotionService;
@@ -1331,7 +1333,7 @@ class PromotionEngineTest extends TestCase
             ->assertSee('name="banner_title"', false)
             ->assertDontSee('name="banner_link"', false)
             ->assertSee('name="is_featured"', false)
-            ->assertSee('Feature on the homepage');
+            ->assertSee('Feature on the public landing page');
     }
 
     public function test_public_offer_payload_only_exposes_banner_creative_for_campaigns(): void
@@ -1578,6 +1580,77 @@ class PromotionEngineTest extends TestCase
         $this->assertSame(2000, (int) $item->fresh()->campaign_platform_discount_minor);
     }
 
+    public function test_piso_sale_uses_fixed_price_and_skips_sub_one_peso_prices_or_unapproved_subsidy_increases(): void
+    {
+        $buyer = $this->user('buyer');
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'piso-fixed-pricing');
+        $product = $this->product($store, $category, 'Piso Fixed Pricing Item');
+        $variant = $this->variant($product, 'PISO-PRICE-001', 10000, 5);
+        $campaign = $this->campaign($store, $seller, $product, $variant, [
+            'campaign_type' => PlatformPromotion::CAMPAIGN_PISO_SALE,
+            'funding_type' => PlatformPromotion::FUNDING_PLATFORM,
+            'campaign_price_minor' => 7000,
+            'budget_minor' => 9899,
+        ]);
+
+        $belowBudget = (new ProductPricingService(app(PisoSaleEligibilityService::class)))
+            ->priceForVariant($product->fresh(), $variant->fresh(), buyer: $buyer);
+        $this->assertSame('regular', $belowBudget['price_source']);
+        $this->assertSame(10000, $belowBudget['unit_price_minor']);
+
+        $campaign['campaign']->update(['budget_minor' => 9900]);
+        $withinBudget = (new ProductPricingService(app(PisoSaleEligibilityService::class)))
+            ->priceForVariant($product->fresh(), $variant->fresh(), buyer: $buyer);
+        $this->assertSame('campaign', $withinBudget['price_source']);
+        $this->assertSame(PlatformPromotion::PISO_SALE_PRICE_MINOR, $withinBudget['unit_price_minor']);
+        $this->assertSame(9900, $withinBudget['platform_unit_discount_minor']);
+        $this->assertSame(PlatformPromotion::CAMPAIGN_PISO_SALE, $withinBudget['campaign_type']);
+
+        $variant->update(['price_minor' => 100]);
+        $onePeso = (new ProductPricingService(app(PisoSaleEligibilityService::class)))
+            ->priceForVariant($product->fresh(), $variant->fresh(), buyer: $buyer);
+        $this->assertSame('regular', $onePeso['price_source']);
+        $this->assertSame(100, $onePeso['unit_price_minor']);
+
+        $variant->update(['price_minor' => 50]);
+        $belowOnePeso = (new ProductPricingService(app(PisoSaleEligibilityService::class)))
+            ->priceForVariant($product->fresh(), $variant->fresh(), buyer: $buyer);
+        $this->assertSame('regular', $belowOnePeso['price_source']);
+        $this->assertSame(50, $belowOnePeso['unit_price_minor']);
+
+        $variant->update(['price_minor' => 11000]);
+        $increasedSellerPrice = (new ProductPricingService(app(PisoSaleEligibilityService::class)))
+            ->priceForVariant($product->fresh(), $variant->fresh(), buyer: $buyer);
+        $this->assertSame('regular', $increasedSellerPrice['price_source']);
+        $this->assertSame(11000, $increasedSellerPrice['unit_price_minor']);
+    }
+
+    public function test_piso_sale_budget_estimate_uses_fixed_one_peso_price_not_saved_participation_price(): void
+    {
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'piso-budget-estimate');
+        $product = $this->product($store, $category, 'Piso Budget Estimate Item');
+        $variant = $this->variant($product, 'PISO-BUDGET-001', 10000, 5);
+        $campaignData = $this->campaign($store, $seller, $product, $variant, [
+            'campaign_type' => PlatformPromotion::CAMPAIGN_PISO_SALE,
+            'funding_type' => PlatformPromotion::FUNDING_PLATFORM,
+            'campaign_price_minor' => 7000,
+            'budget_minor' => 50000,
+            'stock_limit' => 2,
+        ]);
+
+        $campaigns = app(CampaignService::class);
+        $estimate = $campaigns->adminBudgetEstimate($campaigns->adminDetail($campaignData['campaign']));
+        $itemEstimate = $estimate['item_estimates'][(int) $campaignData['item']->id];
+
+        $this->assertSame(PlatformPromotion::PISO_SALE_PRICE_MINOR, $itemEstimate['campaign_price_minor']);
+        $this->assertSame(9900, $itemEstimate['unit_subsidy_minor']);
+        $this->assertSame(2, $itemEstimate['estimated_units']);
+        $this->assertSame(19800, $itemEstimate['exposure_minor']);
+        $this->assertSame(19800, $estimate['approved_remaining_exposure_minor']);
+    }
+
     public function test_seller_funded_campaign_reduces_seller_proceeds_without_platform_discount(): void
     {
         $buyer = $this->user('buyer');
@@ -1614,20 +1687,20 @@ class PromotionEngineTest extends TestCase
             'minimum_discount_percent' => 20,
         ]);
 
-        $approvedPrice = (new ProductPricingService)->priceForVariant($product->fresh(), $variant->fresh());
+        $approvedPrice = app(ProductPricingService::class)->priceForVariant($product->fresh(), $variant->fresh());
         $this->assertSame('campaign', $approvedPrice['price_source']);
         $this->assertSame(8000, $approvedPrice['unit_price_minor']);
         $this->assertSame(2000, $approvedPrice['platform_unit_discount_minor']);
 
         $variant->update(['price_minor' => 9000]);
-        $belowMinimum = (new ProductPricingService)->priceForVariant($product->fresh(), $variant->fresh());
+        $belowMinimum = app(ProductPricingService::class)->priceForVariant($product->fresh(), $variant->fresh());
         $this->assertSame('regular', $belowMinimum['price_source']);
         $this->assertSame(9000, $belowMinimum['unit_price_minor']);
         $this->assertSame(0, $belowMinimum['platform_unit_discount_minor']);
         $this->assertNull($belowMinimum['campaign_participation_item_id']);
 
         $variant->update(['price_minor' => 11000]);
-        $expandedSubsidy = (new ProductPricingService)->priceForVariant($product->fresh(), $variant->fresh());
+        $expandedSubsidy = app(ProductPricingService::class)->priceForVariant($product->fresh(), $variant->fresh());
         $this->assertSame('regular', $expandedSubsidy['price_source']);
         $this->assertSame(11000, $expandedSubsidy['unit_price_minor']);
         $this->assertSame(0, $expandedSubsidy['platform_unit_discount_minor']);
@@ -1658,7 +1731,7 @@ class PromotionEngineTest extends TestCase
                 'campaign_price_minor' => 5000,
             ], $overrides));
 
-            $price = (new ProductPricingService)->priceForVariant($product->fresh(), $variant->fresh());
+            $price = app(ProductPricingService::class)->priceForVariant($product->fresh(), $variant->fresh());
 
             $this->assertSame('regular', $price['price_source'], $label);
             $this->assertSame(10000, $price['unit_price_minor'], $label);

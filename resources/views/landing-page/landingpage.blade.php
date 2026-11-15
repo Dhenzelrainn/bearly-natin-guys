@@ -1,11 +1,8 @@
-@php
-    $homeCategories = json_decode(file_get_contents(resource_path('data/categories.json')), true, 512, JSON_THROW_ON_ERROR);
-    $landingProducts = json_decode(file_get_contents(resource_path('data/landing-products.json')), true, 512, JSON_THROW_ON_ERROR);
-@endphp
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    @include('partials.favicon')
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Shopping made Bearly a hassle. Discover products from big stores and independent sellers, all in one place.">
     <meta name="theme-color" content="#442214">
@@ -42,7 +39,7 @@
         <div class="lp-slides">
             <article class="lp-slide is-active" role="group" aria-roledescription="slide" aria-label="1 of 3">
                 <img class="lp-hero-photo" src="{{ asset('images/landing/hero.webp') }}" alt="Headphones, a rust canvas tote, sneakers, a camera and a book in the afternoon sun" width="1536" height="1024" fetchpriority="high">
-                <div class="lp-hero-copy"><p class="lp-eyebrow">BEARLY</p><h1>Shopping made<br>Bearly a hassle.</h1><p>Discover unique finds from big stores and independent sellers, all in one place.</p><div class="lp-hero-links"><a class="lp-button" href="{{ url('/products') }}">Shop now <span aria-hidden="true">↗</span></a><a class="lp-text-link" href="#bl-categories">Explore categories</a></div>
+                <div class="lp-hero-copy"><p class="lp-eyebrow">BEARLY</p><h1>Shopping made<br> Bearly a hassle.</h1><p>Discover unique finds from big stores and independent sellers, all in one place.</p><div class="lp-hero-links"><a class="lp-button" href="{{ url('/products') }}">Shop now <span aria-hidden="true">↗</span></a><a class="lp-text-link" href="#bl-categories">Explore categories</a></div>
                 <div class="lp-bear-note"><span class="lp-bear" role="img" aria-label="Bearly bear with an orange shopping bag"></span><p>Good Things<br>Find You Here.</p></div></div>
                 <span class="lp-hero-wordmark" aria-hidden="true">bearly</span>
             </article>
@@ -74,6 +71,39 @@
         <a class="lp-campaign lp-reveal" href="#bl-featured" data-hero-filter="Tech"><img src="{{ asset('images/landing/tech.webp') }}" alt="Laptop, camera and mouse" loading="lazy" width="1024" height="1024"><div><p class="lp-eyebrow">TECH ESSENTIALS</p><h2>For your<br>everyday</h2><p>Your next daily upgrade.</p><span class="lp-text-link">Shop collection ↗</span></div></a>
         <a class="lp-campaign lp-reveal" href="#bl-featured" data-hero-filter="Fashion"><img src="{{ asset('images/landing/fashion.webp') }}" alt="Knitwear, denim and a cap" loading="lazy" width="1024" height="1024"><div><p class="lp-eyebrow">FRESH LOOKS</p><h2>A fresh little<br>upgrade</h2><p>Everyday style, your way.</p><span class="lp-text-link">Shop collection ↗</span></div></a>
     </section>
+    @if ($featuredCampaigns !== [])
+        <section class="lp-section lp-live-campaign-section" aria-labelledby="lp-live-campaign-title">
+            <div class="lp-heading lp-live-campaign-heading">
+                <div>
+                    <p class="lp-eyebrow">BEARLY EVENTS</p>
+                    <h2 id="lp-live-campaign-title">Live campaigns</h2>
+                    <p>Explore active offers from participating Bearly sellers.</p>
+                </div>
+            </div>
+            <div class="lp-live-campaign-grid">
+                @foreach ($featuredCampaigns as $campaign)
+                    <a class="lp-live-campaign-card" href="{{ $campaign['preview_url'] }}" aria-label="Explore {{ $campaign['name'] }} — {{ $campaign['type_label'] }}">
+                        <span class="lp-live-campaign-banner">
+                            @if ($campaign['banner_url'])
+                                <img src="{{ $campaign['banner_url'] }}" alt="{{ $campaign['banner_title'] ?: $campaign['name'].' campaign banner' }}" loading="lazy">
+                            @else
+                                <span class="lp-live-campaign-fallback">
+                                    <span class="material-symbols-outlined" aria-hidden="true">campaign</span>
+                                    <span>{{ $campaign['type_label'] }}</span>
+                                </span>
+                            @endif
+                        </span>
+                        <span class="lp-live-campaign-copy">
+                            <span class="lp-live-campaign-type">{{ $campaign['type_label'] }}</span>
+                            <strong>{{ $campaign['name'] }}</strong>
+                            <span class="lp-live-campaign-period">{{ $campaign['period'] }}</span>
+                            <span class="lp-live-campaign-cta">See participating products <span aria-hidden="true">↗</span></span>
+                        </span>
+                    </a>
+                @endforeach
+            </div>
+        </section>
+    @endif
     <section class="lp-section lp-featured" id="bl-featured" aria-labelledby="lp-featured-title">
         <div class="lp-heading lp-featured-heading">
             <div class="lp-featured-copy">
@@ -84,6 +114,7 @@
             <div class="lp-filters" role="group" aria-label="Filter featured products"></div>
         </div>
         <div class="lp-product-grid" id="lp-products"></div>
+        <p class="lp-products-empty" id="lp-products-empty" role="status" hidden>No live products match this selection right now.</p>
         <noscript><p>Enable JavaScript to browse the catalogue, or <a href="{{ url('/products') }}">visit the shop</a>.</p></noscript>
         <div class="lp-guest-more">
             <a class="lp-guest-login" href="{{ url('/login') }}">Login to see more</a>

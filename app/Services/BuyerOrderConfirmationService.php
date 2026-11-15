@@ -30,6 +30,8 @@ class BuyerOrderConfirmationService
     public function confirmReceipt(User $buyer, int $orderId): Order
     {
         return DB::transaction(function () use ($buyer, $orderId): Order {
+            User::query()->whereKey($buyer->id)->lockForUpdate()->firstOrFail();
+
             $order = Order::query()
                 ->where('buyer_id', $buyer->id)
                 ->whereKey($orderId)

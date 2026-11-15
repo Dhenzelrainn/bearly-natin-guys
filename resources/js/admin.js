@@ -1,4 +1,7 @@
 import './notification-center.js';
+import './dashboard-context.js';
+import { initAdminCampaignParticipations } from './admin-campaign-participations.js';
+import { initAdminCampaignBannerCrop } from './admin-campaign-banner-crop.js';
 import {
     acknowledgeConversation,
     acknowledgeIncoming,
@@ -236,6 +239,8 @@ import {
     ready(() => {
         const body = document.body;
 
+        initAdminCampaignParticipations();
+        initAdminCampaignBannerCrop();
         initShippingPolicyApprovalQueue();
 
         const refreshIcons = () => {
@@ -880,60 +885,6 @@ import {
         window.addEventListener('resize', () => closeRegistrationMenus());
         window.addEventListener('scroll', () => closeRegistrationMenus(), true);
 
-        const REGISTRATION_STATUS_STORAGE_KEY = 'bearlyAdminRegistrationStatuses';
-        const registrationStatuses = (() => {
-            try {
-                return JSON.parse(localStorage.getItem(REGISTRATION_STATUS_STORAGE_KEY) || '{}');
-            } catch {
-                return {};
-            }
-        })();
-        let pendingRegistrationDecision = null;
-
-        const updateRegistrationRow = (applicationId, status) => {
-            const row = [...document.querySelectorAll('tr[data-table-row]')]
-                .find((item) => (item.dataset.search || '').includes(applicationId.toLowerCase()));
-            const badge = row?.querySelector('.status-badge');
-            if (!row || !badge) return;
-            row.dataset.status = status;
-            badge.textContent = status;
-            badge.className = `status-badge ${status === 'Approved' ? 'badge-success' : status === 'Disapproved' ? 'badge-danger' : status === 'Needs Review' ? 'badge-info' : 'badge-warning'}`;
-            document.querySelectorAll('[data-modal]').forEach((modal) => {
-                if (modal.querySelector('.eyebrow')?.textContent.trim() !== applicationId) return;
-                [...modal.querySelectorAll('.detail-grid > div')].forEach((detail) => {
-                    const label = detail.querySelector('span')?.textContent.trim().toLowerCase() || '';
-                    if (label === 'review status' || label === 'current status') {
-                        const value = detail.querySelector('strong');
-                        if (value) value.textContent = status;
-                    }
-                });
-            });
-        };
-
-        Object.entries(registrationStatuses).forEach(([applicationId, status]) => {
-            updateRegistrationRow(applicationId, status);
-        });
-
-        document.querySelectorAll('[data-registration-needs-review]').forEach((button) => {
-            button.addEventListener('click', () => {
-                const row = button.closest('tr');
-                const badge = row?.querySelector('.status-badge');
-                if (!row || !badge) return;
-
-                row.dataset.status = 'Needs Review';
-                badge.textContent = 'Needs Review';
-                badge.className = 'status-badge badge-info';
-                registrationStatuses[button.dataset.applicationId] = 'Needs Review';
-                localStorage.setItem(REGISTRATION_STATUS_STORAGE_KEY, JSON.stringify(registrationStatuses));
-
-                closeRegistrationMenus();
-                showToast(
-                    `${button.dataset.applicationId} marked as Needs Review.`,
-                    'Application updated'
-                );
-            });
-        });
-
         document.querySelectorAll('[data-copy-application-id]').forEach((button) => {
             button.addEventListener('click', async () => {
                 const applicationId = button.dataset.copyApplicationId;
@@ -1033,49 +984,8 @@ import {
                 const modal = document.querySelector(`[data-modal="${button.dataset.openModal}"]`);
                 if (!modal) return;
 
-                if (button.dataset.applicant) {
-                    const sourceModal = button.closest('[data-modal]');
-                    const applicationId = sourceModal?.querySelector('.eyebrow')?.textContent.trim()
-                        || button.dataset.applicationId
-                        || '';
-                    pendingRegistrationDecision = {
-                        id: applicationId,
-                        applicant: button.dataset.applicant,
-                        status: button.dataset.decision || 'Reviewed',
-                    };
-                    const recipient = modal.querySelector('[data-decision-recipient]');
-                    const status = modal.querySelector('[data-decision-status]');
-                    const message = modal.querySelector('[data-decision-message]');
-                    if (recipient) recipient.value = button.dataset.applicant;
-                    if (status) status.value = button.dataset.decision || 'Reviewed';
-                    if (message) {
-                        const decision = (button.dataset.decision || 'reviewed').toLowerCase();
-                        message.value = `Hello ${button.dataset.applicant},\n\nThank you for submitting your Bearly registration. Your application has been ${decision}. This is a front-end preview of the email notification workflow.`;
-                    }
-                }
-
                 modal.hidden = false;
                 refreshIcons();
-            });
-        });
-
-        document.querySelectorAll('[data-mock-action]').forEach((button) => {
-            if (!button.dataset.mockAction.toLowerCase().includes('decision saved')) return;
-            button.dataset.functionalAction = 'registration-decision';
-            button.addEventListener('click', () => {
-                if (!pendingRegistrationDecision?.id) {
-                    showToast('Open an application and choose a decision first.', 'Decision not saved');
-                    return;
-                }
-
-                registrationStatuses[pendingRegistrationDecision.id] = pendingRegistrationDecision.status;
-                localStorage.setItem(REGISTRATION_STATUS_STORAGE_KEY, JSON.stringify(registrationStatuses));
-                updateRegistrationRow(pendingRegistrationDecision.id, pendingRegistrationDecision.status);
-                showToast(
-                    `${pendingRegistrationDecision.id} changed to ${pendingRegistrationDecision.status}. The email is a front-end preview.`,
-                    'Registration decision saved'
-                );
-                pendingRegistrationDecision = null;
             });
         });
 

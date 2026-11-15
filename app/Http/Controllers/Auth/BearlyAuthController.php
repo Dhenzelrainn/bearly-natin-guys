@@ -182,7 +182,7 @@ class BearlyAuthController extends Controller
 
         $audit->recordAuthentication($user, 'signed_in', 'web_password', $request);
 
-        return $this->redirectAuthenticatedUser($user);
+        return $this->redirectAuthenticatedUser($user, $request);
     }
 
     public function loginRememberedAccount(
@@ -209,7 +209,7 @@ class BearlyAuthController extends Controller
         $request->session()->put('bearly_auth_channel', 'remembered_account');
         $audit->recordAuthentication($user, 'signed_in', 'remembered_account', $request);
 
-        return $this->redirectAuthenticatedUser($user);
+        return $this->redirectAuthenticatedUser($user, $request);
     }
 
     public function forgetRememberedAccount(
@@ -379,7 +379,7 @@ class BearlyAuthController extends Controller
                 $rememberedAccounts->forgetUser($request, (int) $user->id);
             }
 
-            return $this->redirectAuthenticatedUser($user);
+            return $this->redirectAuthenticatedUser($user, $request);
         }
 
         $fullName = trim((string) $googleUser->getName());
@@ -774,16 +774,30 @@ class BearlyAuthController extends Controller
     public function showResetPassword(
         Request $request,
         string $token
-    ): View {
+    ): View|RedirectResponse {
+        if ($redirect = $this->redirectAuthenticatedNonBuyerFromPasswordReset($request)) {
+            return $redirect;
+        }
+
+        $email = $request->query('email');
+        $email = is_string($email) ? trim($email) : '';
+
+        $this->ensureAuthenticatedPasswordResetEmailMatches($request, $email);
+
         return view('auth.reset-password', [
             'token' => $token,
-            'email' => (string) $request->query('email', ''),
+            'email' => $email,
         ]);
     }
 
     public function resetPassword(
-        Request $request
+        Request $request,
+        AuditService $audit,
     ): RedirectResponse {
+        if ($redirect = $this->redirectAuthenticatedNonBuyerFromPasswordReset($request)) {
+            return $redirect;
+        }
+
         $validated = $request->validate([
             'token' => ['required', 'string'],
             'email' => ['required', 'email'],
@@ -800,6 +814,11 @@ class BearlyAuthController extends Controller
         $validated['email'] =
             strtolower(trim($validated['email']));
 
+        $this->ensureAuthenticatedPasswordResetEmailMatches(
+            $request,
+            $validated['email'],
+        );
+
         $status = Password::reset(
             $validated,
             function (User $user, string $password): void {
@@ -813,6 +832,25 @@ class BearlyAuthController extends Controller
         );
 
         if ($status === Password::PASSWORD_RESET) {
+            $user = $request->user();
+
+            if ($user instanceof User) {
+                $channel = $request->session()->get('bearly_auth_channel');
+
+                $audit->recordAuthentication(
+                    $user,
+                    'signed_out',
+                    in_array($channel, ['web_password', 'google', 'remembered_account'], true)
+                        ? $channel
+                        : 'web_session',
+                    $request,
+                );
+            }
+
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
             return redirect()
                 ->route('login')
                 ->with(
@@ -826,6 +864,35 @@ class BearlyAuthController extends Controller
             ->withErrors([
                 'email' => __($status),
             ]);
+    }
+
+    private function ensureAuthenticatedPasswordResetEmailMatches(
+        Request $request,
+        string $email,
+    ): void {
+        $authenticatedUser = $request->user();
+
+        if ($authenticatedUser === null) {
+            return;
+        }
+
+        abort_unless(
+            $email !== ''
+                && strtolower(trim((string) $authenticatedUser->email)) === strtolower(trim($email)),
+            403,
+        );
+    }
+
+    private function redirectAuthenticatedNonBuyerFromPasswordReset(
+        Request $request,
+    ): ?RedirectResponse {
+        $user = $request->user();
+
+        if ($user instanceof User && $user->role !== UserRole::Buyer->value) {
+            return $this->redirectAuthenticatedUser($user, $request);
+        }
+
+        return null;
     }
 
     public function logout(Request $request, AuditService $audit): RedirectResponse
@@ -852,8 +919,27 @@ class BearlyAuthController extends Controller
             ->with('status', 'You are signed out. Any saved accounts remain available for one-tap sign-in on this browser.');
     }
 
-    private function redirectAuthenticatedUser(User $user): RedirectResponse
+    private function redirectAuthenticatedUser(User $user, Request $request): RedirectResponse
     {
+        if ($user->role === UserRole::Buyer->value) {
+            $intendedPath = parse_url(
+                (string) $request->session()->get('url.intended', ''),
+                PHP_URL_PATH,
+            );
+
+            if (
+                is_string($intendedPath)
+                && preg_match('#\A/(products|campaigns)/(\d+)\z#D', $intendedPath, $matches) === 1
+            ) {
+                $request->session()->forget('url.intended');
+
+                $route = $matches[1] === 'campaigns' ? 'campaigns.show' : 'products.show';
+                $parameter = $matches[1] === 'campaigns' ? 'campaign' : 'product';
+
+                return redirect()->route($route, [$parameter => (int) $matches[2]]);
+            }
+        }
+
         $routes = [
             UserRole::Admin->value => 'admin.dashboard',
             UserRole::Buyer->value => 'home',

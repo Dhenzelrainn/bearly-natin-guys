@@ -379,12 +379,15 @@ body:not(.bc) .bearly-slider-arrow {
     color: var(--brown);
     box-shadow: 0 6px 20px rgba(53,37,30,.1);
     opacity: 0;
+    pointer-events: none;
     transition: opacity .2s ease, background .2s ease, transform .2s ease;
 }
 
 body:not(.bc) .bearly-promo-slider:hover .bearly-slider-arrow,
+body:not(.bc) .bearly-promo-slider:focus-within .bearly-slider-arrow,
 body:not(.bc) .bearly-slider-arrow:focus-visible {
     opacity: 1;
+    pointer-events: auto;
 }
 
 body:not(.bc) .bearly-slider-arrow:hover {
@@ -701,9 +704,16 @@ body:not(.bc).bh .bearly-promo-pill{
 body:not(.bc).bh .bearly-slider-arrow{
     width:40px;
     height:40px;
-    opacity:1;
+    opacity:0;
+    pointer-events:none;
     background:rgba(255,250,242,.9);
     box-shadow:0 3px 10px rgba(53,37,30,.08);
+}
+body:not(.bc).bh .bearly-promo-slider:hover .bearly-slider-arrow,
+body:not(.bc).bh .bearly-promo-slider:focus-within .bearly-slider-arrow,
+body:not(.bc).bh .bearly-slider-arrow:focus-visible{
+    opacity:1;
+    pointer-events:auto;
 }
 body:not(.bc).bh .bearly-slider-prev{left:14px}
 body:not(.bc).bh .bearly-slider-next{right:14px}
@@ -772,14 +782,14 @@ body:not(.bc).bh .bearly-slider-progress{
    BUYER HOME — TARGET HERO POLISH
    ========================================================= */
 body:not(.bc).bh .bearly-promo-slider,
-body:not(.bc).bh .bearly-promo-slide{min-height:284px}
+body:not(.bc).bh .bearly-promo-slide{min-height:340px}
 body:not(.bc).bh .bearly-promo-slider{border:1px solid #e5ddd4;border-radius:8px;background:#dfbd91}
 body:not(.bc).bh .bearly-promo-payday{background:#dfbd91}
 body:not(.bc).bh .bearly-payday-bg{object-position:64% 55%;filter:saturate(.78) sepia(.08) brightness(.98)}
 body:not(.bc).bh .bearly-payday-overlay{
     background:linear-gradient(90deg,rgba(229,195,151,.98) 0%,rgba(229,195,151,.95) 28%,rgba(229,195,151,.55) 48%,rgba(229,195,151,.04) 72%)
 }
-body:not(.bc).bh .bearly-promo-copy{width:min(520px,48%);padding:30px 46px 38px 80px}
+body:not(.bc).bh .bearly-promo-copy{width:min(590px,54%);padding:30px 44px 36px 68px}
 body:not(.bc).bh .bearly-promo-copy .eyebrow{margin-bottom:8px;color:#99501f;font-size:9px;font-weight:800;letter-spacing:.16em}
 body:not(.bc).bh .bearly-promo-copy h1,
 body:not(.bc).bh .bearly-promo-copy h2{max-width:480px;color:#321b0f;font-size:clamp(34px,3.2vw,47px);line-height:.98;letter-spacing:-.045em}
@@ -802,8 +812,11 @@ body:not(.bc).bh .bearly-slider-dots button{width:7px;height:7px;border:0;backgr
 body:not(.bc).bh .bearly-slider-dots button.is-active{width:16px;border-radius:6px;background:#fff}
 body:not(.bc).bh .bearly-slider-progress{display:none}
 @media(max-width:980px){
-    body:not(.bc).bh .bearly-promo-copy{width:56%;padding-left:56px}
+    body:not(.bc).bh .bearly-promo-copy{width:58%;padding-left:64px}
     body:not(.bc).bh .bearly-promo-art{right:18px;width:220px}
+}
+@media(max-width:1200px){
+    body:not(.bc).bh .bearly-promo-copy{padding-left:64px}
 }
 @media(max-width:720px){
     body:not(.bc).bh .bearly-promo-slider,
@@ -843,4 +856,49 @@ body:not(.bc).bh .bearly-promo-voucher .bearly-ticket-rule{
 }
 body:not(.bc).bh .bearly-promo-voucher .bearly-ticket-small{
     color:#725a43;
+}
+
+/* All Buyer-home slides share one wide 3:1 frame on desktop. */
+@media (min-width:1201px){
+    body:not(.bc).bh .bearly-promo-slider{
+        aspect-ratio:3 / 1;
+        min-height:0;
+    }
+    body:not(.bc).bh .bearly-promo-slider .bearly-promo-track{
+        position:absolute;
+        inset:0;
+        min-height:0;
+    }
+    body:not(.bc).bh .bearly-promo-slider .bearly-promo-slide{
+        position:absolute;
+        inset:0;
+        min-height:0;
+    }
+}
+body:not(.bc).bh .bearly-promo-campaign-banner{background:#eadbc6}
+body:not(.bc).bh .bearly-promo-campaign-link{
+    position:absolute;
+    inset:0;
+    z-index:1;
+    display:block;
+}
+body:not(.bc).bh .bearly-promo-campaign-link:focus-visible{
+    outline:3px solid #a9692e;
+    outline-offset:-5px;
+}
+body:not(.bc).bh .bearly-promo-campaign-image{
+    display:block;
+    width:100%;
+    height:100%;
+    object-fit:contain;
+    object-position:center;
+}
+@media (min-width:1201px){
+    body:not(.bc).bh .bearly-promo-campaign-image{
+        object-fit:cover;
+    }
+}
+
+@media (hover:none) and (min-width:721px){
+    body:not(.bc).bh .bearly-slider-arrow{opacity:1;pointer-events:auto}
 }

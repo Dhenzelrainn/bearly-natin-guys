@@ -17,7 +17,9 @@ use App\Models\Waybill;
 use App\Notifications\WorkflowNotification;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class ShipmentHandoffService
@@ -37,31 +39,103 @@ class ShipmentHandoffService
             && $centers->first()->status === 'active';
     }
 
+    /**
+     * Count shipments the origin Logistics account can currently add to a
+     * Courier manifest. This mirrors the ready-shipment criteria in the City
+     * Handoffs page, including returns that have not created a transfer yet.
+     */
+    public function manifestReadyCountFor(LogisticsProfile $profile): int
+    {
+        $originCenters = $profile->sortingCenters()
+            ->orderBy('id')
+            ->limit(2)
+            ->get();
+
+        if ($originCenters->count() !== 1 || $originCenters->first()->status !== 'active') {
+            return 0;
+        }
+
+        $originCenterId = (int) $originCenters->first()->id;
+        $shipmentCityCodes = [];
+        $shipments = Shipment::query()
+            ->where('logistics_profile_id', $profile->id)
+            ->where('status', ShipmentStatus::AtSortingCenter->value)
+            ->whereDoesntHave('transfer')
+            ->whereDoesntHave('linehaulRunAssignment')
+            ->whereHas('parcels', fn ($query) => $query
+                ->where('status', ParcelStatus::Received->value)
+                ->where('current_sorting_center_id', $originCenterId))
+            ->whereDoesntHave('parcels', function ($query) use ($originCenterId): void {
+                $query->where(function ($invalid) use ($originCenterId): void {
+                    $invalid->where('status', '!=', ParcelStatus::Received->value)
+                        ->orWhereNull('status')
+                        ->orWhere('current_sorting_center_id', '!=', $originCenterId)
+                        ->orWhereNull('current_sorting_center_id');
+                });
+            })
+            ->with(['sellerOrder.order', 'destinationAddress'])
+            ->get()
+            ->filter(function (Shipment $shipment) use ($profile, &$shipmentCityCodes): bool {
+                $cityCode = $this->destinationCityCode($shipment);
+                if (! $this->isCrossCityCodeFor($cityCode, $profile)) {
+                    return false;
+                }
+
+                $shipmentCityCodes[$shipment->id] = trim((string) $cityCode);
+
+                return true;
+            });
+
+        if ($shipments->isEmpty()) {
+            return 0;
+        }
+
+        $destinationProviders = $this->activeDestinationProvidersFor(array_values(array_unique($shipmentCityCodes)));
+        if ($destinationProviders->isEmpty()) {
+            return 0;
+        }
+
+        $destinationCenters = SortingCenter::query()
+            ->whereIn('logistics_profile_id', $destinationProviders->pluck('id'))
+            ->orderBy('id')
+            ->get()
+            ->groupBy('logistics_profile_id');
+
+        return $shipments
+            ->filter(function (Shipment $shipment) use ($profile, $shipmentCityCodes, $destinationProviders, $destinationCenters): bool {
+                $destination = $destinationProviders->get($shipmentCityCodes[$shipment->id] ?? '');
+                if (! $destination || (int) $destination->id === (int) $profile->id) {
+                    return false;
+                }
+
+                $centers = $destinationCenters->get($destination->id, collect());
+
+                return $centers->count() === 1
+                    && $centers->first()->status === 'active';
+            })
+            ->count();
+    }
+
     public function destinationProviderFor(Shipment $shipment): ?LogisticsProfile
     {
         $cityCode = $this->destinationCityCode($shipment);
 
-        if (! $cityCode) {
+        if (! filled($cityCode)) {
             return null;
         }
 
-        return LogisticsProfile::query()
-            ->where('psgc_city_code', $cityCode)
-                ->where('status', 'active')
-                ->whereHas('user', fn ($query) => $query
-                    ->where('status', 'active')
-                    ->where(fn ($roles) => $roles
-                    ->where('role', UserRole::Logistics->value)
-                    ->orWhereHas('roles', fn ($roleQuery) => $roleQuery
-                        ->where('roles.name', UserRole::Logistics->value))))
-            ->first();
+        return $this->activeDestinationProvidersFor([trim((string) $cityCode)])->first();
     }
 
     public function isCrossCityFor(
         Shipment $shipment,
         LogisticsProfile $profile
     ): bool {
-        $destinationCityCode = $this->destinationCityCode($shipment);
+        return $this->isCrossCityCodeFor($this->destinationCityCode($shipment), $profile);
+    }
+
+    private function isCrossCityCodeFor(?string $destinationCityCode, LogisticsProfile $profile): bool
+    {
         $profileCityCode = trim((string) $profile->psgc_city_code);
 
         return filled($destinationCityCode)
@@ -258,8 +332,7 @@ class ShipmentHandoffService
                 ->get();
 
             if ($parcels->isEmpty() || $parcels->contains(
-                fn (Parcel $parcel): bool =>
-                    $parcel->status !== ParcelStatus::InTransit->value
+                fn (Parcel $parcel): bool => $parcel->status !== ParcelStatus::InTransit->value
                     || (int) $parcel->current_sorting_center_id !== (int) $transfer->from_sorting_center_id
             )) {
                 throw new ConflictHttpException(
@@ -423,9 +496,37 @@ class ShipmentHandoffService
                 (string) ($destination->province ?? ''),
                 (string) ($destination->city_municipality ?? '')
             );
-        } catch (\Illuminate\Validation\ValidationException) {
+        } catch (ValidationException) {
             return null;
         }
+    }
+
+    /** @param array<int, string> $cityCodes
+     * @return Collection<string, LogisticsProfile>
+     */
+    private function activeDestinationProvidersFor(array $cityCodes): Collection
+    {
+        $cityCodes = collect($cityCodes)
+            ->filter(fn (string $cityCode): bool => trim($cityCode) !== '')
+            ->map(fn (string $cityCode): string => trim($cityCode))
+            ->unique()
+            ->values();
+
+        if ($cityCodes->isEmpty()) {
+            return collect();
+        }
+
+        return LogisticsProfile::query()
+            ->whereIn('psgc_city_code', $cityCodes)
+            ->where('status', 'active')
+            ->whereHas('user', fn ($query) => $query
+                ->where('status', 'active')
+                ->where(fn ($roles) => $roles
+                    ->where('role', UserRole::Logistics->value)
+                    ->orWhereHas('roles', fn ($roleQuery) => $roleQuery
+                        ->where('roles.name', UserRole::Logistics->value))))
+            ->get()
+            ->keyBy('psgc_city_code');
     }
 
     private function singleActiveSortingCenterForUpdate(

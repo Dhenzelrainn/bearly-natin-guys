@@ -2151,6 +2151,44 @@ class DispatchWorkflowTest extends TestCase
         }
     }
 
+    public function test_delivered_parcel_in_open_batch_does_not_block_overlapping_dispatch_or_capacity(): void
+    {
+        $zone = $this->makeZone($this->centerA, 'WINDOW-DELIVERED');
+        $rider = $this->makeRider($this->profileA, $this->centerA, $zone, 'WINDOW-DELIVERED', 1);
+        $previous = $this->makeReadyShipmentFor($this->profileA, $this->centerA, $zone, 'WINDOW-DELIVERED-FIRST');
+        $start = now()->addDay()->startOfHour();
+        $end = $start->copy()->addHour();
+
+        $previousBatch = app(DispatchService::class)->dispatchZone(
+            $zone,
+            $rider,
+            $this->logisticsA,
+            $start,
+            $end,
+        );
+        $previous['parcel']->update(['status' => ParcelStatus::Delivered->value]);
+
+        $next = $this->makeReadyShipmentFor($this->profileA, $this->centerA, $zone, 'WINDOW-DELIVERED-NEXT');
+        $board = $this->actingAs($this->logisticsA)
+            ->get(route('logistics.dispatch.index'))
+            ->assertOk();
+        $zoneRow = $board->viewData('zones')->firstWhere('id', $zone->id);
+        $riderRow = collect($zoneRow['riders'])->firstWhere('id', $rider->id);
+
+        $this->assertSame(1, $riderRow['remaining']);
+
+        $this->post(route('logistics.dispatch.store', $zone), [
+            'rider_profile_id' => $rider->id,
+            'planned_window_start' => $start->format('Y-m-d\\TH:i'),
+            'planned_window_end' => $end->format('Y-m-d\\TH:i'),
+        ])->assertRedirect(route('logistics.dispatch.index'))
+            ->assertSessionHas('success');
+
+        $this->assertSame('dispatched', $previousBatch->fresh()->status);
+        $this->assertDatabaseCount('dispatch_batches', 2);
+        $this->assertSame(ParcelStatus::Dispatched->value, $next['parcel']->fresh()->status);
+    }
+
     public function test_logistics_cannot_dispatch_from_another_providers_zone(): void
     {
         $foreignZone = $this->makeZone(
@@ -3339,6 +3377,47 @@ class DispatchWorkflowTest extends TestCase
             ShipmentStatus::Dispatched->value,
             $record['shipment']->fresh()->status
         );
+    }
+
+    public function test_dispatch_conflict_returns_to_board_with_reason_and_preserves_attempted_zone_inputs(): void
+    {
+        $zone = $this->makeZone($this->centerA, 'HTTP-WINDOW-CONFLICT');
+        $rider = $this->makeRider($this->profileA, $this->centerA, $zone, 'HTTP-WINDOW-CONFLICT', 10);
+        $first = $this->makeReadyShipmentFor($this->profileA, $this->centerA, $zone, 'HTTP-WINDOW-FIRST');
+        $start = now()->addDay()->startOfHour();
+        $end = $start->copy()->addHour();
+
+        app(DispatchService::class)->dispatchZone($zone, $rider, $this->logisticsA, $start, $end);
+
+        $second = $this->makeReadyShipmentFor($this->profileA, $this->centerA, $zone, 'HTTP-WINDOW-SECOND');
+        $overlapStart = $start->copy()->addMinutes(30);
+        $overlapEnd = $end->copy()->addMinutes(30);
+
+        $response = $this->actingAs($this->logisticsA)->post(
+            route('logistics.dispatch.store', $zone),
+            [
+                'rider_profile_id' => $rider->id,
+                'planned_window_start' => $overlapStart->format('Y-m-d\TH:i'),
+                'planned_window_end' => $overlapEnd->format('Y-m-d\TH:i'),
+            ],
+        );
+
+        $response
+            ->assertRedirect(route('logistics.dispatch.index'))
+            ->assertSessionHas('dispatch_conflict', 'The Rider already has a delivery batch that overlaps this schedule.')
+            ->assertSessionHas('dispatch_conflict_zone_id', $zone->id)
+            ->assertSessionHas('_old_input.rider_profile_id', $rider->id);
+
+        $this->get(route('logistics.dispatch.index'))
+            ->assertOk()
+            ->assertSee('The Rider already has a delivery batch that overlaps this schedule.')
+            ->assertSee('value="'.$rider->id.'" selected', false)
+            ->assertSee('value="'.$overlapStart->format('Y-m-d\TH:i').'"', false)
+            ->assertSee('value="'.$overlapEnd->format('Y-m-d\TH:i').'"', false);
+
+        $this->assertDatabaseCount('dispatch_batches', 1);
+        $this->assertSame(ParcelStatus::Dispatched->value, $first['parcel']->fresh()->status);
+        $this->assertSame(ParcelStatus::Sorted->value, $second['parcel']->fresh()->status);
     }
 
     public function test_dispatch_leaves_parcels_outside_the_zone_barangay_coverage_undispatched(): void

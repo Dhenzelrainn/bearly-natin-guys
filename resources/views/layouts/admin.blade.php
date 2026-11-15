@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    @include('partials.favicon')
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -590,7 +591,7 @@ $adminNavGroups = [
 
                 <i class="admin-ui-icon" data-lucide="house"></i>
 
-                <span>
+                <span class="admin-nav-link-label">
                     Dashboard
                 </span>
 
@@ -605,7 +606,7 @@ $adminNavGroups = [
 
                 <i class="admin-ui-icon" data-lucide="bell"></i>
 
-                <span>
+                <span class="admin-nav-link-label">
                     Notifications
                 </span>
 
@@ -629,6 +630,7 @@ $adminNavGroups = [
                             @php
                                 $hasRoute = !empty($item['route']) && Route::has($item['route']);
                                 $isActive = $hasRoute && request()->routeIs($item['route']);
+                                $itemTaskCount = (int) (($navigationTaskCounts ?? [])[$item['route']] ?? 0);
                             @endphp
 
                             @if($hasRoute)
@@ -636,14 +638,16 @@ $adminNavGroups = [
                                 <a
                                     href="{{ route($item['route']) }}"
                                     class="admin-nav-link {{ $isActive ? 'is-active' : '' }}"
-                                    title="{{ $item['label'] }}"
+                                    title="{{ $item['label'] }}{{ $itemTaskCount > 0 ? ' · '.$itemTaskCount.' actionable '.($itemTaskCount === 1 ? 'task' : 'tasks') : '' }}"
+                                    @if ($itemTaskCount > 0) aria-label="{{ $item['label'] }}, {{ $itemTaskCount }} actionable {{ $itemTaskCount === 1 ? 'task' : 'tasks' }}" @endif
                                 >
                                     <i
                                         class="admin-ui-icon"
                                         data-lucide="{{ $item['icon'] }}"
                                     ></i>
 
-                                    <span>{{ $item['label'] }}</span>
+                                    <span class="admin-nav-link-label">{{ $item['label'] }}</span>
+                                    @include('partials.navigation-task-count', ['count' => $itemTaskCount, 'class' => 'admin-nav-task-count'])
                                 </a>
 
                             @else
@@ -658,7 +662,7 @@ $adminNavGroups = [
                                         data-lucide="{{ $item['icon'] }}"
                                     ></i>
 
-                                    <span>{{ $item['label'] }}</span>
+                                    <span class="admin-nav-link-label">{{ $item['label'] }}</span>
                                 </span>
 
                             @endif
@@ -839,7 +843,11 @@ $adminNavGroups = [
             >
 
                 <span class="admin-avatar">
-                    {{ $admin['initials'] ?? 'AR' }}
+                    @if (!empty($admin['photo_url']))
+                        <img class="avatar-photo" src="{{ $admin['photo_url'] }}" alt="">
+                    @else
+                        {{ $admin['initials'] ?? 'AR' }}
+                    @endif
                 </span>
 
                 <span class="admin-profile-name">
@@ -864,7 +872,11 @@ $adminNavGroups = [
                 <div class="profile-popover-head">
 
                     <span class="admin-avatar admin-avatar-small">
-                        {{ $admin['initials'] ?? 'AR' }}
+                        @if (!empty($admin['photo_url']))
+                            <img class="avatar-photo" src="{{ $admin['photo_url'] }}" alt="">
+                        @else
+                            {{ $admin['initials'] ?? 'AR' }}
+                        @endif
                     </span>
 
                     <div>

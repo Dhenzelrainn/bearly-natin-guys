@@ -16,6 +16,7 @@ use App\Models\Shipment;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\CodCashCollectionService;
+use App\Services\PisoSaleEligibilityService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -69,6 +70,10 @@ class BuyerOrderConfirmationTest extends TestCase
         $sellerOrder = $this->sellerOrder($order, $store, 'confirm', 'handed_to_logistics');
         $shipment = $this->shipment($sellerOrder, $provider, 'confirm', 'delivered');
         $this->collectCod($shipment, $provider, 'confirm');
+        $eligibility = app(PisoSaleEligibilityService::class);
+        $this->assertTrue($eligibility->canApply($buyer));
+        $order->update(['piso_sale_used' => true]);
+        $this->assertFalse($eligibility->canApply($buyer), 'The active Piso Sale order should reserve the offer until receipt is confirmed.');
 
         $this->actingAs($buyer)
             ->get(route('checkout.confirmation', $order->order_no))
@@ -89,6 +94,8 @@ class BuyerOrderConfirmationTest extends TestCase
             'actor_user_id' => $buyer->id,
         ]);
         $this->assertSame('fulfilled', $order->fresh()->status);
+        $this->assertFalse($eligibility->canDisplay($buyer));
+        $this->assertFalse($eligibility->canApply($buyer));
         $this->assertSame('paid', $order->fresh()->payment_status);
         $this->assertNotNull($order->fresh()->completed_at);
         $this->assertSame('paid', $order->payments()->sole()->status);

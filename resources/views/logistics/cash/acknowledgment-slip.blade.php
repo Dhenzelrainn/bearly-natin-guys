@@ -1,14 +1,14 @@
 @extends('logistics.layouts.app')
 
 @section('title', 'Buyer refund acknowledgment '.$payout->acknowledgment_reference)
-@section('page-title', 'Print acknowledgment slip')
+@section('page-title', 'Print acknowledgment form')
 
 @section('content')
 <div class="refund-slip-workspace">
     <section class="refund-slip-toolbar" aria-label="Print instructions">
         <div>
             <span class="eyebrow">Logistics dispatch form</span>
-            <h2>Print and give this slip to the assigned Rider</h2>
+            <h2>Print and give this acknowledgment form to the assigned Rider</h2>
             <p>Use your printer, or choose “Save as PDF” in the print dialog. The Rider must bring the paper form to the Buyer and return the signed proof.</p>
         </div>
         <div class="refund-slip-toolbar-actions">

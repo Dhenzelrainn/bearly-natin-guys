@@ -1,4 +1,7 @@
+import { setupPostRedirectScrollRestoration } from './post-redirect-scroll.js';
 import { isTheme, nextTheme, resolveTheme, THEME_STORAGE_KEY } from './theme-preference.js';
+
+setupPostRedirectScrollRestoration();
 
 const root = document.documentElement;
 const systemTheme = window.matchMedia?.('(prefers-color-scheme: dark)');

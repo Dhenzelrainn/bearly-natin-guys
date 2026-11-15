@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\AccountStatus;
+use App\Enums\ApplicationStatus;
 use App\Enums\RiderWorkType;
 use App\Enums\UserRole;
 use App\Models\AccountApplication;
@@ -316,6 +317,62 @@ class RegistrationLifecycleService
                 meta: ['application_id' => (int) $application->id],
             ),
         );
+    }
+
+    /**
+     * Start reviewing one submitted application without changing the
+     * applicant's account status.
+     */
+    public function startReview(
+        User $user,
+        User $reviewer,
+        int $applicationId
+    ): AccountApplication {
+        return DB::transaction(function () use (
+            $user,
+            $reviewer,
+            $applicationId
+        ): AccountApplication {
+            $lockedUser = User::query()
+                ->lockForUpdate()
+                ->findOrFail($user->id);
+
+            $application = $this->lockReviewableApplication(
+                $lockedUser,
+                $applicationId
+            );
+
+            if ($application->status === ApplicationStatus::NeedsRevision->value) {
+                throw new ConflictHttpException(
+                    'The applicant must resubmit the requested revisions before review can start.'
+                );
+            }
+
+            if ($application->status !== ApplicationStatus::UnderReview->value) {
+                if ($application->status !== ApplicationStatus::Submitted->value) {
+                    throw new ConflictHttpException(
+                        'The selected application is not ready for review.'
+                    );
+                }
+
+                $application->forceFill([
+                    'status' => ApplicationStatus::UnderReview->value,
+                    'review_started_at' => now(),
+                    'reviewed_by' => $reviewer->id,
+                ])->save();
+            } elseif ($application->review_started_at === null || $application->reviewed_by === null) {
+                $application->forceFill([
+                    'review_started_at' => $application->review_started_at ?? now(),
+                    'reviewed_by' => $application->reviewed_by ?? $reviewer->id,
+                ])->save();
+            }
+
+            return $application->fresh([
+                'user',
+                'requestedRole',
+                'documents',
+            ]);
+        });
     }
 
     /**

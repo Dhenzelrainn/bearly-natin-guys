@@ -10,3 +10,276 @@
 .buyer-return-fields .buyer-return-method-option input[type=radio]{appearance:auto;width:18px;height:18px;min-width:18px;min-height:18px;flex:0 0 18px;margin:2px 0 0;padding:0;border:initial;border-radius:50%;background:initial;accent-color:#824424}
 
 .buyer-return-page .buyer-return-primary{border:1px solid #834323;background:#834323;color:#fff}.buyer-return-page .buyer-return-primary:hover{background:#6f371d;color:#fff}
+
+.buyer-refund-confirmation{display:grid;gap:12px;margin-top:20px;padding:16px;border:1px solid #ead9c8;border-left:4px solid #d88b12;border-radius:0 9px 9px 0;background:#fcf8f3}
+.buyer-refund-confirmation h3{margin:0;color:#35271f;font-size:15px}
+.buyer-refund-confirmation>p{margin:0;color:#66564b;font-size:12px;line-height:1.6}
+.buyer-refund-confirm-form{display:grid;gap:12px}
+.buyer-refund-confirm-form label{display:flex;align-items:flex-start;gap:9px;color:#44372f;font-size:12px;line-height:1.5}
+.buyer-refund-confirm-form input[type=checkbox]{width:17px;height:17px;flex:none;margin:1px 0 0;accent-color:#824424}
+.buyer-refund-confirmation :is(button,textarea):focus-visible{outline:3px solid rgba(216,139,18,.38);outline-offset:2px}
+.buyer-refund-reported{padding:11px 12px;border:1px solid #e4c4bc;border-radius:8px;background:#fff5f2;color:#783b32!important}
+.buyer-refund-report-form{display:grid;gap:8px;padding-top:12px;border-top:1px solid #e8ded6}
+.buyer-refund-report-form label{color:#51443b;font-size:12px;font-weight:600}
+.buyer-refund-report-form textarea{width:100%;min-height:82px;padding:10px 11px;border:1px solid #d9cec6;border-radius:8px;background:#fff;color:#35271f;font:inherit;font-size:13px;resize:vertical}
+.buyer-refund-report-button{justify-self:start;min-height:38px;padding:8px 12px;border:1px solid #9a603b;border-radius:7px;background:#fff;color:#783f26;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.buyer-refund-report-button:hover{background:#f6eee8}
+@media(max-width:640px){.buyer-refund-confirmation{padding:13px}.buyer-refund-confirm-form .buyer-return-primary,.buyer-refund-report-button{width:100%}}
+
+.buyer-refund-cash-tracking .buyer-return-section-heading{margin-bottom:14px}
+.buyer-refund-cash-tracking .buyer-return-section-heading h2{color:#35271f}
+.buyer-refund-cash-current{display:grid;gap:4px;margin:0 0 10px;padding:11px 12px;border:1px solid #ead9c8;border-radius:8px;background:#fcf8f3}
+.buyer-refund-cash-current span{color:#766a62;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.buyer-refund-cash-current strong{color:#44372f;font-size:12px;line-height:1.5}
+.buyer-refund-cash-note{margin:0 0 14px;color:#766a62;font-size:11px;line-height:1.6}
+.buyer-refund-cash-tracking .buyer-return-timeline li strong{color:#44372f;font-size:12px;line-height:1.5}
+.buyer-refund-cash-tracking .buyer-return-timeline li small{color:#766a62;font-size:10px;line-height:1.5}
+:root[data-theme="dark"] body.bh .buyer-refund-cash-tracking{border-color:var(--theme-border);background:var(--theme-surface);color:var(--theme-text)}
+:root[data-theme="dark"] body.bh .buyer-refund-cash-tracking .buyer-return-section-heading h2,
+:root[data-theme="dark"] body.bh .buyer-refund-cash-tracking .buyer-return-timeline li strong{color:var(--theme-text)}
+:root[data-theme="dark"] body.bh .buyer-refund-cash-current{border-color:var(--theme-border);background:var(--theme-surface-soft)}
+:root[data-theme="dark"] body.bh .buyer-refund-cash-current span,
+:root[data-theme="dark"] body.bh .buyer-refund-cash-note,
+:root[data-theme="dark"] body.bh .buyer-refund-cash-tracking .buyer-return-timeline li small{color:var(--theme-muted)}
+:root[data-theme="dark"] body.bh .buyer-refund-cash-current strong{color:var(--theme-text)}
+:root[data-theme="dark"] body.bh .buyer-refund-cash-tracking .buyer-return-timeline li{border-left-color:var(--theme-border)}
+:root[data-theme="dark"] body.bh .buyer-refund-cash-tracking .buyer-return-timeline li:before{background:var(--theme-accent)}
+
+/* Return requests and case details use several nested light surfaces. Keep
+   those scoped to these pages so dark mode does not leave white panels behind. */
+:root[data-theme="dark"] body.bh.buyer-return-page {
+    background: var(--theme-page);
+    color: var(--theme-text);
+    color-scheme: dark;
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-heading .section-kicker {
+    color: #e3ae61;
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-heading :is(p, small),
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-section-heading p {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-card {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+    color: var(--theme-text);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .16);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-section-heading > .material-symbols-outlined {
+    background: var(--theme-surface-soft);
+    color: var(--theme-accent);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-section-heading h2,
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-item-copy strong,
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-meta dd,
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-case-row strong,
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-timeline strong,
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-evidence li > span {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page :is(
+    .buyer-return-item,
+    .buyer-return-case-row,
+    .buyer-return-evidence li,
+    .buyer-refund-report-form
+) {
+    border-color: var(--theme-border-soft);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page :is(
+    .buyer-return-item-copy span,
+    .buyer-return-item-copy small,
+    .buyer-return-quantity,
+    .buyer-return-quantity small,
+    .buyer-return-fields label small,
+    .buyer-return-upload small,
+    .buyer-return-method-option small,
+    .buyer-return-delivery-methods > p,
+    .buyer-return-meta dt,
+    .buyer-return-case-row small,
+    .buyer-return-timeline small,
+    .buyer-return-timeline p,
+    .buyer-return-evidence small,
+    .buyer-return-unavailable p,
+    .buyer-refund-confirmation > p,
+    .buyer-refund-report-form label
+) {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-image-fallback {
+    background: var(--theme-surface-soft);
+    color: #d3ad88;
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-quantity small {
+    color: #e3ae61;
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-fields > label:not(.buyer-return-upload) {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-fields :is(input:not([type="file"]), select, textarea) {
+    border-color: var(--theme-border);
+    background: var(--theme-input);
+    color: var(--theme-text);
+    color-scheme: dark;
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-fields :is(input, select, textarea)::placeholder {
+    color: var(--theme-muted);
+    opacity: .85;
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-delivery-methods {
+    border-color: var(--theme-border);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-delivery-methods legend,
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-method-option strong {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-method-option {
+    border-color: var(--theme-border);
+    background: var(--theme-surface-soft);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-method-option:has(input:checked) {
+    border-color: #b9853d;
+    background: #382c20;
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-method-option input {
+    accent-color: var(--theme-accent);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-method-option:focus-within {
+    outline-color: var(--theme-accent);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-policy,
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-upload,
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-meta > div,
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-refund-confirmation {
+    border-color: var(--theme-border);
+    background: var(--theme-surface-soft);
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-policy {
+    border: 1px solid var(--theme-border);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-upload {
+    border-style: dashed;
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-upload > .material-symbols-outlined,
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-evidence a {
+    color: var(--theme-accent);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-upload input[type="file"] {
+    color: var(--theme-muted);
+    color-scheme: dark;
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-upload input[type="file"]::file-selector-button {
+    border: 1px solid var(--theme-border);
+    border-radius: 6px;
+    background: var(--theme-surface);
+    color: var(--theme-text);
+    cursor: pointer;
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-info {
+    border: 1px solid var(--theme-border);
+    background: var(--theme-surface-soft);
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-info > .material-symbols-outlined {
+    color: var(--theme-accent);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-status {
+    background: var(--theme-accent-soft);
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-timeline li {
+    border-left-color: var(--theme-border);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-timeline li:before {
+    background: var(--theme-accent);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-timeline li:last-child {
+    border-left-color: transparent;
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-primary:focus-visible,
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-secondary:focus-visible,
+:root[data-theme="dark"] body.bh.buyer-return-page :is(input, select, textarea):focus-visible {
+    outline-color: var(--theme-accent);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-secondary,
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-refund-report-button {
+    border-color: var(--theme-border);
+    background: var(--theme-surface-soft);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-refund-report-button:hover {
+    border-color: #8f7048;
+    background: #382c20;
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-refund-confirmation {
+    border-left: 4px solid var(--theme-accent);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-refund-confirmation h3 {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-refund-confirm-form label {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-refund-confirm-form input[type="checkbox"] {
+    accent-color: var(--theme-accent);
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-refund-reported {
+    border-color: #65413b;
+    background: #38211f;
+    color: #ffb4a9 !important;
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-alert.is-success {
+    border: 1px solid #31563b;
+    background: #1e3828;
+    color: #a8ddb1;
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-alert.is-error {
+    border: 1px solid #65413b;
+    background: #38211f;
+    color: #ffb4a9;
+}
+
+:root[data-theme="dark"] body.bh.buyer-return-page .buyer-return-unavailable > .material-symbols-outlined {
+    color: #d3ad88;
+}

@@ -11,6 +11,7 @@ use App\Models\Order;
 use App\Models\User;
 use App\Observers\AccountApplicationObserver;
 use App\Observers\AddressObserver;
+use App\Services\NavigationTaskCountService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\Request;
@@ -80,6 +81,12 @@ class AppServiceProvider extends ServiceProvider
 
             $buyerName = trim((string) ($buyer->name ?: trim(($buyer->first_name ?? '').' '.($buyer->last_name ?? ''))));
             $buyerName = $buyerName !== '' ? $buyerName : 'Buyer';
+            $buyerInitials = collect(preg_split('/\s+/u', $buyerName) ?: [])
+                ->filter()
+                ->take(2)
+                ->map(static fn (string $part): string => mb_strtoupper(mb_substr($part, 0, 1)))
+                ->implode('');
+            $buyerInitials = $buyerInitials !== '' ? $buyerInitials : 'BY';
             $buyerEmail = (string) ($buyer->email ?? '');
             $buyerPhone = (string) ($buyer->phone ?: $buyer->contact_number ?: '');
             $buyerUsername = str_contains($buyerEmail, '@')
@@ -111,6 +118,7 @@ class AppServiceProvider extends ServiceProvider
                 'id' => $buyer->id,
                 'username' => $buyerUsername,
                 'fullName' => $buyerName,
+                'initials' => $buyerInitials,
                 'email' => $buyerEmail,
                 'phone' => $buyerPhone,
                 'gender' => (string) ($buyer->sex ?? ''),
@@ -130,6 +138,38 @@ class AppServiceProvider extends ServiceProvider
                 'buyerProfilePayload',
                 'buyerCartCount'
             ));
+        });
+
+        View::composer('layouts.admin', function ($view): void {
+            $user = Auth::user();
+
+            if (! $user instanceof User) {
+                return;
+            }
+
+            $admin = $view->getData()['admin'] ?? [];
+
+            if (! is_array($admin)) {
+                return;
+            }
+
+            $admin['photo_url'] = $user->profile_photo_path
+                ? Storage::disk('public')->url($user->profile_photo_path)
+                : '';
+
+            $view->with('admin', $admin);
+        });
+
+        View::composer([
+            'layouts.admin',
+            'layouts.seller',
+            'logistics.layouts.app',
+            'rider.layouts.app',
+        ], function ($view): void {
+            $view->with(
+                'navigationTaskCounts',
+                app(NavigationTaskCountService::class)->forUser(Auth::user() instanceof User ? Auth::user() : null),
+            );
         });
 
         View::composer('buyer.partials.buyer-header', function ($view): void {

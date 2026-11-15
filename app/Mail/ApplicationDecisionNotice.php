@@ -16,8 +16,7 @@ class ApplicationDecisionNotice extends Mailable implements ShouldQueue
         public string $role,
         public string $decision,
         public ?string $reason = null,
-    ) {
-    }
+    ) {}
 
     public function build(): static
     {
@@ -26,8 +25,17 @@ class ApplicationDecisionNotice extends Mailable implements ShouldQueue
             default => $this->decision,
         };
 
+        $data = [
+            'applicantName' => $this->applicantName,
+            'role' => $this->role,
+            'decision' => $this->decision,
+            'decisionLabel' => str($decisionLabel)->replace('_', ' ')->title()->toString(),
+            'reason' => $this->reason,
+        ];
+
         return $this
             ->subject('Bearly '.ucfirst($this->role).' application '.$decisionLabel)
-            ->text('emails.application-decision-notice');
+            ->view('emails.application-decision-notice', $data)
+            ->text('emails.text.application-decision-notice', $data);
     }
 }

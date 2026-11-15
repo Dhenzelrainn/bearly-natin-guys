@@ -2,11 +2,14 @@
 
 namespace Tests\Feature;
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ThemeToggleTest extends TestCase
 {
-    public function test_public_auth_and_partner_portal_pages_render_the_theme_toggle(): void
+    use RefreshDatabase;
+
+    public function test_public_auth_and_partner_portal_pages_render_the_theme_toggle_and_bearly_favicon(): void
     {
         foreach ([
             route('shop.home'),
@@ -20,7 +23,9 @@ class ThemeToggleTest extends TestCase
                 ->assertOk()
                 ->assertSee('data-theme-toggle', false)
                 ->assertSee('role="switch"', false)
-                ->assertSee('bearly-theme');
+                ->assertSee('bearly-theme')
+                ->assertSee(asset('images/bearly-favicon.png').'?v=2', false)
+                ->assertSee(asset('favicon.ico').'?v=2', false);
         }
     }
 

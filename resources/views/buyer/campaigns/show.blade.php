@@ -53,6 +53,13 @@
             </div>
         </header>
 
+        @if (! empty($campaign['piso_sale_reserved']))
+            <p class="campaign-reserved-notice" role="status">
+                <span class="material-symbols-outlined" aria-hidden="true">lock_clock</span>
+                This Piso Sale is reserved for an order you’ve already placed. Its discount won’t apply to another order while that order is active.
+            </p>
+        @endif
+
         <section class="buyer-search-products campaign-products" aria-labelledby="campaign-products-title">
             <div class="buyer-search-section-heading">
                 <div>

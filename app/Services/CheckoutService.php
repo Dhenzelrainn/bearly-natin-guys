@@ -9,6 +9,7 @@ use App\Models\CartItem;
 use App\Models\InventoryMovement;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Models\PlatformPromotion;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\SellerOrder;
@@ -131,6 +132,8 @@ class CheckoutService
                 $createdSellerOrders = [];
                 $sellerOrdersByStoreId = [];
                 $orderItemsByCartItemId = [];
+                $pisoSaleUsed = collect($groups)->contains(fn (array $group): bool => collect($group['items'])
+                    ->contains(fn (array $line): bool => ($line['campaign_type'] ?? null) === PlatformPromotion::CAMPAIGN_PISO_SALE));
 
                 $order = Order::query()->create([
                     'order_no' => $this->number('BRY'),
@@ -156,6 +159,7 @@ class CheckoutService
                     'discount_minor' => $totals['discount_minor'],
                     'platform_discount_minor' => $totals['platform_discount_minor'],
                     'campaign_platform_discount_minor' => $totals['campaign_platform_discount_minor'] ?? 0,
+                    'piso_sale_used' => $pisoSaleUsed,
                     'platform_shipping_discount_minor' => $totals['shipping_discount_minor'],
                     'total_minor' => $totals['total_minor'],
                     'status' => 'processing',
@@ -337,6 +341,8 @@ class CheckoutService
     public function cancel(User $buyer, int $orderId, string $reason): Order
     {
         return DB::transaction(function () use ($buyer, $orderId, $reason): Order {
+            User::query()->whereKey($buyer->id)->lockForUpdate()->firstOrFail();
+
             $order = Order::query()
                 ->where('buyer_id', $buyer->id)
                 ->whereKey($orderId)
@@ -707,6 +713,7 @@ class CheckoutService
                 'campaign_participation_item_id' => $price['campaign_participation_item_id'] ?? null,
                 'campaign_name' => $price['campaign_name'] ?? null,
                 'campaign_funding' => $price['campaign_funding'] ?? null,
+                'campaign_type' => $price['campaign_type'] ?? null,
             ];
             $groups[$storeId] ??= [
                 'store' => $store,

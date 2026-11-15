@@ -81,17 +81,15 @@
                 <b id="{{ $headerCartBadgeId }}" class="cart-badge" hidden aria-label="Cart item count">0</b>
             @endif
         </a>
-        <a class="account-action {{ $headerActive === 'profile' ? 'active' : '' }}" href="{{ url('/profile') }}" aria-label="Open {{ $buyerName }} profile">
-            <span @if ($headerAvatarId) id="{{ $headerAvatarId }}" @endif class="account-avatar{{ $headerAvatarId ? ' navbar-profile-avatar' : '' }}" aria-hidden="true">
-                <span class="material-symbols-outlined">person</span>
-            </span>
-            <span class="account-name">{{ $buyerName }}</span>
-            <span class="material-symbols-outlined account-chevron" aria-hidden="true">expand_more</span>
-        </a>
+        @include('buyer.partials.account-menu', [
+            'headerActive' => $headerActive,
+            'headerAvatarId' => $headerAvatarId,
+        ])
     </nav>
 </header>
 
 @vite('resources/js/buyer-notifications.js')
+@vite('resources/js/buyer-account-menu.js')
 @include('partials.realtime-identity')
 @vite('resources/js/realtime.js')
 @include('partials.bearly-chatbot')

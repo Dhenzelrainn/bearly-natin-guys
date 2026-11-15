@@ -1,8 +1,11 @@
 import {
     createBarcodeReadState,
+    createNativeCode128Detector,
     observeBarcodeRead,
     REQUIRED_STABLE_BARCODE_READS,
 } from './waybill-scanner-utils.js';
+
+let deliveryCameraSequence = 0;
 
 document.querySelectorAll('[data-rider-delivery-scan-form]').forEach((form) => {
     const input = form.querySelector('[data-delivery-barcode-input]');
@@ -11,6 +14,7 @@ document.querySelectorAll('[data-rider-delivery-scan-form]').forEach((form) => {
     const openCameraLabel = openCameraButton?.querySelector('[data-delivery-camera-label]');
     const closeCameraButton = form.querySelector('[data-delivery-camera-close]');
     const cameraPanel = form.querySelector('[data-delivery-camera-panel]');
+    const fallbackHost = form.querySelector('[data-delivery-camera-fallback]');
     const video = form.querySelector('[data-delivery-camera-video]');
     const status = form.querySelector('[data-delivery-scan-status]');
     const progress = form.querySelector('[data-delivery-scan-progress]');
@@ -18,7 +22,8 @@ document.querySelectorAll('[data-rider-delivery-scan-form]').forEach((form) => {
     const verifyUrl = form.dataset.deliveryVerifyUrl || '';
     const progressUrl = form.dataset.deliveryProgressUrl || '';
 
-    if (!input || !verifyButton || !openCameraButton || !cameraPanel || !video || !status || !progress || !scanList || !verifyUrl || !progressUrl) return;
+    if (!input || !verifyButton || !openCameraButton || !cameraPanel || !fallbackHost || !video || !status || !progress || !scanList || !verifyUrl || !progressUrl) return;
+    if (!fallbackHost.id) fallbackHost.id = `rider-delivery-camera-${++deliveryCameraSequence}`;
 
     const parcelItems = [...scanList.querySelectorAll('[data-delivery-expected-parcel]')];
     const expectedCodes = parcelItems.map((item) => item.dataset.deliveryExpectedParcel || '');
@@ -33,8 +38,11 @@ document.querySelectorAll('[data-rider-delivery-scan-form]').forEach((form) => {
     const pendingCodes = new Set();
     let stream = null;
     let detector = null;
+    let fallbackScanner = null;
     let animation = null;
     let scanning = false;
+    let startingCamera = false;
+    let cameraStartSequence = 0;
     let progressPoll = null;
     let progressRequestInFlight = false;
     let candidateState = createBarcodeReadState();
@@ -86,7 +94,23 @@ document.querySelectorAll('[data-rider-delivery-scan-form]').forEach((form) => {
 
     const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
 
-    const stopCamera = () => {
+    const stopSoftwareScanner = async (scanner) => {
+        if (!scanner) return;
+
+        try {
+            await scanner.stop();
+        } catch {
+            // The camera may still be starting or already stopped.
+        }
+        try {
+            await scanner.clear();
+        } catch {
+            // Cleanup is best-effort after a completed or failed scan.
+        }
+    };
+
+    const stopCamera = async () => {
+        cameraStartSequence += 1;
         scanning = false;
         if (animation !== null) window.cancelAnimationFrame(animation);
         animation = null;
@@ -94,6 +118,12 @@ document.querySelectorAll('[data-rider-delivery-scan-form]').forEach((form) => {
         stream = null;
         detector = null;
         video.srcObject = null;
+        const scannerToStop = fallbackScanner;
+        fallbackScanner = null;
+        await stopSoftwareScanner(scannerToStop);
+        fallbackHost.replaceChildren();
+        fallbackHost.hidden = true;
+        video.hidden = false;
         cameraPanel.hidden = true;
         if (openCameraLabel) openCameraLabel.textContent = 'Scan with camera';
         openCameraButton.setAttribute('aria-pressed', 'false');
@@ -212,6 +242,42 @@ document.querySelectorAll('[data-rider-delivery-scan-form]').forEach((form) => {
         }
     };
 
+    const handleDecodedValue = async (rawValue) => {
+        if (!scanning) return;
+
+        const observed = observeBarcodeRead(candidateState, rawValue, performance.now());
+
+        if (observed.invalid) {
+            lastAttemptedValue = '';
+            setStatus('Unclear barcode read. Keep the complete label in frame, hold steady, and use good lighting.', 'error');
+            return;
+        }
+
+        if (observed.value && !observed.stable) {
+            setStatus(`Barcode detected (${observed.reads}/${REQUIRED_STABLE_BARCODE_READS}). Hold still…`);
+            return;
+        }
+
+        if (!observed.value || !observed.stable) {
+            if (!candidateState.value) lastAttemptedValue = '';
+            return;
+        }
+
+        if (observed.value === lastAttemptedValue) return;
+
+        lastAttemptedValue = observed.value;
+        await verifyBarcode(observed.value, 'camera');
+
+        if (allParcelsVerified()) await stopCamera();
+    };
+
+    const handleCameraMiss = () => {
+        if (!scanning) return;
+
+        observeBarcodeRead(candidateState, '', performance.now());
+        if (!candidateState.value) lastAttemptedValue = '';
+    };
+
     const scanFrame = async (frameTime = performance.now()) => {
         if (!scanning || !detector) return;
 
@@ -226,24 +292,7 @@ document.querySelectorAll('[data-rider-delivery-scan-form]').forEach((form) => {
             if (!scanning) return;
 
             const rawValue = results?.find((result) => result.rawValue)?.rawValue || '';
-            const observed = observeBarcodeRead(candidateState, rawValue, performance.now());
-
-            if (observed.invalid) {
-                lastAttemptedValue = '';
-                setStatus('Unclear barcode read. Keep the complete label in frame, hold steady, and use good lighting.', 'error');
-            } else if (observed.value && !observed.stable) {
-                setStatus(`Barcode detected (${observed.reads}/${REQUIRED_STABLE_BARCODE_READS}). Hold still…`);
-            } else if (observed.value && observed.stable && observed.value !== lastAttemptedValue) {
-                lastAttemptedValue = observed.value;
-                await verifyBarcode(observed.value, 'camera');
-
-                if (allParcelsVerified()) {
-                    stopCamera();
-                    return;
-                }
-            } else if (!candidateState.value) {
-                lastAttemptedValue = '';
-            }
+            await handleDecodedValue(rawValue);
         } catch {
             if (!scanning) return;
             setStatus('The camera could not read this barcode. Keep it centered or use a USB scanner/manual entry.', 'error');
@@ -254,70 +303,140 @@ document.querySelectorAll('[data-rider-delivery-scan-form]').forEach((form) => {
 
     const startCamera = async () => {
         if (scanning) {
-            stopCamera();
+            await stopCamera();
             setStatus('Camera stopped. Saved verification progress is retained.');
             return;
         }
+
+        if (startingCamera) return;
 
         if (!expectedCodesAreUsable) {
             setStatus('The assigned Parcel barcode list is unavailable. Contact Logistics before completing this delivery.', 'error');
             return;
         }
 
-        if (!('BarcodeDetector' in window)) {
-            setStatus('Camera barcode scanning is not supported here. Use a USB/Bluetooth scanner or enter the exact printed code.', 'error');
-            return;
-        }
-
         if (!navigator.mediaDevices?.getUserMedia) {
-            setStatus('Camera access is unavailable. Use a USB/Bluetooth scanner or enter the exact printed code.', 'error');
+            setStatus('Camera access is unavailable. Open this page over HTTPS, allow camera access, or enter the exact printed code.', 'error');
             return;
         }
 
+        startingCamera = true;
         openCameraButton.disabled = true;
+        cameraPanel.hidden = false;
         setStatus('Opening the rear camera…');
+        const startSequence = ++cameraStartSequence;
+        let softwareScanner = null;
 
         try {
             candidateState = createBarcodeReadState();
             lastAttemptedValue = '';
             lastDetectionAt = 0;
-            detector = new window.BarcodeDetector({ formats: ['code_128'] });
-            stream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                    facingMode: { ideal: 'environment' },
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 },
-                },
-                audio: false,
-            });
 
-            const track = stream.getVideoTracks()[0];
-            try {
-                const focusModes = track?.getCapabilities?.()?.focusMode;
-                if (typeof track?.applyConstraints === 'function'
-                    && Array.isArray(focusModes)
-                    && focusModes.includes('continuous')) {
-                    await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+            detector = await createNativeCode128Detector(window.BarcodeDetector);
+            if (startSequence !== cameraStartSequence) return;
+
+            if (detector) {
+                video.hidden = false;
+                fallbackHost.hidden = true;
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: { ideal: 'environment' },
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 },
+                    },
+                    audio: false,
+                });
+
+                if (startSequence !== cameraStartSequence) {
+                    stream.getTracks().forEach((track) => track.stop());
+                    stream = null;
+                    return;
                 }
-            } catch {
-                // Autofocus is optional; retain the camera's native fallback.
+
+                const track = stream.getVideoTracks()[0];
+                try {
+                    const focusModes = track?.getCapabilities?.()?.focusMode;
+                    if (typeof track?.applyConstraints === 'function'
+                        && Array.isArray(focusModes)
+                        && focusModes.includes('continuous')) {
+                        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+                    }
+                } catch {
+                    // Autofocus is optional; keep the camera's native fallback.
+                }
+
+                if (startSequence !== cameraStartSequence) {
+                    await stopCamera();
+                    return;
+                }
+
+                video.muted = true;
+                video.playsInline = true;
+                video.autoplay = true;
+                video.srcObject = stream;
+                scanning = true;
+                if (openCameraLabel) openCameraLabel.textContent = 'Stop camera';
+                openCameraButton.setAttribute('aria-pressed', 'true');
+                setStatus(`Point the rear camera at a Code 128 Parcel barcode and hold steady for ${REQUIRED_STABLE_BARCODE_READS} matching reads.`);
+                await video.play();
+                if (scanning) animation = window.requestAnimationFrame(scanFrame);
+                return;
             }
 
-            video.muted = true;
-            video.playsInline = true;
-            video.autoplay = true;
-            video.srcObject = stream;
-            cameraPanel.hidden = false;
+            video.hidden = true;
+            fallbackHost.hidden = false;
+            const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
+            if (startSequence !== cameraStartSequence) return;
+
+            softwareScanner = new Html5Qrcode(fallbackHost.id, {
+                formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128],
+                useBarCodeDetectorIfSupported: false,
+                verbose: false,
+            });
+            fallbackScanner = softwareScanner;
             scanning = true;
             if (openCameraLabel) openCameraLabel.textContent = 'Stop camera';
             openCameraButton.setAttribute('aria-pressed', 'true');
+            await softwareScanner.start(
+                { facingMode: 'environment' },
+                {
+                    fps: 10,
+                    videoConstraints: {
+                        facingMode: { ideal: 'environment' },
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 },
+                    },
+                },
+                (decodedText) => {
+                    handleDecodedValue(decodedText).catch(() => {
+                        if (scanning) setStatus('The camera could not read this barcode. Keep it centered or enter it manually.', 'error');
+                    });
+                },
+                () => handleCameraMiss(),
+            );
+
+            if (startSequence !== cameraStartSequence || !scanning) {
+                await stopSoftwareScanner(softwareScanner);
+                if (fallbackScanner === softwareScanner) fallbackScanner = null;
+                fallbackHost.replaceChildren();
+                return;
+            }
+
             setStatus(`Point the rear camera at a Code 128 Parcel barcode and hold steady for ${REQUIRED_STABLE_BARCODE_READS} matching reads.`);
-            await video.play();
-            animation = window.requestAnimationFrame(scanFrame);
-        } catch {
-            stopCamera();
-            setStatus('Camera permission was denied or the camera is unavailable. Use a scanner or enter the exact printed code.', 'error');
+        } catch (error) {
+            await stopCamera();
+            await stopSoftwareScanner(softwareScanner);
+            const errorText = `${error?.name || ''} ${typeof error === 'string' ? error : error?.message || ''}`;
+            const insecureContext = /secure context|https/i.test(errorText);
+            const denied = ['NotAllowedError', 'PermissionDeniedError', 'SecurityError'].includes(error?.name)
+                || /notallowederror|permissiondeniederror|permission denied|not allowed by the user agent/i.test(errorText);
+            setStatus(insecureContext
+                ? 'Camera access requires HTTPS. Open the secure site, allow camera access, or enter the exact printed code.'
+                : denied
+                ? 'Camera permission was denied. Allow camera access for this site in Safari Settings, then try again, or enter the exact printed code.'
+                : 'Camera could not be opened. Check camera access and try again, or enter the exact printed code.', 'error');
         } finally {
+            startingCamera = false;
             openCameraButton.disabled = false;
         }
     };
@@ -335,8 +454,8 @@ document.querySelectorAll('[data-rider-delivery-scan-form]').forEach((form) => {
         verifyInput();
     });
     openCameraButton.addEventListener('click', startCamera);
-    closeCameraButton?.addEventListener('click', () => {
-        stopCamera();
+    closeCameraButton?.addEventListener('click', async () => {
+        await stopCamera();
         setStatus('Camera stopped. Saved verification progress is retained.');
     });
 
@@ -350,12 +469,12 @@ document.querySelectorAll('[data-rider-delivery-scan-form]').forEach((form) => {
             return;
         }
 
-        stopCamera();
+        void stopCamera();
     });
 
     document.addEventListener('visibilitychange', () => {
-        if (document.hidden && scanning) {
-            stopCamera();
+        if (document.hidden && (scanning || startingCamera)) {
+            void stopCamera();
             setStatus('Camera paused because this page is hidden. Saved verification progress is retained.');
         } else if (!document.hidden) {
             refreshSavedProgress();
@@ -364,7 +483,7 @@ document.querySelectorAll('[data-rider-delivery-scan-form]').forEach((form) => {
 
     progressPoll = window.setInterval(refreshSavedProgress, 5000);
     window.addEventListener('pagehide', () => {
-        stopCamera();
+        void stopCamera();
         if (progressPoll !== null) window.clearInterval(progressPoll);
     });
 });

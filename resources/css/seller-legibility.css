@@ -1446,7 +1446,7 @@
     .report-detail-heading, .report-detail-footer,
     .feedback-toolbar, .notification-table-heading,
     .storefront-preview-heading, .publication-control-card dl,
-    .promotion-create-toolbar, .promotion-form-section,
+    .promotion-form-section,
     .message-inbox-heading, .message-thread-header,
     .conversation-details > h3, .wallet-withdrawal-summary,
     .seller-wallet-notice, .account-note, .settings-note,
@@ -1867,10 +1867,15 @@
 :root[data-theme="dark"] body.seller-body .seller-content :is(
     .product-media-gallery-stage, .product-buyer-preview-image,
     .storefront-profile-drop img, .storefront-cover-drop img,
-    .campaign-card-media img, .campaign-detail-media img,
     .waybill-label
 ) {
     background-color: #fff;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .pricing-page .campaign-card-media, .campaign-detail-media
+) {
+    background-color: var(--seller-surface-soft);
 }
 
 :root[data-theme="dark"] body.seller-body .seller-content :is(
@@ -3775,4 +3780,325 @@
         color: #111 !important;
         box-shadow: none !important;
     }
+}
+
+/* Campaign detail: readable copy and a flat toolbar in Seller dark mode. */
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page > .promotion-create-toolbar {
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-detail-copy .section-kicker {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-detail-copy h1 {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-detail-copy > p:not(.campaign-funding-note) {
+    color: #d5c2ad;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-detail-facts dt {
+    color: #d5c2ad;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-detail-facts dd {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-funding-note.is-platform {
+    border: 1px solid #386146;
+    background-color: #1e3828;
+    color: #c5e3cc;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-funding-note.is-seller {
+    border: 1px solid #72563e;
+    background-color: #3a2c20;
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-funding-note svg {
+    color: inherit;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page :is(
+    .campaign-product-row, .campaign-terms, .campaign-empty-state
+) {
+    border-color: var(--seller-border);
+    background-color: var(--seller-surface-soft);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-product-select :is(strong, small) {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-product-select small {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-product-fields label > span:first-child {
+    color: #d5c2ad;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-product-fields input {
+    border-color: var(--seller-border);
+    background-color: var(--seller-surface-raised);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-product-fields input:disabled {
+    background-color: #382e27;
+    color: #b9ab9e;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-product-fields [data-campaign-discount-error] {
+    color: #ffaaa2;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-sku-previews {
+    border-color: var(--seller-border);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-sku-preview {
+    border: 1px solid var(--seller-border);
+    background-color: var(--seller-surface-raised);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-sku-preview > strong,
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-sku-preview b {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-sku-preview > span {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-terms {
+    color: #e1d4c7;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-terms-check {
+    color: #e1d4c7;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page :is(
+    .campaign-product-select input, .campaign-terms-check input
+) {
+    accent-color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page :is(
+    .campaign-product-select input, .campaign-terms-check input,
+    .campaign-product-fields input
+):focus-visible {
+    outline: 2px solid #efbd71;
+    outline-offset: 2px;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-empty-state > i {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-empty-state-copy strong {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .campaign-empty-state-copy span {
+    color: #d5c2ad;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .promotion-create-submit strong {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .campaign-detail-page .promotion-create-submit p {
+    color: #c0b2a5;
+}
+
+/* Returns & Refunds: lift fixed light-theme copy off the dark surfaces. */
+:root[data-theme="dark"] body.seller-body:has(.returns-refined) .seller-topbar-subtitle {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .returns-refined .returns-table-polished th {
+    color: #d5c2ad;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .returns-refined .returns-table-polished td {
+    color: #e1d4c7;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .returns-refined :is(
+    .returns-summary-card > div > small, .return-reason,
+    .return-deadline, .return-deadline small,
+    .returns-footer-note, .returns-footer-count
+) {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .returns-refined .returns-footer-count strong {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .returns-refined .return-finance-effect {
+    color: #e4c39d;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .returns-refined .return-deadline.is-urgent {
+    color: #ffaaa2;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .returns-refined .returns-guide-steps li {
+    color: #d5c2ad;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .returns-refined .returns-guide-steps :is(strong, em) {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .returns-refined .returns-table tbody tr:hover {
+    background: var(--seller-surface-soft);
+}
+
+/* Seller return detail: semantic status, evidence, and history remain distinct in dark mode. */
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-deadline-banner {
+    border-color: #72563e;
+    background: #33271e;
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-deadline-banner :is(p, small) {
+    color: #d5c2ad;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-deadline-banner > span {
+    color: #efbd71;
+    background: #44331d;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-deadline-banner.is-review {
+    border-color: var(--seller-border);
+    background: var(--seller-surface-soft);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-deadline-banner.is-shipping {
+    border-color: #3e6175;
+    background: #1d303d;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-deadline-banner.is-shipping > span {
+    color: #b2dcf4;
+    background: #263d4b;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-deadline-banner.is-complete {
+    border-color: #386146;
+    background: #1e3828;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-deadline-banner.is-complete > span {
+    color: #a8d5b0;
+    background: #284631;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page :is(
+    .case-item-list > li, .case-evidence-list li,
+    .case-shipment-events, .case-shipment-events li,
+    .case-refund-details > div
+) {
+    border-color: var(--seller-border);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page :is(
+    .case-buyer-statement, .case-saved-response,
+    .case-recovery-details, .case-shipment-events li:first-child
+) {
+    background-color: var(--seller-surface-soft);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page :is(
+    .case-buyer-statement, .case-saved-response, .case-recovery-details
+) {
+    border-left-color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page :is(
+    .case-item-thumb, .case-evidence-list .case-evidence-preview
+) {
+    border-color: var(--seller-border);
+    background-color: #fff;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-evidence-list li > svg {
+    color: #e4c39d;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-evidence-list :is(a, .case-evidence-open) {
+    border-color: var(--seller-border);
+    color: #efbd71;
+    background-color: var(--seller-surface-raised);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-evidence-list :is(a, .case-evidence-open):hover {
+    border-color: #806334;
+    background-color: #3a2c20;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-refund-summary {
+    border-color: var(--seller-border);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-refund-summary.is-pending {
+    border-color: #806334;
+    color: #efbd71;
+    background-color: #44331d;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-refund-summary.is-complete {
+    border-color: #386146;
+    color: #a8d5b0;
+    background-color: #1e3828;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-refund-summary.is-attention {
+    border-color: #79443d;
+    color: #ffaaa2;
+    background-color: #452521;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-timeline li:not(:last-child)::before {
+    background: var(--seller-border);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-timeline li > span {
+    border-color: #806334;
+    background: var(--seller-surface);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-timeline li:first-child > span {
+    border-color: #efbd71;
+    background: #44331d;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-inspection-item select {
+    border-color: var(--seller-border);
+    color: var(--theme-text);
+    background-color: var(--seller-surface-raised);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page .case-inspection-item select:disabled {
+    color: #b9ab9e;
+    background-color: #382e27;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-case-page :is(
+    a, button, select, textarea
+):focus-visible {
+    outline-color: #efbd71;
 }

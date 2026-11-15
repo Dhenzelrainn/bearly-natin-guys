@@ -27,7 +27,7 @@
                         <span class="storefront-field-label">Profile photo</span>
                         <span class="storefront-profile-drop" data-storefront-drop>
                             <span class="storefront-profile-placeholder" data-storefront-profile-placeholder>
-                                @if ($store['profile_photo_url'])<img src="{{ $store['profile_photo_url'] }}" alt="Current store profile photo">@else{{ strtoupper(substr($store['name'], 0, 1)) }}@endif
+                                @if ($store['profile_photo_url'])<img class="avatar-photo" src="{{ $store['profile_photo_url'] }}" alt="Current store profile photo">@else{{ strtoupper(substr($store['name'], 0, 1)) }}@endif
                             </span>
                             <strong>Choose profile photo</strong><small>Square JPG, PNG, or WebP · Up to 10MB</small>
                         </span>
@@ -145,7 +145,7 @@
                 <div class="buyer-store-profile">
                     <span class="buyer-store-avatar" data-storefront-preview-profile>
                         @if ($store['profile_photo'])
-                            <img src="{{ $store['profile_photo_url'] }}" alt="{{ $store['name'] }} profile photo">
+                            <img class="avatar-photo" src="{{ $store['profile_photo_url'] }}" alt="{{ $store['name'] }} profile photo">
                         @else
                             {{ strtoupper(substr($store['name'], 0, 1)) }}
                         @endif

@@ -137,8 +137,9 @@
 <section class="page-hero compact-hero">
     <div>
         <span class="eyebrow">Platform overview</span>
-        <h1>Good evening, {{ explode(' ', $admin['name'])[0] }}.</h1>
+        <h1 data-dashboard-greeting data-first-name="{{ explode(' ', $admin['name'])[0] }}">{{ $manilaGreeting }}, {{ explode(' ', $admin['name'])[0] }}.</h1>
         <p>Here is a clean snapshot of Bearly's marketplace activity and the items that need admin attention.</p>
+        @include('partials.dashboard-context', ['dashboardContextTime' => $manilaTime])
     </div>
     <div class="hero-actions">
         <button class="button button-secondary" type="button" data-dashboard-refresh>

@@ -138,6 +138,8 @@
 .ops-nav-link>svg{width:19px;height:19px;color:#fff;opacity:.82}
 .ops-nav-link:hover>svg,.ops-nav-link.is-active>svg{opacity:1}
 .nav-count{background:rgba(255,255,255,.14);color:#fff}
+.ops-nav-link > .nav-count{display:inline-flex;min-width:20px;height:20px;flex:0 0 auto;align-items:center;justify-content:center;margin-left:auto;padding:0 6px;border:1px solid rgba(255,218,137,.24);border-radius:999px;background:rgba(255,255,255,.12);color:#f6d797;font-size:10px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1;white-space:nowrap}
+.ops-nav-link.is-active > .nav-count{border-color:rgba(255,255,255,.38);background:rgba(43,29,22,.2);color:#fff}
 .ops-sidebar-footer{padding:12px 0 0;border-top:1px solid rgba(255,255,255,.15)}
 .facility-chip{padding:8px 12px;color:#fff}.facility-chip small{color:rgba(255,255,255,.56)}
 .ops-logout{margin:0;color:rgba(255,255,255,.8)}
@@ -3185,6 +3187,77 @@ body[data-module="logistics"] .cash-custody-card-heading p {
     color: var(--muted);
     font-size: 12px;
     line-height: 1.45;
+}
+
+body[data-module="logistics"] .cash-refund-products {
+    display: grid;
+    min-width: 0;
+    gap: 7px;
+    margin: 0 0 12px;
+    padding: 9px;
+    border: 1px solid var(--theme-border);
+    border-radius: 9px;
+    background: var(--theme-surface-soft);
+}
+
+body[data-module="logistics"] .cash-refund-products-label {
+    color: var(--theme-muted);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    line-height: 1.35;
+    text-transform: uppercase;
+}
+
+body[data-module="logistics"] .cash-refund-product {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: 48px minmax(0, 1fr);
+    align-items: center;
+    gap: 9px;
+}
+
+body[data-module="logistics"] .cash-refund-product-image {
+    display: grid;
+    width: 48px;
+    height: 48px;
+    place-items: center;
+    border: 1px solid var(--theme-border);
+    border-radius: 7px;
+    background: var(--theme-surface);
+    color: var(--theme-muted);
+    object-fit: contain;
+}
+
+body[data-module="logistics"] .cash-refund-product-image.is-placeholder svg {
+    width: 20px;
+    height: 20px;
+}
+
+body[data-module="logistics"] .cash-refund-product-copy {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+}
+
+body[data-module="logistics"] .cash-refund-product-copy strong {
+    color: var(--theme-text);
+    font-size: 12px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+body[data-module="logistics"] .cash-refund-product-copy small,
+body[data-module="logistics"] .cash-refund-products-more {
+    color: var(--theme-muted);
+    font-size: 11px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+body[data-module="logistics"] .cash-refund-products-more {
+    padding-top: 5px;
+    border-top: 1px solid var(--theme-border);
 }
 
 body[data-module="logistics"] .cash-custody-reference-list {

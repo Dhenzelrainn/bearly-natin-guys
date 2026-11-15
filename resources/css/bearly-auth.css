@@ -129,7 +129,7 @@ img {
     font-weight: 500;
 }
 
-.header-link span {
+.header-link span:first-child {
     font-size: 28px;
     font-weight: 400;
 }
@@ -2480,6 +2480,14 @@ button:disabled {
         padding-inline: 14px;
     }
 
+    .auth-header:has(.header-link span) .brand img {
+        width: 112px;
+    }
+
+    .auth-header:has(.header-link span) .auth-header-actions {
+        gap: 6px;
+    }
+
     .brand img {
         width: 126px;
     }
@@ -2487,6 +2495,7 @@ button:disabled {
     .header-link {
         gap: 7px;
         font-size: 12px;
+        white-space: nowrap;
     }
 
     .header-link span:first-child {

@@ -192,6 +192,10 @@ class RiderAssignmentEligibilityService
                 $ignoreBatchId !== null,
                 fn ($query) => $query->whereKeyNot($ignoreBatchId),
             )
+            ->whereHas('parcels', fn ($query) => $query->whereNotIn('parcels.status', [
+                ParcelStatus::Delivered->value,
+                ParcelStatus::Returned->value,
+            ]))
             ->whereNotNull('planned_window_start')
             ->whereNotNull('planned_window_end')
             ->where('planned_window_start', '<', $end)

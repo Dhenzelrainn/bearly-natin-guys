@@ -1,10 +1,49 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+    createNativeCode128Detector,
     createBarcodeReadState,
     observeBarcodeRead,
     REQUIRED_STABLE_BARCODE_READS,
 } from '../../resources/js/waybill-scanner-utils.js';
+
+test('native Code 128 detection is skipped when the browser does not support it', async () => {
+    assert.equal(await createNativeCode128Detector(undefined), null);
+
+    class UnsupportedBarcodeDetector {
+        static async getSupportedFormats() {
+            return ['qr_code'];
+        }
+
+        constructor() {
+            assert.fail('The unsupported native detector should not be constructed.');
+        }
+    }
+
+    assert.equal(await createNativeCode128Detector(UnsupportedBarcodeDetector), null);
+});
+
+test('native Code 128 detector construction falls back when browser support probing fails', async () => {
+    class SupportedBarcodeDetector {
+        static async getSupportedFormats() {
+            return ['code_128'];
+        }
+
+        constructor(options) {
+            this.options = options;
+        }
+    }
+
+    class BrokenSupportProbe extends SupportedBarcodeDetector {
+        static async getSupportedFormats() {
+            throw new Error('Browser barcode capability check failed.');
+        }
+    }
+
+    const detector = await createNativeCode128Detector(SupportedBarcodeDetector);
+    assert.deepEqual(detector.options, { formats: ['code_128'] });
+    assert.equal(await createNativeCode128Detector(BrokenSupportProbe), null);
+});
 
 test('a camera barcode is accepted only after three matching valid reads', () => {
     const state = createBarcodeReadState();

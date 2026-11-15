@@ -10,10 +10,10 @@
         <summary>How returns work</summary>
         <ol class="returns-guide-steps">
             <li><strong>The Buyer asks for help.</strong> Within 3 days after Bearly marks the order complete, they can ask for <em>Return &amp; Refund</em> or <em>Refund Only</em>. They can add photos or files.</li>
-            <li><strong>You reply.</strong> Open the case, explain what happened, and attach at least one helpful file before the deadline shown.</li>
-            <li><strong>Admin checks the case.</strong> Admin reads both sides and may ask the Buyer, you, or both for more proof. Then Admin approves or declines the request.</li>
-            <li><strong>If an item must come back,</strong> Logistics picks it up and brings it to you. When it arrives, check each item and record its condition. Only items that are okay to sell and marked <em>Restock</em> go back into stock.</li>
-            <li><strong>Admin handles the refund.</strong> For Refund Only, Admin may send the refund after approval. For Return &amp; Refund, Admin waits until you finish checking the returned item. Admin sends the money outside Bearly, then records it here. If Admin says the Seller must pay some money back, you will see the amount here. It will not be taken from your payout automatically.</li>
+            <li><strong>You reply within 48 hours.</strong> Open the case, explain what happened, and attach at least one helpful file before the deadline shown. If you do not reply in time, Bearly escalates the case to Admin; Admin may decide without your initial response. You can still answer evidence requests Admin specifically sends you.</li>
+            <li><strong>Admin checks the available information.</strong> Admin reviews the Buyer’s request, your response if received, and all submitted evidence. Admin may request more evidence from the Buyer, you, or both, then approves or declines the request.</li>
+            <li><strong>If an item must come back,</strong> the Buyer’s selected Rider pickup or Logistics-center drop-off starts after Admin approval. When the parcel arrives, check each item and record its condition. Only items that are okay to sell and marked <em>Restock</em> go back into stock. Items held for review stay out of sellable stock until you record a final condition, disposition, and note.</li>
+            <li><strong>Admin handles the refund and return fee.</strong> Admin sends the Buyer’s refund outside Bearly after required steps, then records proof; Bearly does not send the money. Admin’s Seller/Platform responsibility decision also covers the separate return-delivery fee. Eligible refund-proceeds recovery may be adjusted from Seller Wallet; any remaining refund-proceeds balance can block withdrawals. Return-delivery fees are recovered separately and are not automatically deducted from Seller Wallet or used to block withdrawals.</li>
         </ol>
     </details>
     <a class="seller-secondary-button" href="{{ route('seller.orders') }}"><i data-lucide="arrow-left" aria-hidden="true"></i>Manage Orders</a>
@@ -56,7 +56,7 @@
                         $deadlineParts = explode(' · ', $case['deadline'], 2);
                         $caseIdBreakAt = (int) ceil(strlen($case['id']) / 2);
                     @endphp
-                    <tr data-return-row data-status="{{ $case['status_key'] }}" data-type="{{ $typeKey }}" data-search="{{ strtolower(implode(' ', [$case['id'], $case['order'], $case['customer'], $case['product'], $case['reason'], $case['request'], $case['status']])) }}">
+                    <tr data-return-row data-status="{{ $case['status_key'] }}" data-quarantine-review="{{ $case['quarantine_review_pending'] ? 'true' : 'false' }}" data-type="{{ $typeKey }}" data-search="{{ strtolower(implode(' ', [$case['id'], $case['order'], $case['customer'], $case['product'], $case['reason'], $case['request'], $case['status'], $case['quarantine_review_pending'] ? 'quarantine review' : ''])) }}">
                         <td>
                             <div class="returns-table-primary">
                                 <span class="returns-table-icon"><i data-lucide="file-text" aria-hidden="true"></i></span>
@@ -99,7 +99,7 @@
                                 </span>
                             </div>
                         </td>
-                        <td><span class="return-status status-{{ $case['tone'] }}">{{ $case['status'] }}</span></td>
+                        <td><span class="return-status status-{{ $case['tone'] }}"><span>{{ $case['status'] }}</span></span></td>
                         <td><a class="return-action" href="{{ route('seller.orders.returns.show', ['caseId' => $case['id']]) }}"><span>{{ $case['action'] }}</span><i data-lucide="chevron-right" aria-hidden="true"></i></a></td>
                     </tr>
                 @endforeach

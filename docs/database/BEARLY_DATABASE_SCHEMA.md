@@ -1660,6 +1660,12 @@ Append-only refund custody history with payout ID, event type, from/to statuses,
 | `quantity` | `int unsigned` | NO | — |  |
 | `condition_code` | `varchar(40)` | YES | — |  |
 | `resolution` | `varchar(30)` | YES | — |  |
+| `quarantine_review_status` | `varchar(20)` | YES | — | MUL |
+| `quarantine_final_condition_code` | `varchar(40)` | YES | — |  |
+| `quarantine_final_resolution` | `varchar(30)` | YES | — |  |
+| `quarantine_review_note` | `text` | YES | — |  |
+| `quarantine_reviewed_by` | `bigint unsigned` | YES | — | MUL |
+| `quarantine_reviewed_at` | `timestamp` | YES | — |  |
 | `refund_amount_minor` | `bigint unsigned` | NO | 0 |  |
 | `created_at` | `timestamp` | YES | — |  |
 | `updated_at` | `timestamp` | YES | — |  |
@@ -1668,11 +1674,13 @@ Append-only refund custody history with payout ID, event type, from/to statuses,
 
 - `order_item_id` → `order_items.id`; update NO ACTION, delete RESTRICT.
 - `return_request_id` → `return_requests.id`; update NO ACTION, delete CASCADE.
+- `quarantine_reviewed_by` → `users.id`; update NO ACTION, delete SET NULL.
 
 **Indexes**
 
 - `return_items_order_item_id_foreign` (order_item_id) — index.
 - `return_items_return_request_id_order_item_id_unique` (return_request_id,order_item_id) — unique.
+- `return_items_quarantine_review_status_index` (quarantine_review_status,return_request_id) — index.
 
 ## `return_requests`
 

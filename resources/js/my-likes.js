@@ -106,7 +106,7 @@ function renderMyLikes() {
     const grid = document.getElementById('likes-grid');
     const empty = document.getElementById('likes-empty');
     const count = document.getElementById('likes-count');
-    const navCount = document.getElementById('likes-nav-count');
+    const navCounts = document.querySelectorAll('#likes-nav-count, [data-buyer-account-likes-count]');
     if (!grid || !empty) return;
 
     const filtered = liveLikes.filter(item => activeCategory === 'all' || categoryKey(item) === activeCategory);
@@ -114,10 +114,10 @@ function renderMyLikes() {
     renderTabs();
 
     if (count) count.textContent = `${liveLikes.length} liked item${liveLikes.length === 1 ? '' : 's'}`;
-    if (navCount) {
+    navCounts.forEach((navCount) => {
         navCount.textContent = String(liveLikes.length);
         navCount.hidden = liveLikes.length === 0;
-    }
+    });
 
     grid.innerHTML = items.map(renderCard).join('');
     grid.hidden = items.length === 0;

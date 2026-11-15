@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Mail\BearlyEmailPresenter;
 use App\Models\User;
 use App\Services\NotificationPreferenceService;
 use Illuminate\Bus\Queueable;
@@ -37,6 +38,17 @@ abstract class BearlyNotification extends Notification
      * @return array<string, mixed>
      */
     public function meta(): array
+    {
+        return [];
+    }
+
+    /**
+     * Extra recipient-facing email details that are not part of the stored
+     * in-app notification payload.
+     *
+     * @return array<string, mixed>
+     */
+    public function emailData(): array
     {
         return [];
     }
@@ -87,15 +99,17 @@ abstract class BearlyNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        $message = (new MailMessage)
+        $data = [
+            'title' => $this->title(),
+            'body' => $this->body(),
+            'actionUrl' => $this->actionUrl(),
+            'emailData' => $this->emailData(),
+            'presentation' => app(BearlyEmailPresenter::class)->forNotification($this, $notifiable),
+        ];
+
+        return (new MailMessage)
             ->subject($this->title())
-            ->line($this->body())
-            ->salutation('— Bearly');
-
-        if ($url = $this->actionUrl()) {
-            $message->action('Open in Bearly', url($url));
-        }
-
-        return $message;
+            ->view('emails.notifications.workflow', $data)
+            ->text('emails.text.workflow', $data);
     }
 }

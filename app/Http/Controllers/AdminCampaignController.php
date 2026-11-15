@@ -8,6 +8,7 @@ use App\Models\PlatformCampaignParticipation;
 use App\Models\PlatformPromotion;
 use App\Models\Store;
 use App\Services\CampaignService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -99,6 +100,34 @@ class AdminCampaignController extends Controller
         ]);
     }
 
+    public function refreshParticipations(PlatformPromotion $campaign, CampaignService $campaigns): JsonResponse
+    {
+        abort_unless($campaign->isCampaign(), 404);
+
+        $campaign = $campaigns->adminDetail($campaign);
+        $budgetEstimate = $campaigns->adminBudgetEstimate($campaign);
+        $html = view('admin.campaigns.partials.participation-rows', [
+            'campaign' => $campaign,
+            'budgetEstimate' => $budgetEstimate,
+            'isPisoSale' => $campaign->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE,
+            'formatCampaignMinor' => static function (?int $minor): string {
+                if ($minor === null) {
+                    return '—';
+                }
+
+                $absolute = abs($minor);
+                $formatted = '₱'.number_format(intdiv($absolute, 100), 0, '.', ',').'.'.str_pad((string) ($absolute % 100), 2, '0', STR_PAD_LEFT);
+
+                return $minor < 0 ? '-'.$formatted : $formatted;
+            },
+        ])->render();
+
+        return response()->json([
+            'data' => ['html' => $html],
+            'message' => 'Campaign participations refreshed.',
+        ])->header('Cache-Control', 'private, no-store');
+    }
+
     public function updateStatus(
         Request $request,
         PlatformPromotion $campaign,
@@ -180,16 +209,23 @@ class AdminCampaignController extends Controller
             : [$campaign?->funding_type ?? PlatformPromotion::FUNDING_PLATFORM];
         $requiresPlatformBudget = $creating
             || $campaign?->funding_type === PlatformPromotion::FUNDING_PLATFORM;
+        $campaignType = (string) $request->input('campaign_type', $campaign?->campaign_type);
+        $isPisoSale = $campaignType === PlatformPromotion::CAMPAIGN_PISO_SALE;
+        $minimumDiscountRequired = $creating
+            || $campaign?->minimum_discount_percent !== null
+            || $campaign?->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE;
 
         $rules = [
             'name' => ['required', 'string', 'max:120'],
             'campaign_type' => ['required', Rule::in(array_keys($this->campaignTypes()))],
             'funding_type' => ['required', Rule::in($allowedFundingTypes)],
-            'minimum_discount_percent' => [
-                $creating || $campaign?->minimum_discount_percent !== null ? 'required' : 'nullable',
-                'integer',
-                'between:1,90',
-            ],
+            'minimum_discount_percent' => $isPisoSale
+                ? ['prohibited']
+                : [
+                    $minimumDiscountRequired ? 'required' : 'nullable',
+                    'integer',
+                    'between:1,90',
+                ],
             'description' => ['nullable', 'string', 'max:2000'],
             'terms' => ['nullable', 'string', 'max:5000'],
             'campaign_notes' => ['nullable', 'string', 'max:2000'],

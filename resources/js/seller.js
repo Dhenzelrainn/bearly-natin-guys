@@ -1,4 +1,6 @@
 import './notification-center.js';
+import './dashboard-context.js';
+import './seller-campaign-participation.js';
 import {
     acknowledgeIncoming,
     attachmentPreviewHtml,
@@ -1010,7 +1012,11 @@ const bootSeller = () => {
             const requestType = type?.value ?? '';
             let visible = 0;
             rows.forEach((row) => {
-                const matches = (activeReturnStatus === 'all' || row.dataset.status === activeReturnStatus)
+                const matchesStatus = activeReturnStatus === 'all'
+                    || (activeReturnStatus === 'quarantine-review'
+                        ? row.dataset.quarantineReview === 'true'
+                        : row.dataset.status === activeReturnStatus);
+                const matches = matchesStatus
                     && (!requestType || row.dataset.type === requestType)
                     && (!query || row.dataset.search.includes(query));
                 row.hidden = !matches;
@@ -1264,32 +1270,6 @@ const bootSeller = () => {
         toast.classList.add('is-visible');
         window.clearTimeout(window.sellerToastTimer);
         window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3600);
-    });
-
-    const sellerWorkspace = document.querySelector('[data-seller-workspace]');
-    const workspaceSearch = sellerWorkspace?.querySelector('[data-workspace-search]');
-    workspaceSearch?.addEventListener('input', () => {
-        const query = workspaceSearch.value.trim().toLowerCase();
-        let visible = 0;
-        sellerWorkspace.querySelectorAll('[data-workspace-row]').forEach((row) => {
-            const matches = !query || row.dataset.search.includes(query);
-            row.hidden = !matches;
-            if (matches) visible += 1;
-        });
-        const count = sellerWorkspace.querySelector('[data-workspace-count]');
-        const empty = sellerWorkspace.querySelector('[data-workspace-empty]');
-        if (count) count.textContent = visible;
-        if (empty) empty.hidden = visible > 0;
-    });
-
-    document.querySelectorAll('[data-workspace-demo]').forEach((button) => {
-        button.addEventListener('click', () => {
-            if (!toast) return;
-            toast.textContent = `${button.dataset.workspaceDemo} Frontend preview only.`;
-            toast.classList.add('is-visible');
-            window.clearTimeout(window.sellerToastTimer);
-            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
-        });
     });
 
     document.querySelector('[data-save-notifications]')?.addEventListener('click', async (event) => {
@@ -3086,6 +3066,7 @@ const bootSeller = () => {
     const campaignJoinForm = document.querySelector('[data-campaign-join-form]');
     if (campaignJoinForm) {
         const funding = campaignJoinForm.dataset.funding;
+        const isPisoSale = campaignJoinForm.dataset.pisoSale === '1';
         const minimumDiscount = Math.min(90, Math.max(1, Number(campaignJoinForm.dataset.minimumDiscount || 1)));
         const rows = [...campaignJoinForm.querySelectorAll('[data-campaign-product]')];
         const renumberRows = () => {
@@ -3103,19 +3084,21 @@ const bootSeller = () => {
                     checkbox.name = checked ? `items[${index}][product_id]` : '';
                     checkbox.disabled = false;
                 }
-                if (checked && discount) {
-                    discount.name = `items[${index}][discount_percent]`;
-                    discount.required = true;
-                    if (!discount.value) discount.value = String(minimumDiscount);
-                } else if (discount) {
-                    discount.name = '';
-                    discount.required = false;
+                if (discount) {
+                    if (checked) {
+                        discount.name = `items[${index}][discount_percent]`;
+                        discount.required = true;
+                        if (!discount.value) discount.value = String(minimumDiscount);
+                    } else {
+                        discount.name = '';
+                        discount.required = false;
+                    }
                 }
                 if (stock) stock.name = checked ? `items[${index}][stock_limit]` : '';
                 if (buyerLimit) buyerLimit.name = checked ? `items[${index}][per_buyer_limit]` : '';
 
                 const percent = discount?.value === '' ? minimumDiscount : Number(discount?.value);
-                const validDiscount = Number.isInteger(percent) && percent >= minimumDiscount && percent <= 90;
+                const validDiscount = isPisoSale || (Number.isInteger(percent) && percent >= minimumDiscount && percent <= 90);
                 if (discount) {
                     discount.min = String(minimumDiscount);
                     discount.max = '90';
@@ -3127,9 +3110,11 @@ const bootSeller = () => {
 
                 row.querySelectorAll('[data-campaign-variant]').forEach((variant) => {
                     const baseline = Number(variant.dataset.baselineMinor || 0);
-                    const campaignPrice = validDiscount
-                        ? Math.max(1, Math.floor((baseline * (100 - percent) + 50) / 100))
-                        : null;
+                    const campaignPrice = isPisoSale
+                        ? 100
+                        : (validDiscount
+                            ? Math.max(1, Math.floor((baseline * (100 - percent) + 50) / 100))
+                            : null);
                     const pricePreview = variant.querySelector('[data-campaign-price-preview]');
                     const netPreview = variant.querySelector('[data-campaign-net]');
                     if (pricePreview) {
@@ -3159,7 +3144,7 @@ const bootSeller = () => {
                 rows[0]?.querySelector('[data-campaign-product-checkbox]')?.focus();
                 return;
             }
-            const invalid = checked.find((row) => {
+            const invalid = isPisoSale ? null : checked.find((row) => {
                 const discount = row.querySelector('[data-campaign-discount]');
                 const percent = Number(discount?.value);
                 return !Number.isInteger(percent) || percent < minimumDiscount || percent > 90;

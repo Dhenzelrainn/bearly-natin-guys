@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\AccountStatus;
+use App\Enums\UserRole;
 use App\Models\Conversation;
 use App\Models\User;
 use App\Services\ConversationService;
@@ -12,6 +13,11 @@ Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
 
 Broadcast::channel('users.{userId}', function (User $user, int $userId): bool {
     return (int) $user->id === $userId;
+});
+
+Broadcast::channel('admin.campaigns', function (User $user): bool {
+    return $user->status === AccountStatus::Active->value
+        && $user->hasRole(UserRole::Admin->value);
 });
 
 Broadcast::channel('conversations.{conversation}', function (User $user, Conversation $conversation): bool {

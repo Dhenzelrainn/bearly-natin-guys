@@ -188,6 +188,7 @@
             @php
                 $refundStatusLabel = str($payout->status)->replace('_', ' ')->title();
                 $refundStatusWarning = in_array($payout->status, ['cash_return_pending', 'logistics_return_verification'], true);
+                $refundAssignment = $refundRiderRecommendations->get((int) $payout->id);
             @endphp
             <article class="cash-custody-card" role="listitem">
                 <section class="cash-custody-card-column" aria-labelledby="refund-cash-details-{{ $payout->id }}">
@@ -198,6 +199,36 @@
                             <p>Reference information for this refund.</p>
                         </div>
                     </div>
+                    @if ($payout->product_previews !== [])
+                        <div class="cash-refund-products" data-refund-product-preview role="list" aria-label="Products in this refund">
+                            <span class="cash-refund-products-label">Refund item{{ $payout->product_count === 1 ? '' : 's' }} · {{ $payout->product_count }}</span>
+                            @foreach ($payout->product_previews as $preview)
+                                <div class="cash-refund-product" role="listitem">
+                                    @if (filled($preview['image_url']))
+                                        <img class="cash-refund-product-image" src="{{ $preview['image_url'] }}" alt="{{ $preview['name'] }}" loading="lazy" decoding="async">
+                                    @else
+                                        <span class="cash-refund-product-image is-placeholder" aria-hidden="true"><i data-lucide="image"></i></span>
+                                    @endif
+                                    <span class="cash-refund-product-copy">
+                                        <strong>{{ $preview['name'] }}</strong>
+                                        <small>
+                                            @if ($preview['variant'] !== '')
+                                                {{ $preview['variant'] }} ·
+                                            @endif
+                                            Qty {{ $preview['quantity'] }}
+                                        </small>
+                                    </span>
+                                </div>
+                            @endforeach
+                            @if ($payout->product_count > count($payout->product_previews))
+                                <small class="cash-refund-products-more">+{{ $payout->product_count - count($payout->product_previews) }} more item(s) in this refund</small>
+                            @endif
+                        </div>
+                    @else
+                        <div class="cash-refund-products is-unavailable" data-refund-product-preview>
+                            <span class="cash-refund-products-label">Refund item details unavailable</span>
+                        </div>
+                    @endif
                     <dl class="cash-custody-reference-list">
                         <div class="cash-custody-reference-item">
                             <dt>Cash payout ID</dt>
@@ -257,26 +288,49 @@
                         </div>
                     </div>
                     @if($payout->status === 'awaiting_logistics_receipt')
-                        <form method="POST" action="{{ route('logistics.cash.refunds.receive', $payout) }}" class="cash-action-form cash-custody-action-form">
-                            @csrf
-                            <label for="refund-cash-received-{{ $payout->id }}">Cash received <input id="refund-cash-received-{{ $payout->id }}" type="number" min="0.01" step="0.01" inputmode="decimal" name="actual_amount" value="{{ number_format((int) $payout->amount_minor / 100, 2, '.', '') }}" required></label>
-                            <label for="refund-cash-reference-{{ $payout->id }}">Receipt reference <input id="refund-cash-reference-{{ $payout->id }}" type="text" name="reference" maxlength="150" placeholder="Enter receipt reference" required></label>
-                            <button class="button button-primary" type="submit"><i data-lucide="check" aria-hidden="true"></i>Acknowledge cash <i data-lucide="arrow-right" aria-hidden="true"></i></button>
-                        </form>
+                        @if (filled($payout->finance_issue_reference))
+                            <form method="POST" action="{{ route('logistics.cash.refunds.receive', $payout) }}" class="cash-action-form cash-custody-action-form">
+                                @csrf
+                                <label for="refund-cash-received-{{ $payout->id }}">Cash received <input id="refund-cash-received-{{ $payout->id }}" type="number" min="0.01" step="0.01" inputmode="decimal" name="actual_amount" value="{{ number_format((int) $payout->amount_minor / 100, 2, '.', '') }}" required></label>
+                                <p class="cash-custody-action-note">This acknowledgment will be recorded against Finance handoff <code>{{ $payout->finance_issue_reference }}</code>.</p>
+                                <button class="button button-primary" type="submit"><i data-lucide="check" aria-hidden="true"></i>Acknowledge cash <i data-lucide="arrow-right" aria-hidden="true"></i></button>
+                            </form>
+                        @else
+                            <p class="cash-custody-action-note">Finance handoff reference is missing. Contact Finance before acknowledging this cash.</p>
+                        @endif
                     @elseif($payout->status === 'awaiting_rider_assignment')
-                        @if($riders->isNotEmpty())
+                        @if($refundAssignment && $refundAssignment['candidates']->isNotEmpty())
                             <form method="POST" action="{{ route('logistics.cash.refunds.assign', $payout) }}" class="cash-action-form cash-custody-action-form">
                                 @csrf
-                                <label for="refund-cash-rider-{{ $payout->id }}">Approved available Rider
+                                <p class="cash-custody-action-note">{{ $refundAssignment['message'] }}</p>
+                                @if($refundAssignment['guidance'])
+                                    <p class="cash-custody-action-note">{{ $refundAssignment['guidance'] }}</p>
+                                @endif
+                                <label for="refund-cash-rider-{{ $payout->id }}">Eligible Rider
                                     <select id="refund-cash-rider-{{ $payout->id }}" name="rider_user_id" required>
                                         <option value="">Select Rider</option>
-                                        @foreach($riders as $rider)<option value="{{ $rider->user_id }}">{{ $rider->user?->name }} · {{ $rider->user?->email }}</option>@endforeach
+                                        <optgroup label="{{ $refundAssignment['mode'] === 'zone_match' ? 'Buyer destination zone · ' : 'Nearby-zone fallback · ' }}{{ $refundAssignment['sorting_center']->name }}">
+                                            @foreach($refundAssignment['candidates'] as $candidate)
+                                                <option value="{{ $candidate['rider']->user_id }}">
+                                                    {{ $candidate['rider']->user?->name ?? 'Rider' }} · {{ $candidate['rider']->currentZone?->name ?? 'Zone unavailable' }}
+                                                    @if($candidate['recommendation_label']) · {{ $candidate['recommendation_label'] }}@endif
+                                                    @if($candidate['distance_label']) · {{ $candidate['distance_label'] }}@endif
+                                                    · {{ $candidate['active_jobs'] }} active job{{ $candidate['active_jobs'] === 1 ? '' : 's' }}
+                                                </option>
+                                            @endforeach
+                                        </optgroup>
                                     </select>
                                 </label>
+                                @if($refundAssignment['mode'] === 'nearby_zone')
+                                    <label for="refund-cash-assignment-reason-{{ $payout->id }}">Nearby-zone fallback reason
+                                        <textarea id="refund-cash-assignment-reason-{{ $payout->id }}" name="assignment_reason" rows="3" minlength="5" maxlength="1000" required></textarea>
+                                        <small>Required for this nearby-zone fallback (5–1,000 characters).</small>
+                                    </label>
+                                @endif
                                 <button class="button button-primary" type="submit"><i data-lucide="bike" aria-hidden="true"></i>Assign refund cash <i data-lucide="arrow-right" aria-hidden="true"></i></button>
                             </form>
                         @else
-                            <p class="cash-custody-action-note">No approved Rider is available for this cash delivery.</p>
+                            <p class="cash-custody-action-note">{{ $refundAssignment['message'] ?? 'Rider recommendations are unavailable. Refresh and try again.' }}</p>
                         @endif
                     @elseif(in_array($payout->status, ['assigned_to_rider', 'cash_with_rider', 'out_for_delivery'], true))
                         @if($payout->acknowledgment_reference)
@@ -288,7 +342,7 @@
                             <form method="POST" action="{{ route('logistics.cash.refunds.acknowledgment-slip.prepare', $payout) }}" class="cash-action-form cash-custody-action-form">
                                 @csrf
                                 <p class="cash-custody-action-note">Create the paper form before the Rider leaves.</p>
-                                <button class="button button-primary" type="submit"><i data-lucide="file-plus-2" aria-hidden="true"></i>Prepare acknowledgment slip</button>
+                                <button class="button button-primary" type="submit"><i data-lucide="file-plus-2" aria-hidden="true"></i>Prepare acknowledgment form</button>
                             </form>
                         @endif
                     @elseif($payout->status === 'logistics_return_verification')

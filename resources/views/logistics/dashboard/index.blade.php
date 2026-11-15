@@ -3,7 +3,7 @@
 @section('page-title','Dashboard')
 @section('content')
 <div class="page-header">
-    <div><p class="page-kicker">Operations overview</p><h2>{{ $greeting }}, {{ explode(' ', $operator['name'])[0] }}</h2><p>Monitor rider approvals, parcel movement, sorting progress, and dispatch readiness.</p></div>
+    <div><p class="page-kicker">Operations overview</p><h2 data-dashboard-greeting data-first-name="{{ explode(' ', $operator['name'])[0] }}">{{ $greeting }}, {{ explode(' ', $operator['name'])[0] }}</h2><p>Monitor rider approvals, parcel movement, sorting progress, and dispatch readiness.</p>@include('partials.dashboard-context')</div>
     <div class="page-actions"><a class="button" href="{{ route('logistics.rider-attendance.index') }}"><i data-lucide="clipboard-check"></i>Rider attendance</a><a class="button" href="{{ route('logistics.sorting.incoming') }}"><i data-lucide="scan-line"></i>Log incoming parcel</a><a class="button button-primary" href="{{ route('logistics.dispatch.index') }}"><i data-lucide="send"></i>Open dispatch board</a></div>
 </div>
 <section class="panel" style="margin-bottom:20px" aria-labelledby="dashboard-period-title">

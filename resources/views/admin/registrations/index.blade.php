@@ -68,8 +68,9 @@
                 data-filter-key="status"
             >
                 <option value="">All statuses</option>
-                <option>Pending</option>
-                <option>Needs Review</option>
+                <option>Submitted</option>
+                <option>Under Review</option>
+                <option>Needs Revision</option>
             </select>
         </div>
     </div>

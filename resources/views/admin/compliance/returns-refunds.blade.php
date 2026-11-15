@@ -16,7 +16,7 @@
         <h1>Returns & refunds</h1>
 
         <p>
-            Review Seller responses, decide claims, and record external payouts after the required return steps are complete.
+            Review available evidence, decide claims after a Seller reply or an overdue-response escalation, and record refunds after required return steps are complete.
         </p>
     </div>
 
@@ -177,6 +177,12 @@
                             >
                                 {{ $case['status'] }}
                             </span>
+                            @if ($case['seller_response_deadline_missed'])
+                                <small class="return-deadline-missed-note">Seller response deadline missed · review may proceed without Seller evidence</small>
+                            @endif
+                            @if ($case['payout_confirmation_pending'])
+                                <small class="return-deadline-missed-note">Payout sent · awaiting Buyer confirmation{{ $case['buyer_payout_not_received_reported'] ? ' · Buyer reported a problem' : '' }}</small>
+                            @endif
                         </td>
 
                         <td class="align-right">
@@ -254,7 +260,7 @@
                     <span class="status-badge {{ $case['status'] === 'Resolved' ? 'badge-success' : ($case['status'] === 'Rejected' ? 'badge-danger' : ($case['status'] === 'Under Review' ? 'badge-info' : 'badge-warning')) }}">{{ $case['status'] }}</span>
                 </div>
                 <h2 id="return-review-title-{{ $loop->index }}">Review return request</h2>
-                <p id="return-review-description-{{ $loop->index }}">Compare the Buyer’s request, Seller’s response, and submitted evidence before taking action.</p>
+                <p id="return-review-description-{{ $loop->index }}">Compare the Buyer’s request and available evidence before taking action.</p>
             </div>
             <button
                 type="button"
@@ -336,6 +342,13 @@
                 <span>Seller response</span>
                 <p>{{ $case['seller_response'] }}</p>
             </div>
+
+            @if ($case['seller_response_deadline_missed'])
+                <div class="detail-note return-items-note" role="note">
+                    <span>Seller response deadline missed</span>
+                    <p>The 48-hour response deadline passed without a Seller reply. This case was escalated to Admin review; you may decide using the Buyer’s request and available evidence without Seller evidence.</p>
+                </div>
+            @endif
 
             <div class="detail-note return-items-note">
                 <span>Selected items and requested value</span>
@@ -439,12 +452,13 @@
                     <dl>
                         <div><dt>Refund ID</dt><dd>{{ $case['refund_no'] }}</dd></div>
                         <div><dt>Refund amount</dt><dd>{{ $case['refund_amount'] }}</dd></div>
-                        <div><dt>Status</dt><dd>{{ \Illuminate\Support\Str::headline($case['refund_status']) }}</dd></div>
+                        <div><dt>Status</dt><dd>{{ $case['payout_confirmation_pending'] ? 'Payout sent · awaiting Buyer confirmation' : \Illuminate\Support\Str::headline($case['refund_status']) }}</dd></div>
                         <div><dt>Financially responsible</dt><dd>{{ $case['financially_responsible_party'] ? \Illuminate\Support\Str::headline($case['financially_responsible_party']) : 'Not recorded' }}</dd></div>
                         @if ($case['financial_responsibility_reason'])<div><dt>Responsibility reason</dt><dd>{{ $case['financial_responsibility_reason'] }}</dd></div>@endif
                         @if ($case['payout_date'])<div><dt>Externally paid</dt><dd>{{ $case['payout_date'] }} · {{ \Illuminate\Support\Str::headline(str_replace('_', ' ', $case['payout_method'])) }}</dd></div>@endif
                         @if ($case['payout_reference'])<div><dt>Buyer payout reference</dt><dd>{{ $case['payout_reference'] }}</dd></div>@endif
                         @if ($case['payout_amount'])<div><dt>Actual amount paid</dt><dd>{{ $case['payout_amount'] }}</dd></div>@endif
+                        @if ($case['payout_confirmation_pending'])<div><dt>Buyer receipt confirmation</dt><dd>{{ $case['buyer_payout_not_received_reported'] ? 'Buyer reported not receiving the payout; Admin follow-up required' : 'Awaiting Buyer confirmation' }}</dd></div>@endif
                         @if ($case['payout_receipt_url'])<div><dt>Payout proof</dt><dd><a href="{{ $case['payout_receipt_url'] }}">Download receipt</a></dd></div>@endif
                     </dl>
                     @if ($case['seller_recovery'])

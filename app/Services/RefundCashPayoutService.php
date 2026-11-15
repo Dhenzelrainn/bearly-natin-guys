@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\AccountStatus;
+use App\Enums\RiderSpecialization;
 use App\Enums\RiderWorkType;
 use App\Enums\UserRole;
 use App\Events\LogisticsRefundCashPayoutUpdated;
@@ -35,6 +36,8 @@ class RefundCashPayoutService
         private readonly AuditService $audit,
         private readonly ReturnRefundService $returns,
         private readonly NotificationService $notifications,
+        private readonly RefundCashRiderRecommendationService $riderRecommendations,
+        private readonly RiderAssignmentEligibilityService $riderEligibility,
     ) {}
 
     /** @return Collection<int, Refund> */
@@ -152,14 +155,18 @@ class RefundCashPayoutService
         }, attempts: 3);
     }
 
-    public function receiveAtLogistics(User $user, int $payoutId, int $amountMinor, string $reference): RefundCashPayout
+    public function receiveAtLogistics(User $user, int $payoutId, int $amountMinor): RefundCashPayout
     {
-        return DB::transaction(function () use ($user, $payoutId, $amountMinor, $reference): RefundCashPayout {
+        return DB::transaction(function () use ($user, $payoutId, $amountMinor): RefundCashPayout {
             $profile = $this->logisticsProfile($user);
             $payout = RefundCashPayout::query()->whereKey($payoutId)->lockForUpdate()->firstOrFail();
             $this->assertProvider($payout, $profile->id);
             $this->assertAmount($payout, $amountMinor, 'amount');
-            $reference = $this->requiredReference($reference, 'reference', 'Enter the Logistics cash receipt reference.');
+            $reference = $this->requiredReference(
+                (string) $payout->finance_issue_reference,
+                'finance_issue_reference',
+                'The Finance handoff reference is missing. Contact Finance before acknowledging cash receipt.',
+            );
 
             if ($payout->status === 'awaiting_rider_assignment'
                 && $payout->logistics_receipt_reference === $reference
@@ -176,36 +183,79 @@ class RefundCashPayoutService
                 'received_by_logistics' => $user->id,
             ]);
             $this->event($payout, 'cash_received_by_logistics', 'awaiting_logistics_receipt', 'awaiting_rider_assignment', $user, $amountMinor, $reference, null, $now);
+            $this->notifyAdminsOfLogisticsCashReceipt($payout, $profile);
 
             return $payout->fresh(['events']);
         }, attempts: 3);
     }
 
-    public function assignRider(User $user, int $payoutId, int $riderUserId): RefundCashPayout
-    {
-        return DB::transaction(function () use ($user, $payoutId, $riderUserId): RefundCashPayout {
+    public function assignRider(
+        User $user,
+        int $payoutId,
+        int $riderUserId,
+        ?string $assignmentReason = null,
+    ): RefundCashPayout {
+        return DB::transaction(function () use ($user, $payoutId, $riderUserId, $assignmentReason): RefundCashPayout {
             $provider = $this->logisticsProfile($user);
             $payout = RefundCashPayout::query()->whereKey($payoutId)->lockForUpdate()->firstOrFail();
             $this->assertProvider($payout, $provider->id);
             $this->assertStatus($payout, 'awaiting_rider_assignment', 'Logistics must acknowledge cash receipt before assigning a Rider.');
 
             $riderUser = User::query()->whereKey($riderUserId)->lockForUpdate()->firstOrFail();
-            $rider = $riderUser->riderProfile()->first();
+            $rider = RiderProfile::query()
+                ->where('user_id', $riderUser->id)
+                ->with(['user', 'currentZone.sortingCenter', 'liveLocation'])
+                ->lockForUpdate()
+                ->first();
+            $recommendation = $this->riderRecommendations->recommend($payout, $provider);
+            $candidate = $recommendation['candidates']->first(
+                fn (array $entry): bool => (int) $entry['rider']->user_id === (int) $riderUser->id,
+            );
+
             if ($riderUser->role !== UserRole::Rider->value
                 || $riderUser->status !== AccountStatus::Active->value
                 || ! $rider
+                || ! $candidate
                 || $rider->verification_status !== 'approved'
                 || ! RiderWorkType::isLocal($rider->work_type)
+                || ! RiderSpecialization::allowsDelivery($rider->specialization)
                 || $rider->availability_status !== 'available'
                 || (int) $rider->logistics_profile_id !== (int) $provider->id) {
-                throw ValidationException::withMessages(['rider_user_id' => 'Choose an active, approved, available Rider belonging to this Logistics provider.']);
+                throw ValidationException::withMessages([
+                    'rider_user_id' => $recommendation['status'] === 'destination_zone_missing'
+                        ? $recommendation['message']
+                        : 'Choose an eligible, available Local delivery Rider assigned to the Buyer zone or an active fallback zone at the same Sorting Center.',
+                ]);
+            }
+
+            $assignmentMode = (string) $candidate['mode'];
+            $assignmentReason = trim((string) $assignmentReason);
+            if ($assignmentMode === 'nearby_zone'
+                && (mb_strlen($assignmentReason) < 5 || mb_strlen($assignmentReason) > 1000)) {
+                throw ValidationException::withMessages([
+                    'assignment_reason' => 'Provide a reason of 5 to 1,000 characters for a nearby-zone fallback.',
+                ]);
+            }
+
+            try {
+                $this->riderEligibility->assertDeliveryEligible($rider);
+            } catch (ConflictHttpException $exception) {
+                throw ValidationException::withMessages(['rider_user_id' => $exception->getMessage()]);
             }
 
             $alreadyAssigned = RefundCashPayout::query()
                 ->where('rider_profile_id', $rider->id)
-                ->whereIn('status', ['assigned_to_rider', 'cash_with_rider', 'out_for_delivery', 'cash_return_pending', 'logistics_return_verification', 'delivered_pending_verification'])
+                ->whereIn('status', [
+                    'assigned_to_rider',
+                    'cash_with_rider',
+                    'out_for_delivery',
+                    'cash_return_pending',
+                    'logistics_return_verification',
+                    'delivered_pending_verification',
+                ])
                 ->where('id', '!=', $payout->id)
-                ->exists();
+                ->lockForUpdate()
+                ->first() !== null;
             if ($alreadyAssigned) {
                 throw ValidationException::withMessages(['rider_user_id' => 'This Rider already has an active refund cash assignment.']);
             }
@@ -241,7 +291,33 @@ class RefundCashPayoutService
                 'logistics_verified_at' => null,
                 'logistics_verified_by' => null,
             ]);
-            $this->event($payout, 'cash_assigned_to_rider', 'awaiting_rider_assignment', 'assigned_to_rider', $user, (int) $payout->amount_minor, $reference, "Assigned to approved Rider {$riderUser->name}; acknowledgment slip is ready to print.", $now);
+            $destinationZone = $recommendation['destination_zone'];
+            $riderZone = $rider->currentZone;
+            $note = "Assigned to approved Rider {$riderUser->name} in {$riderZone?->name}; Buyer destination zone is {$destinationZone?->name}.";
+            if ($assignmentMode === 'nearby_zone') {
+                $note .= " Nearby-zone fallback reason: {$assignmentReason}";
+            }
+            $note .= ' Acknowledgment form is ready to print.';
+            $this->event(
+                $payout,
+                'cash_assigned_to_rider',
+                'awaiting_rider_assignment',
+                'assigned_to_rider',
+                $user,
+                (int) $payout->amount_minor,
+                $reference,
+                $note,
+                $now,
+                [
+                    'assignment_mode' => $assignmentMode,
+                    'buyer_destination_zone_id' => (int) $destinationZone?->id,
+                    'buyer_destination_zone_name' => (string) $destinationZone?->name,
+                    'rider_zone_id' => (int) $riderZone?->id,
+                    'rider_zone_name' => (string) $riderZone?->name,
+                    'sorting_center_id' => (int) $recommendation['sorting_center']?->id,
+                    'cross_zone_reason' => $assignmentMode === 'nearby_zone' ? $assignmentReason : null,
+                ],
+            );
 
             return $payout->fresh(['riderProfile.user', 'events']);
         }, attempts: 3);
@@ -267,6 +343,96 @@ class RefundCashPayoutService
         ));
     }
 
+    private function notifyAdminsOfLogisticsCashReceipt(RefundCashPayout $payout, LogisticsProfile $provider): void
+    {
+        $amount = '₱'.number_format(((int) $payout->amount_minor) / 100, 2);
+        $providerName = trim((string) $provider->display_name) ?: 'The Logistics provider';
+
+        $this->notifications->sendManyAfterCommit(
+            $this->notifications->admins(),
+            new WorkflowNotification(
+                eventKey: 'admin_refund_cash_received_by_logistics',
+                title: 'Logistics acknowledged refund cash',
+                body: "{$providerName} acknowledged receipt of {$amount} for {$payout->payout_no} (Finance handoff {$payout->finance_issue_reference}). The refund is awaiting Rider assignment.",
+                actionUrl: route('admin.payments').'#refund-cash-assignments',
+                type: 'info',
+                meta: [
+                    'refund_cash_payout_id' => (int) $payout->id,
+                    'refund_id' => (int) $payout->refund_id,
+                    'finance_issue_reference' => (string) $payout->finance_issue_reference,
+                    'logistics_profile_id' => (int) $provider->id,
+                ],
+            ),
+        );
+    }
+
+    private function notifyBuyerOfCashRefundProgress(
+        RefundCashPayout $payout,
+        string $title,
+        string $body,
+        string $type = 'info',
+    ): void {
+        $payout->loadMissing('returnRequest.buyer');
+        $returnRequest = $payout->returnRequest;
+        $buyer = $returnRequest?->buyer;
+
+        if (! $buyer || ! $returnRequest) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($buyer, new WorkflowNotification(
+            eventKey: 'buyer_refund_cash_tracking',
+            title: $title,
+            body: $body,
+            actionUrl: route('buyer.returns.show', $returnRequest->id),
+            type: $type,
+            meta: [
+                'return_request_id' => (int) $returnRequest->id,
+                'refund_cash_payout_id' => (int) $payout->id,
+            ],
+        ));
+    }
+
+    private function notifyLogisticsOfCashDeliveryVerification(RefundCashPayout $payout): void
+    {
+        $logisticsUser = $payout->logisticsProfile()->with('user')->first()?->user;
+
+        if (! $logisticsUser) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($logisticsUser, new WorkflowNotification(
+            eventKey: 'logistics_refund_cash_verification_required',
+            title: 'Verify Rider cash refund delivery',
+            body: "The Rider reported delivery for {$payout->payout_no}. Verify the signed acknowledgment and amount before the payout moves to Finance.",
+            actionUrl: route('logistics.cash.index'),
+            type: 'warning',
+            meta: ['refund_cash_payout_id' => (int) $payout->id],
+        ));
+    }
+
+    private function notifyAdminsOfCashRefundReadyForFinance(RefundCashPayout $payout, LogisticsProfile $provider): void
+    {
+        $amount = '₱'.number_format(((int) $payout->amount_minor) / 100, 2);
+        $providerName = trim((string) $provider->display_name) ?: 'Logistics';
+
+        $this->notifications->sendManyAfterCommit(
+            $this->notifications->admins(),
+            new WorkflowNotification(
+                eventKey: 'admin_refund_cash_ready_for_finance',
+                title: 'Cash refund ready for Finance',
+                body: "{$providerName} verified the Buyer acknowledgment for {$payout->payout_no} ({$amount}). Finance can review the proof and complete the refund.",
+                actionUrl: route('admin.payments').'#refund-cash-assignments',
+                type: 'warning',
+                meta: [
+                    'refund_cash_payout_id' => (int) $payout->id,
+                    'refund_id' => (int) $payout->refund_id,
+                    'logistics_profile_id' => (int) $provider->id,
+                ],
+            ),
+        );
+    }
+
     private function notifyRiderOfCashAssignment(RefundCashPayout $payout, User $riderUser, string $reference): void
     {
         $amount = '₱'.number_format(((int) $payout->amount_minor) / 100, 2);
@@ -290,7 +456,7 @@ class RefundCashPayoutService
 
             if (! in_array($payout->status, ['assigned_to_rider', 'cash_with_rider', 'out_for_delivery'], true)
                 || ! $payout->rider_profile_id) {
-                throw new ConflictHttpException('A Rider must be assigned before Logistics can prepare the acknowledgment slip.');
+                throw new ConflictHttpException('A Rider must be assigned before Logistics can prepare the acknowledgment form.');
             }
 
             if (filled($payout->acknowledgment_reference)) {
@@ -309,7 +475,7 @@ class RefundCashPayoutService
                 $user,
                 (int) $payout->amount_minor,
                 $reference,
-                'Logistics prepared the acknowledgment reference before handing the printed slip to the Rider.',
+                'Logistics prepared the acknowledgment reference before handing the printed form to the Rider.',
                 $now,
             );
 
@@ -354,7 +520,7 @@ class RefundCashPayoutService
             if ($payout->status === 'out_for_delivery'
                 && (int) $payout->received_by_rider_user_id === (int) $user->id) {
                 if (! filled($payout->acknowledgment_reference)) {
-                    throw ValidationException::withMessages(['payout' => 'Ask Logistics to prepare and provide the acknowledgment slip before continuing this delivery.']);
+                    throw ValidationException::withMessages(['payout' => 'Ask Logistics to prepare and provide the acknowledgment form before continuing this delivery.']);
                 }
 
                 return $payout;
@@ -362,7 +528,7 @@ class RefundCashPayoutService
             $this->assertStatus($payout, 'cash_with_rider', 'Confirm receipt of the assigned cash before starting delivery.');
             $reference = trim((string) $payout->acknowledgment_reference);
             if ($reference === '') {
-                throw ValidationException::withMessages(['payout' => 'Ask Logistics to prepare and provide the acknowledgment slip before starting delivery.']);
+                throw ValidationException::withMessages(['payout' => 'Ask Logistics to prepare and provide the acknowledgment form before starting delivery.']);
             }
             $now = now();
             $payout->update([
@@ -379,6 +545,11 @@ class RefundCashPayoutService
                 $reference,
                 'Rider started delivery with the Logistics-issued acknowledgment reference.',
                 $now,
+            );
+            $this->notifyBuyerOfCashRefundProgress(
+                $payout,
+                'Cash refund out for delivery',
+                "A Rider has started delivering cash refund {$payout->payout_no}. Follow the status on your return case.",
             );
 
             return $payout->fresh(['events']);
@@ -413,6 +584,12 @@ class RefundCashPayoutService
                 'failure_reason' => $reason,
             ]);
             $this->event($payout, 'refund_cash_delivery_failed', $fromStatus, 'cash_return_pending', $user, (int) $payout->amount_minor, $reference, $reason, $now);
+            $this->notifyBuyerOfCashRefundProgress(
+                $payout,
+                'Cash refund delivery needs another attempt',
+                "The Rider could not complete delivery for cash refund {$payout->payout_no}. The cash must be returned to Logistics before another delivery attempt.",
+                'warning',
+            );
 
             return $payout->fresh(['events']);
         }, attempts: 3);
@@ -528,6 +705,13 @@ class RefundCashPayoutService
                     'delivery_attempt_count' => (int) $locked->delivery_attempt_count + 1,
                 ]);
                 $this->event($locked, 'refund_cash_delivered_to_buyer', 'out_for_delivery', 'delivered_pending_verification', $user, $amountMinor, $reference, 'Rider uploaded signed Buyer acknowledgment. Logistics and Finance verification are still required.', $now);
+                $this->notifyBuyerOfCashRefundProgress(
+                    $locked,
+                    'Rider reported cash refund delivered',
+                    "The Rider reported delivering cash refund {$locked->payout_no}. Logistics is verifying the signed acknowledgment; Finance will complete the refund after verification.",
+                    'warning',
+                );
+                $this->notifyLogisticsOfCashDeliveryVerification($locked);
 
                 return $locked->fresh(['events']);
             }, attempts: 3);
@@ -565,6 +749,12 @@ class RefundCashPayoutService
                 'logistics_verified_by' => $user->id,
             ]);
             $this->event($payout, 'buyer_acknowledgment_verified_by_logistics', 'delivered_pending_verification', 'awaiting_finance_completion', $user, (int) $payout->amount_minor, $payout->acknowledgment_reference, $note, $now);
+            $this->notifyBuyerOfCashRefundProgress(
+                $payout,
+                'Logistics verified the cash refund delivery',
+                "Logistics verified the signed acknowledgment for cash refund {$payout->payout_no}. Finance is completing the refund.",
+            );
+            $this->notifyAdminsOfCashRefundReadyForFinance($payout, $provider);
 
             return $payout->fresh(['events']);
         }, attempts: 3);
@@ -629,9 +819,21 @@ class RefundCashPayoutService
         $refundPayouts = RefundCashPayout::query()
             ->where('logistics_profile_id', $provider->id)
             ->whereNotIn('status', ['completed'])
-            ->with(['refund.order.buyer', 'returnRequest.store', 'riderProfile.user'])
+            ->with([
+                'refund.order.buyer',
+                'returnRequest.store',
+                'returnRequest.items.orderItem.product.images.variant',
+                'returnRequest.items.orderItem.variant',
+                'riderProfile.user',
+            ])
             ->orderBy('created_at')
             ->get();
+
+        $refundRiderRecommendations = $refundPayouts
+            ->where('status', 'awaiting_rider_assignment')
+            ->mapWithKeys(fn (RefundCashPayout $payout): array => [
+                (int) $payout->id => $this->riderRecommendations->recommend($payout, $provider),
+            ]);
 
         return [
             'codCollections' => CodCashCollection::query()
@@ -649,13 +851,7 @@ class RefundCashPayoutService
                 ->get(),
             'refundPayouts' => $refundPayouts,
             'refundCashStatusVersion' => $this->refundCashStatusVersion($refundPayouts),
-            'riders' => $provider->riders()
-                ->where('verification_status', 'approved')
-                ->where('availability_status', 'available')
-                ->whereHas('user', fn ($query) => $query->where('status', AccountStatus::Active->value))
-                ->with('user')
-                ->orderBy('id')
-                ->get(),
+            'refundRiderRecommendations' => $refundRiderRecommendations,
         ];
     }
 
@@ -681,9 +877,21 @@ class RefundCashPayoutService
             ->firstOrFail();
         $this->assertProvider($payout, $provider->id);
 
-        abort_unless(in_array($payout->status, ['assigned_to_rider', 'cash_with_rider', 'out_for_delivery'], true)
-            && $payout->rider_profile_id
-            && filled($payout->acknowledgment_reference), 404);
+        if ($payout->status === 'awaiting_rider_assignment') {
+            throw new ConflictHttpException('Assign an eligible Rider before printing this acknowledgment form.');
+        }
+
+        if (! in_array($payout->status, ['assigned_to_rider', 'cash_with_rider', 'out_for_delivery'], true)) {
+            throw new ConflictHttpException("This acknowledgment form is not available at the payout's current step. Return to Cash custody to review the next required action.");
+        }
+
+        if (! $payout->rider_profile_id) {
+            throw new ConflictHttpException('Assign an eligible Rider before printing this acknowledgment form.');
+        }
+
+        if (! filled($payout->acknowledgment_reference)) {
+            throw new ConflictHttpException('Prepare the acknowledgment form from Cash custody before printing it.');
+        }
 
         return $payout;
     }
@@ -817,6 +1025,7 @@ class RefundCashPayoutService
         ?string $reference,
         ?string $note,
         mixed $occurredAt,
+        array $metadata = [],
     ): void {
         RefundCashPayoutEvent::query()->create([
             'refund_cash_payout_id' => $payout->id,
@@ -827,6 +1036,7 @@ class RefundCashPayoutService
             'amount_minor' => $amount,
             'reference' => $reference,
             'note' => $note,
+            'metadata' => $metadata === [] ? null : $metadata,
             'occurred_at' => $occurredAt,
         ]);
 

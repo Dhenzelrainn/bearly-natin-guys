@@ -39,7 +39,7 @@ class SellerWalletService
             $wallet = $this->lockOrCreateWallet($lockedProfile);
 
             $this->creditPostedSalesAsPending($wallet);
-            $this->applyCompletedRefundAdjustments($wallet);
+            $this->applyPaidRefundAdjustments($wallet);
             $this->releaseEligiblePendingEarnings($wallet);
 
             return $wallet->fresh();
@@ -620,13 +620,13 @@ class SellerWalletService
         }
     }
 
-    private function applyCompletedRefundAdjustments(SellerWallet $wallet): void
+    private function applyPaidRefundAdjustments(SellerWallet $wallet): void
     {
         $recoveries = SellerRefundRecovery::query()
             ->where('seller_profile_id', $wallet->seller_profile_id)
             ->whereIn('status', ['pending', 'partially_recovered'])
             ->whereHas('refund', fn ($query) => $query
-                ->where('status', 'completed')
+                ->payoutSent()
                 ->where('financially_responsible_party', 'seller'))
             ->whereDoesntHave('refund.walletTransactions')
             ->with('refund.returnRequest')
@@ -708,7 +708,7 @@ class SellerWalletService
             sellerTransaction: $sale,
             refund: $refund,
             reference: $refund->refund_no,
-            description: 'Completed Seller-responsible refund deducted from the Seller Wallet.',
+            description: 'Externally paid Seller-responsible refund deducted from the Seller Wallet.',
             actor: $actor,
             idempotencyKey: 'seller-refund-adjustment:'.$refund->id,
             metadata: [
@@ -740,7 +740,7 @@ class SellerWalletService
             'amount_minor' => $outstanding,
             'external_reference' => $movement->transaction_no,
             'recovered_on' => now()->toDateString(),
-            'note' => 'Deducted automatically from the Seller Wallet when the refund was completed.',
+            'note' => 'Deducted automatically from the Seller Wallet when the external refund payout was sent.',
             'created_at' => now(),
         ]);
 
@@ -763,10 +763,14 @@ class SellerWalletService
 
     private function isRefundAdjustmentEligible(Refund $refund): bool
     {
-        return $refund->status === 'completed'
+        $paidAt = in_array($refund->method, ['gcash', 'bank_transfer', 'other'], true) && $refund->external_paid_on
+            ? CarbonImmutable::parse($refund->external_paid_on->toDateString(), config('app.timezone'))->endOfDay()
+            : ($refund->completed_at ? CarbonImmutable::parse($refund->completed_at) : null);
+
+        return $refund->isPayoutSent()
             && $refund->financially_responsible_party === 'seller'
-            && $refund->completed_at !== null
-            && CarbonImmutable::parse($refund->completed_at)->greaterThanOrEqualTo($this->refundCutoff());
+            && $paidAt !== null
+            && $paidAt->greaterThanOrEqualTo($this->refundCutoff());
     }
 
     private function refundCutoff(): CarbonImmutable

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    @include('partials.favicon')
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Learn more about Bearly, a marketplace built to make product discovery feel simpler and more human.">
     <meta name="theme-color" content="#432214">

@@ -15,6 +15,35 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class AccountApprovalController extends Controller
 {
+    public function startReviewByAdmin(
+        Request $request,
+        User $user,
+        RegistrationLifecycleService $lifecycle
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'review_application_id' => ['required', 'integer', 'min:1'],
+        ]);
+        $applicationId = (int) $validated['review_application_id'];
+
+        if ($response = $this->ensureAdminReviewable($user, $applicationId)) {
+            return $response;
+        }
+
+        try {
+            $application = $lifecycle->startReview(
+                $user,
+                $request->user(),
+                $applicationId
+            );
+        } catch (ConflictHttpException) {
+            return $this->staleApplicationResponse($user);
+        }
+
+        return back()
+            ->with('success', "{$user->name}'s application is now under review.")
+            ->with('review_application_id', $application->id);
+    }
+
     public function approveByAdmin(
         Request $request,
         User $user,

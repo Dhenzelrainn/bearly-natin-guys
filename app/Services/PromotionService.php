@@ -24,7 +24,10 @@ class PromotionService
         PromotionRedemption::STATUS_REDEEMED,
     ];
 
-    public function __construct(private readonly AuditService $audit) {}
+    public function __construct(
+        private readonly AuditService $audit,
+        private readonly PisoSaleEligibilityService $pisoSaleEligibility,
+    ) {}
 
     /**
      * Publicly displayable platform offers for the Buyer storefront.
@@ -32,7 +35,11 @@ class PromotionService
      * @param  array<int, string>  $kinds
      * @return Collection<int, array<string, mixed>>
      */
-    public function publicOffers(array $kinds = [], bool $featuredOnly = false): Collection
+    public function publicOffers(
+        array $kinds = [],
+        bool $featuredOnly = false,
+        ?User $buyer = null,
+    ): Collection
     {
         $query = $this->activePlatformQuery()
             ->orderBy('position')
@@ -54,8 +61,15 @@ class PromotionService
             ->withSum(['redemptions as active_shipping_discount_minor' => fn (Builder $redemptions) => $redemptions
                 ->whereIn('status', self::ACTIVE_REDEMPTION_STATUSES)], 'shipping_discount_minor')
             ->get()
-            ->filter(function (PlatformPromotion $promotion): bool {
+            ->filter(function (PlatformPromotion $promotion) use ($buyer): bool {
                 if ($promotion->isCampaign()) {
+                    if (
+                        $promotion->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE
+                        && ($buyer === null || ! $this->pisoSaleEligibility->canDisplay($buyer))
+                    ) {
+                        return false;
+                    }
+
                     return true;
                 }
 
@@ -64,7 +78,7 @@ class PromotionService
                     (int) $promotion->active_discount_minor + (int) $promotion->active_shipping_discount_minor,
                 );
             })
-            ->map(function (PlatformPromotion $promotion): array {
+            ->map(function (PlatformPromotion $promotion) use ($buyer): array {
             $isCampaign = $promotion->isCampaign();
 
             return [
@@ -88,6 +102,10 @@ class PromotionService
                 'banner_link' => $isCampaign ? $promotion->banner_link : null,
                 'campaign_type' => $promotion->campaign_type,
                 'campaign_type_label' => $isCampaign ? $promotion->campaignTypeLabel() : null,
+                'piso_sale_reserved' => $promotion->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE
+                    && $buyer !== null
+                    && $this->pisoSaleEligibility->canDisplay($buyer)
+                    && $this->pisoSaleEligibility->isReserved($buyer),
                 'funding_type' => $promotion->funding_type,
                 'is_campaign' => $isCampaign,
             ];

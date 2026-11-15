@@ -7,12 +7,15 @@
 @section('content')
 @php
     $isPlatformFunded = $campaign['funding_type'] === \App\Models\PlatformPromotion::FUNDING_PLATFORM;
+    $isPisoSale = $campaign['campaign_type'] === \App\Models\PlatformPromotion::CAMPAIGN_PISO_SALE;
     $participation = $participation ?? null;
     $canJoin = (bool) ($can_join ?? false);
     $minimumDiscount = (int) ($campaign['effective_minimum_discount_percent'] ?? 1);
-    $minimumDiscountCopy = $campaign['minimum_discount_percent'] !== null
-        ? 'Every product discount must be at least '.$minimumDiscount.'%.'
-        : 'No Admin minimum is configured; submit at least a 1% discount.';
+    $minimumDiscountCopy = $isPisoSale
+        ? 'Every eligible SKU has a fixed ₱1.00 campaign price.'
+        : ($campaign['minimum_discount_percent'] !== null
+            ? 'Every product discount must be at least '.$minimumDiscount.'%.'
+            : 'No Admin minimum is configured; submit at least a 1% discount.');
     $oldCampaignItemsByProduct = collect(old('items', []))
         ->filter(fn ($item) => is_array($item) && isset($item['product_id']))
         ->keyBy(fn ($item) => (int) $item['product_id']);
@@ -61,23 +64,40 @@
             </dl>
             <p class="campaign-funding-note {{ $isPlatformFunded ? 'is-platform' : 'is-seller' }}">
                 <i data-lucide="{{ $isPlatformFunded ? 'badge-check' : 'wallet' }}" aria-hidden="true"></i>
-                {{ $isPlatformFunded
-                    ? ($minimumDiscountCopy.' Bearly funds the difference; your proceeds remain based on your effective Seller price.')
-                    : ($minimumDiscountCopy.' You fund the discount, so your proceeds are based on the computed campaign price.') }}
+                {{ $isPisoSale && ! $isPlatformFunded
+                    ? 'This legacy Seller-funded Piso Sale cannot use the fixed-price offer. Its funding cannot be changed; Bearly-funded campaigns require a new campaign.'
+                    : ($isPisoSale
+                        ? ($minimumDiscountCopy.' Bearly funds the difference up to the campaign budget; your proceeds remain based on your effective Seller price.')
+                        : ($isPlatformFunded
+                            ? ($minimumDiscountCopy.' Bearly funds the difference; your proceeds remain based on your effective Seller price.')
+                            : ($minimumDiscountCopy.' You fund the discount, so your proceeds are based on the computed campaign price.'))) }}
             </p>
         </div>
     </section>
 
     @if ($participation)
-        <section class="promotion-create-card">
+        <section
+            class="promotion-create-card"
+            data-campaign-participation-live
+            data-campaign-id="{{ $campaign['id'] }}"
+            data-participation-id="{{ $participation->id }}"
+            data-participation-status="{{ $participation->status }}"
+            data-participation-status-url="{{ route('seller.promotions.campaigns.participation-status', $campaign['id']) }}"
+        >
             <div class="promotion-create-card-heading">
                 <div>
                     <span class="section-kicker">Your participation</span>
-                    <h2>{{ $participation->statusLabel() }}</h2>
-                    <p>Submitted {{ $participation->submitted_at?->format('M j, Y g:i A') ?? '—' }}@if ($participation->review_reason) · {{ $participation->review_reason }}@endif</p>
+                    <h2 data-campaign-participation-status>{{ $participation->statusLabel() }}</h2>
+                    <p>
+                        Submitted {{ $participation->submitted_at?->format('M j, Y g:i A') ?? '—' }}
+                        <span data-campaign-review-reason-wrapper @if (! $participation->review_reason) hidden @endif>
+                            · <span data-campaign-review-reason>{{ $participation->review_reason }}</span>
+                        </span>
+                    </p>
+                    <p data-campaign-participation-live-message role="status" aria-live="polite" hidden></p>
                 </div>
                 @if (in_array($participation->status, ['pending_review', 'approved'], true))
-                    <form method="POST" action="{{ route('seller.promotions.campaigns.withdraw', $participation) }}" onsubmit="return confirm('Withdraw this campaign participation?')">
+                    <form data-campaign-participation-withdraw method="POST" action="{{ route('seller.promotions.campaigns.withdraw', $participation) }}" onsubmit="return confirm('Withdraw this campaign participation?')">
                         @csrf
                         @method('PATCH')
                         <button class="promotion-row-action is-danger" type="submit">Withdraw participation</button>
@@ -90,7 +110,7 @@
                         <tr>
                             <th>Product / SKU</th>
                             <th>Regular price</th>
-                            <th>Discount</th>
+                            @unless ($isPisoSale)<th>Discount</th>@endunless
                             <th>Campaign price</th>
                             <th>Stock limit</th>
                         </tr>
@@ -100,8 +120,8 @@
                             <tr>
                                 <td><strong>{{ $item->product?->name }}</strong><br><small>{{ $item->variant?->sku }}</small></td>
                                 <td>₱{{ number_format($item->regular_price_minor / 100, 2) }}</td>
-                                <td>{{ $item->discount_percent !== null ? ((int) $item->discount_percent).'% off' : 'Legacy submission' }}</td>
-                                <td><strong>₱{{ number_format($item->campaign_price_minor / 100, 2) }}</strong></td>
+                                @unless ($isPisoSale)<td>{{ $item->discount_percent !== null ? ((int) $item->discount_percent).'% off' : 'Legacy submission' }}</td>@endunless
+                                <td><strong>₱{{ number_format(($isPisoSale ? \App\Models\PlatformPromotion::PISO_SALE_PRICE_MINOR : $item->campaign_price_minor) / 100, 2) }}</strong></td>
                                 <td>{{ $item->stock_limit ?? 'No limit' }}</td>
                             </tr>
                         @endforeach
@@ -112,14 +132,18 @@
     @endif
 
     @if ($canJoin)
-        <form class="promotion-create-layout promotion-create-stack" method="POST" action="{{ route('seller.promotions.campaigns.join', $campaign['id']) }}" data-campaign-join-form data-funding="{{ $campaign['funding_type'] }}" data-minimum-discount="{{ $minimumDiscount }}">
+        <form class="promotion-create-layout promotion-create-stack" method="POST" action="{{ route('seller.promotions.campaigns.join', $campaign['id']) }}" data-campaign-join-form data-funding="{{ $campaign['funding_type'] }}" data-minimum-discount="{{ $minimumDiscount }}" data-piso-sale="{{ $isPisoSale ? '1' : '0' }}">
             @csrf
             <section class="promotion-create-card">
                 <div class="promotion-create-card-heading">
                     <div>
                         <span class="section-kicker">Products</span>
                         <h2>Select participating products</h2>
-                        <p>Choose a whole discount percentage for each product. @if ($campaign['minimum_discount_percent'] !== null) Minimum {{ $minimumDiscount }}%; @else No Admin minimum is configured; @endif enter at least 1% and no more than 90%. Bearly computes a separate campaign price for every eligible active SKU. Stock and per-buyer limits apply per SKU.</p>
+                        @if ($isPisoSale)
+                            <p>Piso Sale fixes each eligible SKU at exactly ₱1.00. Bearly funds the difference, capped by the campaign budget. Only SKUs with an effective Seller price above ₱1.00 can participate; no discount percentage is needed. Stock and per-buyer limits apply per SKU.</p>
+                        @else
+                            <p>Choose a whole discount percentage for each product. @if ($campaign['minimum_discount_percent'] !== null) Minimum {{ $minimumDiscount }}%; @else No Admin minimum is configured; @endif enter at least 1% and no more than 90%. Bearly computes a separate campaign price for every eligible active SKU. Stock and per-buyer limits apply per SKU.</p>
+                        @endif
                     </div>
                     @if ($campaign['max_products_per_store'])
                         <span class="promotion-scope-note-compact">Up to {{ $campaign['max_products_per_store'] }} products</span>
@@ -137,12 +161,14 @@
                                     <small>{{ count($product['variants']) }} eligible active SKU{{ count($product['variants']) === 1 ? '' : 's' }} with available stock</small>
                                 </span>
                             </label>
-                            <div class="campaign-product-fields">
-                                <label>
-                                    <span>Discount (%)</span>
-                                    <input type="number" min="{{ $minimumDiscount }}" max="90" step="1" inputmode="numeric" data-campaign-discount value="{{ $oldItem['discount_percent'] ?? $minimumDiscount }}" aria-describedby="campaign-discount-help-{{ $product['id'] }}" @disabled($oldItem === null)>
-                                    <small id="campaign-discount-help-{{ $product['id'] }}" data-campaign-discount-error aria-live="polite" @if ($oldItem === null || (int) ($oldItem['discount_percent'] ?? 0) >= $minimumDiscount) hidden @endif>Minimum {{ $minimumDiscount }}%; maximum 90%.</small>
-                                </label>
+                            <div class="campaign-product-fields {{ $isPisoSale ? 'is-piso-sale' : '' }}">
+                                @unless ($isPisoSale)
+                                    <label>
+                                        <span>Discount (%)</span>
+                                        <input type="number" min="{{ $minimumDiscount }}" max="90" step="1" inputmode="numeric" data-campaign-discount value="{{ $oldItem['discount_percent'] ?? $minimumDiscount }}" aria-describedby="campaign-discount-help-{{ $product['id'] }}" @disabled($oldItem === null)>
+                                        <small id="campaign-discount-help-{{ $product['id'] }}" data-campaign-discount-error aria-live="polite" @if ($oldItem === null || (int) ($oldItem['discount_percent'] ?? 0) >= $minimumDiscount) hidden @endif>Minimum {{ $minimumDiscount }}%; maximum 90%.</small>
+                                    </label>
+                                @endunless
                                 <label>
                                     <span>Stock limit / SKU</span>
                                     <input type="number" min="1" step="1" inputmode="numeric" data-campaign-stock value="{{ $oldItem['stock_limit'] ?? '' }}" @disabled($oldItem === null) placeholder="No limit">
@@ -157,7 +183,7 @@
                                     <div class="campaign-sku-preview" data-campaign-variant data-baseline-minor="{{ $variant['regular_price_minor'] }}">
                                         <strong>{{ $variant['sku'] ?: $variant['name'] }}</strong>
                                         <span>Current Seller price <b>₱{{ number_format($variant['regular_price_minor'] / 100, 2) }}</b></span>
-                                        <span>Campaign price <b data-campaign-price-preview>—</b></span>
+                                        <span>Campaign price <b data-campaign-price-preview>{{ $isPisoSale ? '₱1.00' : '—' }}</b></span>
                                         <span>Seller proceeds before fees <b data-campaign-net>—</b></span>
                                     </div>
                                 @endforeach
@@ -179,7 +205,7 @@
                 <div class="campaign-terms">{{ $campaign['terms'] ?: 'Campaign prices apply only while the campaign is active and approved. Historical orders keep their original price snapshots. Bearly may pause or end a campaign for operational reasons.' }}</div>
                 <label class="campaign-terms-check">
                     <input type="checkbox" name="terms_accepted" value="1" required>
-                    <span>I have reviewed the campaign schedule, minimum discount, funding, stock limits, and terms.</span>
+                    <span>I have reviewed the campaign schedule, {{ $isPisoSale ? 'fixed ₱1.00 price' : 'minimum discount' }}, funding, stock limits, and terms.</span>
                 </label>
                 <label class="promotion-field is-wide">
                     <span>Note to Bearly review (optional)</span>
@@ -188,7 +214,7 @@
                 <div class="promotion-create-submit">
                     <div>
                         <strong>Submit for review</strong>
-                        <p>{{ $campaign['requires_approval'] ? 'Bearly will review your selected products and submitted discount percentages.' : 'Your participation will be scheduled immediately after submission.' }}</p>
+                        <p>{{ $campaign['requires_approval'] ? ($isPisoSale ? 'Bearly will review your selected eligible SKUs at the fixed ₱1.00 price.' : 'Bearly will review your selected products and submitted discount percentages.') : 'Your participation will be scheduled immediately after submission.' }}</p>
                     </div>
                     <button class="seller-primary-button" type="submit" @disabled($eligible_products === [])>
                         <i data-lucide="send" aria-hidden="true"></i>
@@ -198,16 +224,20 @@
             </section>
         </form>
     @elseif (! $participation && ! ($store_published ?? true))
-        <div class="campaign-empty-state">
+        <div class="campaign-empty-state" role="status">
             <i data-lucide="store" aria-hidden="true"></i>
-            <strong>Publish your Store before joining.</strong>
-            <span>Your Store must be published before it can submit products to a Bearly Campaign.</span>
+            <div class="campaign-empty-state-copy">
+                <strong>Publish your Store before joining.</strong>
+                <span>Your Store must be published before it can submit products to a Bearly Campaign.</span>
+            </div>
         </div>
     @elseif (! $participation && $campaign['status_key'] !== 'open')
-        <div class="campaign-empty-state">
+        <div class="campaign-empty-state" role="status">
             <i data-lucide="calendar-x" aria-hidden="true"></i>
-            <strong>Joining is closed for this campaign.</strong>
-            <span>View the campaign schedule and check back for future Bearly events.</span>
+            <div class="campaign-empty-state-copy">
+                <strong>Joining is closed for this campaign.</strong>
+                <span>View the campaign schedule and check back for future Bearly events.</span>
+            </div>
         </div>
     @endif
 </div>

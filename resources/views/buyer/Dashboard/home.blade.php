@@ -6,6 +6,8 @@ $homeCategories = json_decode(file_get_contents(resource_path('data/buyer-catego
 
 $homeProducts = array_slice($liveCatalog ?? [], 0, 60);
 $usingLiveCatalog = true;
+$carouselCampaigns = $carouselCampaigns ?? [];
+$hasCarouselCampaigns = $carouselCampaigns !== [];
 
 @endphp
 
@@ -62,6 +64,7 @@ $usingLiveCatalog = true;
 
     'resources/js/buyer.js',
     'resources/js/buyer-notifications.js',
+    'resources/js/buyer-account-menu.js',
 
     'resources/js/bearly-promo-slider.js',
     'resources/js/bearly-chat.js'
@@ -136,7 +139,7 @@ $usingLiveCatalog = true;
 
 
 
-<a class="account-action" href="{{ url('/profile') }}" aria-label="Open {{ $buyerName }} profile"><span class="account-avatar" aria-hidden="true"><span class="material-symbols-outlined">person</span></span><span class="account-name">{{ $buyerName }}</span><span class="material-symbols-outlined account-chevron" aria-hidden="true">expand_more</span></a>
+@include('buyer.partials.account-menu')
 
 
 
@@ -162,7 +165,7 @@ $usingLiveCatalog = true;
 <div class="sidebar-title">
     <strong>Shop by category</strong>
     <button id="sidebar-collapse" class="sidebar-collapse-button" type="button" aria-label="Hide categories and deals" aria-controls="sidebar" aria-expanded="true" title="Hide categories and deals" hidden>
-        <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
+        <span class="material-symbols-outlined" aria-hidden="true">keyboard_double_arrow_left</span>
     </button>
     <button id="menu-close" class="icon-button" type="button" aria-label="Close categories"><span class="material-symbols-outlined" aria-hidden="true">close</span></button>
 </div>
@@ -173,7 +176,7 @@ $usingLiveCatalog = true;
 
 <section class="sidebar-perks" aria-labelledby="sidebar-perks-title">
     <div class="sidebar-perks-title" id="sidebar-perks-title">
-        <strong>Deals &amp; Perks</strong>
+        <strong>Explore Deals</strong>
     </div>
 
     <a class="sidebar-perk-row" href="{{ url('/flash-deals') }}">
@@ -193,6 +196,7 @@ $usingLiveCatalog = true;
         <span class="sidebar-perk-copy"><strong>Vouchers</strong></span>
         <span class="material-symbols-outlined sidebar-perk-chevron" aria-hidden="true">chevron_right</span>
     </a>
+
 </section>
 
 
@@ -202,22 +206,41 @@ $usingLiveCatalog = true;
 
 <main id="main" tabindex="-1">
 
+<div id="editorial">
+
 <button id="sidebar-expand" class="sidebar-expand-button" type="button" aria-label="Show categories and deals" aria-controls="sidebar" aria-expanded="false" title="Show categories and deals" hidden>
-    <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+    <span class="material-symbols-outlined" aria-hidden="true">keyboard_double_arrow_right</span>
 </button>
 
 
-<div id="editorial">
-
-
-
-@include('buyer.partials.live-offers', ['promotions' => $activePromotions ?? collect()])
-
-<section class="bearly-promo-slider" id="bearly-promo-slider" aria-roledescription="carousel" aria-label="Bearly promotions">
+<section class="bearly-promo-slider {{ $hasCarouselCampaigns ? 'has-carousel-campaigns' : '' }}" id="bearly-promo-slider" aria-roledescription="carousel" aria-label="Bearly promotions">
 
     <div class="bearly-promo-track">
 
-        <article class="bearly-promo-slide is-active bearly-promo-payday" aria-hidden="false">
+        @foreach ($carouselCampaigns as $carouselCampaign)
+            <article
+                class="bearly-promo-slide bearly-promo-campaign-banner {{ $loop->first ? 'is-active' : '' }}"
+                aria-hidden="{{ $loop->first ? 'false' : 'true' }}"
+                data-hero-campaign-id="{{ $carouselCampaign['id'] }}"
+            >
+                <a
+                    class="bearly-promo-campaign-link"
+                    href="{{ route('campaigns.show', $carouselCampaign['id']) }}"
+                    aria-label="View {{ $carouselCampaign['name'] }} campaign"
+                >
+                    <img
+                        class="bearly-promo-campaign-image"
+                        src="{{ $carouselCampaign['banner_url'] }}"
+                        alt=""
+                        loading="{{ $loop->first ? 'eager' : 'lazy' }}"
+                        decoding="async"
+                        @if ($loop->first) fetchpriority="high" @endif
+                    >
+                </a>
+            </article>
+        @endforeach
+
+        <article class="bearly-promo-slide {{ $hasCarouselCampaigns ? '' : 'is-active' }} bearly-promo-payday" aria-hidden="{{ $hasCarouselCampaigns ? 'true' : 'false' }}">
             <img
                 class="bearly-promo-bg bearly-payday-bg"
                 src="{{ asset('images/marketplace-hero.png') }}"
@@ -279,108 +302,6 @@ $usingLiveCatalog = true;
 
         </article>
 
-        <article class="bearly-promo-slide bearly-promo-voucher bearly-promo-link" aria-hidden="true" data-voucher-promo data-voucher-target="{{ url('/profile#vouchers') }}" tabindex="-1" role="link" aria-label="Open My Vouchers">
-
-            <div class="bearly-promo-copy">
-
-                <p class="eyebrow">A little thank-you from Bearly</p>
-
-                <h2>₱100 off your<br>next good find.</h2>
-
-                <p>Use your Bearly voucher on a minimum spend of ₱799.</p>
-
-
-
-                <div class="bearly-code-row">
-
-                    <span class="bearly-code-label">Voucher code</span>
-
-                    <strong>BEARLY100</strong>
-
-                </div>
-
-            </div>
-
-
-
-            <div class="bearly-promo-art" aria-hidden="true">
-
-                <div class="bearly-ticket">
-
-                    <div class="bearly-ticket-top">
-
-                        <span class="material-symbols-outlined">confirmation_number</span>
-
-                        <span>Bearly voucher</span>
-
-                    </div>
-
-                    <div class="bearly-ticket-value">₱100</div>
-
-                    <div class="bearly-ticket-off">OFF</div>
-
-                    <div class="bearly-ticket-rule"></div>
-
-                    <div class="bearly-ticket-small">Min. spend ₱799</div>
-
-                </div>
-
-            </div>
-
-        </article>
-
-        <article class="bearly-promo-slide bearly-promo-shipping bearly-promo-link" aria-hidden="true" data-voucher-promo data-voucher-target="{{ url('/profile?voucher=shipping#vouchers') }}" tabindex="-1" role="link" aria-label="Open shipping vouchers in My Vouchers">
-
-            <div class="bearly-promo-copy">
-
-                <p class="eyebrow">More finds, less checkout stress</p>
-
-                <h2>Free shipping,<br>happier shopping.</h2>
-
-                <p>Enjoy free shipping on selected Bearly finds and participating shops.</p>
-
-
-
-                <div class="bearly-promo-pill">
-
-                    <span class="material-symbols-outlined" aria-hidden="true">local_shipping</span>
-
-                    Selected orders
-
-                </div>
-
-            </div>
-
-
-
-            <div class="bearly-promo-art" aria-hidden="true">
-
-                <div class="bearly-package package-one">
-
-                    <span class="material-symbols-outlined">inventory_2</span>
-
-                </div>
-
-                <div class="bearly-package package-two">
-
-                    <span class="material-symbols-outlined">redeem</span>
-
-                </div>
-
-                <div class="bearly-shipping-badge">
-
-                    <span class="material-symbols-outlined">local_shipping</span>
-
-                    <strong>FREE</strong>
-
-                    <small>shipping</small>
-
-                </div>
-
-            </div>
-
-        </article>
-
     </div>
 
 
@@ -403,13 +324,21 @@ $usingLiveCatalog = true;
 
     <div class="bearly-slider-dots" role="tablist" aria-label="Choose promotion">
 
-        <button type="button" class="is-active" role="tab" aria-selected="true" aria-label="Show promotion 1" data-slide="0"></button>
+        @foreach ($carouselCampaigns as $carouselCampaign)
+            <button
+                type="button"
+                class="{{ $loop->first ? 'is-active' : '' }}"
+                role="tab"
+                aria-selected="{{ $loop->first ? 'true' : 'false' }}"
+                aria-label="Show campaign: {{ $carouselCampaign['name'] }}"
+                data-slide="{{ $loop->index }}"
+                tabindex="{{ $loop->first ? '0' : '-1' }}"
+            ></button>
+        @endforeach
 
-        <button type="button" role="tab" aria-selected="false" aria-label="Show promotion 2" data-slide="1"></button>
+        <button type="button" class="{{ $hasCarouselCampaigns ? '' : 'is-active' }}" role="tab" aria-selected="{{ $hasCarouselCampaigns ? 'false' : 'true' }}" aria-label="Show promotion 1" data-slide="{{ count($carouselCampaigns) }}" tabindex="{{ $hasCarouselCampaigns ? '-1' : '0' }}"></button>
 
-        <button type="button" role="tab" aria-selected="false" aria-label="Show promotion 3" data-slide="2"></button>
-
-        <button type="button" role="tab" aria-selected="false" aria-label="Show promotion 4" data-slide="3"></button>
+        <button type="button" role="tab" aria-selected="false" aria-label="Show promotion 2" data-slide="{{ count($carouselCampaigns) + 1 }}" tabindex="-1"></button>
 
     </div>
 
@@ -421,6 +350,39 @@ $usingLiveCatalog = true;
 
     </div>
 
+</section>
+
+<section class="home-category-browse" aria-labelledby="home-category-title">
+    <div class="home-category-heading">
+        <div>
+            <p class="home-category-eyebrow">Browse the marketplace</p>
+            <h2 id="home-category-title">Shop by Category</h2>
+            <p class="home-category-subcopy">Choose a department to see its full Bearly catalog.</p>
+        </div>
+    </div>
+
+    <ul class="home-category-grid">
+        @foreach ($homeCategories as $category)
+            <li>
+                <a class="home-category-card" href="{{ route('products.index', ['category' => $category['slug']]) }}">
+                    <span class="home-category-photo">
+                        <img
+                            src="{{ asset($category['image']) }}"
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            width="300"
+                            height="200"
+                        >
+                    </span>
+                    <span class="home-category-label">
+                        <span class="home-category-name">{{ $category['name'] }}</span>
+                        <span class="material-symbols-outlined home-category-arrow" aria-hidden="true">arrow_outward</span>
+                    </span>
+                </a>
+            </li>
+        @endforeach
+    </ul>
 </section>
 
 
@@ -440,10 +402,36 @@ $usingLiveCatalog = true;
 @include('buyer.partials.home-campaigns', ['campaigns' => $liveCampaigns ?? collect()])
 
 @if (($liveFlashDealGroups ?? []) !== [])
+    @php
+        $nextFlashDealCampaign = collect($liveFlashDealGroups)
+            ->pluck('campaign')
+            ->filter(fn (array $campaign): bool => filled($campaign['ends_at'] ?? null))
+            ->sortBy('ends_at')
+            ->first();
+    @endphp
+
     <section class="flash-deals-preview home-flash-deals home-featured-section" aria-labelledby="home-flash-title">
         <div class="flash-deals-heading">
-            <div class="flash-deals-title"><h2 id="home-flash-title">Flash Deals</h2></div>
-            <a class="text-button top-view-all" href="{{ url('/flash-deals') }}">View all <span aria-hidden="true">→</span></a>
+            <div class="flash-deals-title">
+                <h2 id="home-flash-title">Flash Deals</h2>
+                @if ($nextFlashDealCampaign)
+                    <div class="campaign-countdown home-flash-countdown" data-campaign-countdown data-campaign-ends-at="{{ $nextFlashDealCampaign['ends_at'] }}">
+                        <span>Ends in</span>
+                        <time data-campaign-countdown-value datetime="{{ $nextFlashDealCampaign['ends_at'] }}" role="timer" aria-label="Time remaining for {{ $nextFlashDealCampaign['name'] }}">--:--:--</time>
+                    </div>
+                @endif
+            </div>
+            @if ($nextFlashDealCampaign)
+                <div class="flash-deals-actions">
+                    <a
+                        class="home-flash-campaign-details"
+                        href="{{ route('campaigns.show', $nextFlashDealCampaign['id']) }}"
+                        aria-label="View details for {{ $nextFlashDealCampaign['name'] }}"
+                    >
+                        Campaign details <span aria-hidden="true">→</span>
+                    </a>
+                </div>
+            @endif
         </div>
 
         <div class="home-flash-campaigns">
@@ -456,7 +444,9 @@ $usingLiveCatalog = true;
                             <h3>{{ $campaign['name'] }}</h3>
                             <p>{{ $campaign['period'] }}</p>
                         </div>
-                        <a href="{{ route('campaigns.show', $campaign['id']) }}">Campaign details <span aria-hidden="true">→</span></a>
+                        @if (! $nextFlashDealCampaign || (int) $campaign['id'] !== (int) $nextFlashDealCampaign['id'])
+                            <a href="{{ route('campaigns.show', $campaign['id']) }}">Campaign details <span aria-hidden="true">→</span></a>
+                        @endif
                     </header>
                     <div class="home-flash-product-grid">
                         @foreach ($group['products'] as $product)
@@ -475,11 +465,15 @@ $usingLiveCatalog = true;
                                     aria-pressed="{{ ($product['is_wishlisted'] ?? false) ? 'true' : 'false' }}"
                                     aria-label="{{ ($product['is_wishlisted'] ?? false) ? 'Remove' : 'Save' }} {{ $product['name'] }} {{ ($product['is_wishlisted'] ?? false) ? 'from' : 'to' }} My Likes"
                                 ><span class="material-symbols-outlined" aria-hidden="true">favorite</span></button>
-                                <div class="home-flash-product-copy">
-                                    <span>{{ $product['category'] }}</span>
-                                    <h4><a href="{{ route('products.show', ['product' => $product['id']]) }}">{{ $product['name'] }}</a></h4>
-                                    <strong>₱{{ number_format(((int) $product['price_minor']) / 100, 2) }}</strong>
-                                </div>
+                                    <div class="home-flash-product-copy">
+                                        <span>{{ $product['category'] }}</span>
+                                        <h4><a href="{{ route('products.show', ['product' => $product['id']]) }}">{{ $product['name'] }}</a></h4>
+                                        <strong>₱{{ number_format(((int) $product['price_minor']) / 100, 2) }}</strong>
+                                        @include('buyer.partials.campaign-sales-indicator', [
+                                            'soldUnits' => $product['campaign_sold_units'] ?? 0,
+                                            'stockLimit' => $product['campaign_stock_limit'] ?? null,
+                                        ])
+                                    </div>
                             </article>
                         @endforeach
                     </div>
@@ -602,7 +596,7 @@ $usingLiveCatalog = true;
 @endif
 <section class="discover" id="results" aria-labelledby="results-title">
 
-<div class="section-heading"><div><h2 id="results-title">Daily Discoveries</h2><p id="results-caption" class="results-caption" hidden></p></div><button class="text-button" id="view-all">View all <span aria-hidden="true">→</span></button></div>
+<div class="section-heading"><div><h2 id="results-title">Daily Discoveries</h2><p id="results-caption" class="results-caption" hidden></p></div><a class="text-button" id="view-all" href="{{ route('buyer.daily-discoveries.index') }}">View all <span aria-hidden="true">→</span></a><button class="text-button" id="clear-home-filters" type="button" hidden>Clear all <span aria-hidden="true">×</span></button></div>
 
 <div class="results-tools" id="results-tools" hidden><div id="active-filters"></div><label>Sort by <select id="sort"><option value="featured">Featured</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option><option value="name">Name: A–Z</option></select></label></div>
 
@@ -646,13 +640,6 @@ $usingLiveCatalog = true;
                 <img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly" width="150" height="50">
             </a>
             <p>A find for everyone.</p>
-            <small>Quality products. Trusted sellers. A better everyday.</small>
-            <div class="footer-socials" aria-label="Bearly social channels">
-                <span class="footer-social-mark" title="Facebook">f</span>
-                <span class="footer-social-mark" title="Instagram">◎</span>
-                <span class="footer-social-mark" title="TikTok">♪</span>
-                <span class="footer-social-mark" title="YouTube">▶</span>
-            </div>
         </section>
 
         <nav class="footer-column" aria-label="Shop">
@@ -678,15 +665,9 @@ $usingLiveCatalog = true;
             <a href="{{ url('/privacy') }}">Privacy Policy</a>
         </nav>
 
-        <section class="footer-deals" aria-label="Deals newsletter">
-            <h2>Get the latest deals</h2>
-            <div class="footer-newsletter-form">
-                <label class="sr-only" for="footer-email">Email address</label>
-                <input id="footer-email" type="email" placeholder="Enter your email" autocomplete="email">
-                <button type="button" aria-label="Newsletter signup is not connected yet" title="Newsletter signup is not connected yet">→</button>
-            </div>
-            <small>© {{ date('Y') }} Bearly. All rights reserved.</small>
-        </section>
+    </div>
+    <div class="footer-bottom">
+        <span>© {{ date('Y') }} Bearly. All rights reserved.</span>
     </div>
 </footer>
 

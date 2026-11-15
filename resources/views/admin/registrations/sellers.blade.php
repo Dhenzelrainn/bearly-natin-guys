@@ -75,7 +75,9 @@
             >
                 <option value="">All statuses</option>
                 <option value="Pending">Pending</option>
-                <option value="Needs Review">Needs Review</option>
+                <option value="Submitted">Submitted</option>
+                <option value="Under Review">Under Review</option>
+                <option value="Needs Revision">Needs Revision</option>
             </select>
 
         </div>
@@ -236,14 +238,16 @@
                                     </button>
 
 
-                                    <button
-                                        type="button"
-                                        data-registration-needs-review
-                                        data-application-id="{{ $application['id'] }}"
-                                    >
-                                        <i data-lucide="flag"></i>
-                                        <span>Mark as needs review</span>
-                                    </button>
+                                    @if (in_array($application['status'], ['Pending', 'Submitted'], true))
+                                        <form method="POST" action="{{ route('admin.applications.start-review', $application['database_id']) }}" style="display: contents">
+                                            @csrf
+                                            <input type="hidden" name="review_application_id" value="{{ $application['application_id'] }}">
+                                            <button type="submit">
+                                                <i data-lucide="flag"></i>
+                                                <span>Start review</span>
+                                            </button>
+                                        </form>
+                                    @endif
 
 
                                     <button
@@ -510,102 +514,5 @@
 
 @endforeach
 
-
-<div
-    class="modal-shell"
-    data-modal="seller-email-decision"
-    hidden
->
-
-    <button
-        class="modal-backdrop"
-        type="button"
-        data-close-modal
-    ></button>
-
-
-    <section
-        class="modal-card"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Seller application decision email"
-    >
-
-        <div class="modal-heading">
-
-            <div>
-                <span class="eyebrow">Mock email notification</span>
-                <h2>Notify Seller applicant</h2>
-            </div>
-
-
-            <button
-                class="icon-button"
-                type="button"
-                data-close-modal
-            >
-                <i data-lucide="x"></i>
-            </button>
-
-        </div>
-
-
-        <label class="form-field">
-            <span>Recipient</span>
-
-            <input
-                type="text"
-                data-decision-recipient
-                value="Applicant"
-                readonly
-            >
-        </label>
-
-
-        <label class="form-field">
-            <span>Decision</span>
-
-            <input
-                type="text"
-                data-decision-status
-                value="Approved"
-                readonly
-            >
-        </label>
-
-
-        <label class="form-field">
-            <span>Email message</span>
-
-            <textarea rows="5" data-decision-message>Thank you for submitting your Bearly Seller registration. Your application and business requirements have been reviewed by the administrator.</textarea>
-        </label>
-
-
-        <div class="modal-footer">
-
-            <button
-                class="button button-secondary"
-                type="button"
-                data-close-modal
-            >
-                Cancel
-            </button>
-
-
-            <button
-                class="button button-primary"
-                type="button"
-                data-close-modal
-                data-mock-action="Seller registration decision saved and mock email notification sent."
-            >
-                <i data-lucide="send"></i>
-                Confirm & send
-            </button>
-
-        </div>
-
-    </section>
-
-</div>
 
 @endsection

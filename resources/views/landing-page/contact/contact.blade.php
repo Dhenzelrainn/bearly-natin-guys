@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    @include('partials.favicon')
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Contact Bearly for shopping, seller, account, delivery, complaint, and general marketplace support.">
     <meta name="theme-color" content="#432214">

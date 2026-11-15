@@ -18,28 +18,15 @@ function initializeLanding() {
                     "'": "&#39;",
                 })[c],
         );
-    const fallbackShops = {
-        Fashion: "Northline Goods",
-        Tech: "Daily Circuit",
-        Beauty: "Mysa Beauty",
-        Accessories: "Harbor & Thread",
-        Home: "Hearth & Co.",
-        Books: "Paper & Pine",
-        Sports: "Trail & Form",
-        Pets: "Paw & Home",
-    };
-
-    function productShop(product) {
-        const shop = String(product.shop || "").trim();
-
-        return shop && shop.toLowerCase() !== "sample item"
-            ? shop
-            : fallbackShops[product.group] || "Bearly Marketplace";
-    }
-
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
     const shop = document.body.dataset.shopUrl;
-    const storageKey = "bearly-landing-saved-v2";
+    const storageKey = "bearly-landing-saved-v3";
+    const priceFormatter = new Intl.NumberFormat("en-PH", {
+        style: "currency",
+        currency: "PHP",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
     let saved = new Set(),
         toastTimer;
 
@@ -47,7 +34,9 @@ function initializeLanding() {
         const stored = JSON.parse(localStorage.getItem(storageKey) || "[]");
         if (Array.isArray(stored))
             saved = new Set(
-                stored.filter((id) => products.some((p) => p.id === id)),
+                stored
+                    .map(String)
+                    .filter((id) => products.some((p) => String(p.id) === id)),
             );
     } catch {
         /* Session-only fallback. */
@@ -63,9 +52,22 @@ function initializeLanding() {
         }, 3200);
     }
 
-    function photo(p, extra = "") {
-        const rows = p.atlas === "mixed" ? 3 : 4;
-        return `<span class="lp-product-photo ${extra}" data-atlas="${p.atlas}" style="--x:${((p.cell % 4) * 100) / 3}%;--y:${(Math.floor(p.cell / 4) * 100) / (rows - 1)}%" role="img" aria-label="Product photo: ${escape(p.name)}"></span>`;
+    function photo(product, extra = "") {
+        const image = String(product.image || "").trim();
+
+        if (!image) {
+            return `<span class="lp-live-product-photo is-empty ${extra}" aria-hidden="true"><span>Image unavailable</span></span>`;
+        }
+
+        return `<span class="lp-live-product-photo ${extra}" aria-hidden="true"><img src="${escape(image)}" alt="" loading="lazy" decoding="async"></span>`;
+    }
+
+    function price(product) {
+        const minor = Number(product.price_minor);
+
+        return Number.isSafeInteger(minor) && minor >= 0
+            ? priceFormatter.format(minor / 100)
+            : "Price unavailable";
     }
 
     function saveButton(p) {
@@ -74,11 +76,13 @@ function initializeLanding() {
 
     function syncSaved() {
         $$("[data-save]").forEach((el) => {
-            const p = products.find((p) => p.id === el.dataset.save);
-            el.setAttribute("aria-pressed", saved.has(p.id));
+            const p = products.find((p) => String(p.id) === el.dataset.save);
+            if (!p) return;
+
+            el.setAttribute("aria-pressed", saved.has(String(p.id)));
             el.setAttribute(
                 "aria-label",
-                `${saved.has(p.id) ? "Unsave" : "Save"} ${p.name}`,
+                `${saved.has(String(p.id)) ? "Unsave" : "Save"} ${p.name}`,
             );
         });
         const badge = $("[data-saved-count]");
@@ -87,7 +91,8 @@ function initializeLanding() {
     }
 
     function toggleSave(id) {
-        const p = products.find((p) => p.id === id);
+        id = String(id);
+        const p = products.find((p) => String(p.id) === id);
         if (!p) return;
 
         const remove = saved.has(id);
@@ -106,8 +111,7 @@ function initializeLanding() {
     }
 
     // Featured catalogue: 12 at a time, consistent mixed order, independent filters.
-    const groups = [
-        "All",
+    const preferredGroups = [
         "Fashion",
         "Tech",
         "Beauty",
@@ -116,6 +120,17 @@ function initializeLanding() {
         "Accessories",
         "Sports",
         "Pets",
+        "Food",
+        "Kids & Baby",
+        "Automotive",
+    ];
+    const availableGroups = new Set(
+        products.map((product) => String(product.group || "").trim()).filter(Boolean),
+    );
+    const groups = [
+        "All",
+        ...preferredGroups.filter((group) => availableGroups.delete(group)),
+        ...[...availableGroups].sort((a, b) => a.localeCompare(b)),
     ];
 
     let activeGroup = "All";
@@ -125,13 +140,13 @@ function initializeLanding() {
     $(".lp-filters").innerHTML = groups
         .map(
             (g) =>
-                `<button type="button" data-filter="${g}" aria-pressed="${g === "All"}">${g}</button>`,
+                `<button type="button" data-filter="${escape(g)}" aria-pressed="${g === "All"}">${escape(g)}</button>`,
         )
         .join("");
 
     function filtered() {
         return products.filter(
-            (p) => activeGroup === "All" || p.group === activeGroup,
+            (p) => activeGroup === "All" || String(p.group || "") === activeGroup,
         );
     }
 
@@ -143,9 +158,12 @@ function initializeLanding() {
         grid.innerHTML = visible
             .map(
                 (p) =>
-                    `<article class="lp-product"><button type="button" class="lp-product-open" data-product="${p.id}" aria-label="View details for ${escape(p.name)}">${photo(p)}<h3>${escape(p.name)}</h3><span class="lp-product-view">View details <span class="material-symbols-outlined" aria-hidden="true">arrow_outward</span></span></button><p>${escape(productShop(p))}</p>${saveButton(p)}</article>`,
+                    `<article class="lp-product"><a class="lp-product-open" href="${escape(p.detail_url)}" aria-label="View ${escape(p.name)}, priced ${escape(price(p))}">${photo(p)}<h3>${escape(p.name)}</h3><span class="lp-product-price">${escape(price(p))}</span><span class="lp-product-view">View product <span class="material-symbols-outlined" aria-hidden="true">arrow_outward</span></span></a>${saveButton(p)}</article>`,
             )
             .join("");
+
+        const emptyState = $("#lp-products-empty");
+        if (emptyState) emptyState.hidden = matches.length !== 0;
 
         $$("[data-filter]").forEach((b) =>
             b.setAttribute("aria-pressed", b.dataset.filter === activeGroup),
@@ -159,7 +177,7 @@ function initializeLanding() {
     }
 
     function selectGroup(group, scroll = false) {
-        if (!groups.includes(group)) return;
+        if (!groups.includes(group) && !preferredGroups.includes(group)) return;
 
         activeGroup = group;
         renderProducts(true);
@@ -209,14 +227,11 @@ function initializeLanding() {
     });
 
     function showProduct(id) {
-        const p = products.find((p) => p.id === id);
+        const p = products.find((p) => String(p.id) === String(id));
         if (!p) return;
 
-        const url = new URL(shop, location.origin);
-        url.searchParams.set("search", p.name);
-
         detailTitle.textContent = p.name;
-        detailContent.innerHTML = `${photo(p, "lp-detail-image")}<p><strong>${escape(productShop(p))}</strong> · ${escape(p.group)}</p><p>Discover this find and browse more products from the Bearly marketplace.</p><div><button class="lp-button" type="button" data-detail-save="${p.id}">${saved.has(p.id) ? "Remove from saved" : "Save this product"}</button></div><a class="lp-text-link" href="${escape(url.href)}">Search similar products ↗</a>${p.source ? `<a class="lp-text-link" href="${escape(p.source)}" target="_blank" rel="noopener noreferrer">Visit retailer ↗</a>` : ""}`;
+        detailContent.innerHTML = `${photo(p, "lp-detail-image")}<p class="lp-detail-price">${escape(price(p))}</p><p>Sign in as a Buyer to see the description, options, availability, and seller information.</p><a class="lp-button lp-preview-link" href="${escape(p.detail_url)}">View product preview <span aria-hidden="true">↗</span></a><div><button class="lp-text-link" type="button" data-detail-save="${escape(p.id)}">${saved.has(String(p.id)) ? "Remove from saved" : "Save this product"}</button></div>`;
 
         if (!detail.open) openDialog(detail);
     }
@@ -228,7 +243,7 @@ function initializeLanding() {
                   .filter((p) => saved.has(p.id))
                   .map(
                        (p) =>
-                           `<button type="button" class="lp-saved-item" data-product="${p.id}">${photo(p)}<span>${escape(p.name)}<br><small>${escape(productShop(p))}</small></span></button>`,
+                            `<button type="button" class="lp-saved-item" data-product="${escape(p.id)}">${photo(p)}<span>${escape(p.name)}<br><small>${escape(price(p))}</small></span></button>`,
                   )
                   .join("")}`
             : "<p>No saved products yet. Tap a heart on a product to keep it here.</p>";

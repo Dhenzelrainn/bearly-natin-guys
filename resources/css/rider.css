@@ -1047,6 +1047,107 @@ body[data-module="rider"] .refund-cash-empty .empty-state {
     padding: 36px 20px;
 }
 
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-card-header,
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-card-content {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-card-title h2,
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-details h3,
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-action-heading h3 {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-card-title h2 span,
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-card-title p,
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-action-heading p {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-action-heading .eyebrow {
+    color: var(--theme-accent);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-references {
+    border-color: var(--theme-border);
+    background: var(--theme-border);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-references > div {
+    background: var(--theme-surface-soft);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-references dt,
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-detail-list dt,
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-muted {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-references dd,
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-detail-list dd {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-references code {
+    color: var(--theme-accent);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-next-step {
+    border-color: var(--theme-border);
+    background: var(--theme-surface-soft);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .cash-rider-form label {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .cash-rider-form input,
+:root[data-theme="dark"] body[data-module="rider"] .cash-rider-form textarea {
+    border-color: var(--theme-border);
+    background: var(--theme-input);
+    color: var(--theme-text);
+    color-scheme: dark;
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .cash-rider-form input::placeholder,
+:root[data-theme="dark"] body[data-module="rider"] .cash-rider-form textarea::placeholder,
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-field-help {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .cash-rider-form input:focus-visible,
+:root[data-theme="dark"] body[data-module="rider"] .cash-rider-form textarea:focus-visible {
+    border-color: var(--theme-accent);
+    box-shadow: 0 0 0 3px rgba(240, 184, 77, .2);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .cash-rider-form input[type="file"]::file-selector-button {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-field-error {
+    color: var(--theme-danger);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .cash-rider-failure {
+    border-color: var(--theme-border);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .cash-rider-failure summary {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body[data-module="rider"] .refund-cash-errors {
+    border-color: #79443d;
+    background: #452521;
+    color: #ffaaa2;
+}
+
 @media (max-width: 1000px) {
     body[data-module="rider"] .refund-cash-card-content {
         grid-template-columns: 1fr;

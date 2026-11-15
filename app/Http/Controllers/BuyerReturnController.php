@@ -90,6 +90,7 @@ class BuyerReturnController extends Controller
                 'returnShipment.waybill',
                 'returnShipment.originAddress',
                 'refunds',
+                'cashPayout.events',
             ])
             ->firstOrFail();
         $dropoffCenter = $case->return_delivery_method === ReturnDeliveryMethod::BuyerDropoff->value
@@ -127,6 +128,39 @@ class BuyerReturnController extends Controller
         return back()->with('success', 'Additional information was sent to the Admin reviewer.');
     }
 
+    public function confirmRefundReceipt(Request $request, int $returnRequest, ReturnRefundService $returns): RedirectResponse
+    {
+        $request->validate([
+            'buyer_received_confirmed' => ['required', 'accepted'],
+        ]);
+        $confirmed = $returns->confirmExternalRefundReceipt(
+            $request->user(),
+            $returnRequest,
+            $request,
+        );
+
+        return back()->with('success', $confirmed
+            ? 'Thank you. Your refund receipt is confirmed and the case is resolved.'
+            : 'Your refund receipt was already confirmed.');
+    }
+
+    public function reportRefundNotReceived(Request $request, int $returnRequest, ReturnRefundService $returns): RedirectResponse
+    {
+        $data = $request->validate([
+            'note' => ['required', 'string', 'min:5', 'max:1000'],
+        ]);
+        $reported = $returns->reportExternalRefundNotReceived(
+            $request->user(),
+            $returnRequest,
+            $data['note'],
+            $request,
+        );
+
+        return back()->with('success', $reported
+            ? 'Your report was sent to Admin. The case remains open while they follow up.'
+            : 'Your report is already with Admin. The case remains open while they follow up.');
+    }
+
     public function downloadEvidence(Request $request, ReturnEvidence $evidence): BinaryFileResponse
     {
         $case = $evidence->returnRequest;
@@ -143,9 +177,10 @@ class BuyerReturnController extends Controller
     public function downloadRefundReceipt(Request $request, Refund $refund, AuditService $audit): BinaryFileResponse
     {
         $case = $refund->returnRequest;
-        abort_unless($refund->status === 'completed'
+        abort_unless(in_array($refund->status, ['processing', 'completed'], true)
             && $case
             && (int) $case->buyer_id === (int) $request->user()->id
+            && ! $case->cashPayout()->exists()
             && $refund->payout_receipt_disk === 'local'
             && filled($refund->payout_receipt_path)
             && Storage::disk('local')->exists($refund->payout_receipt_path), 404);

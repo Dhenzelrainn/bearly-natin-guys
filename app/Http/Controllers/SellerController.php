@@ -114,19 +114,6 @@ class SellerController extends Controller
         ]);
     }
 
-    public function workspace(Request $request): View
-    {
-        $key = (string) $request->route('workspace');
-        $pages = $this->workspacePages();
-        abort_unless(isset($pages[$key]), 404);
-
-        return view('seller.workspace', [
-            'seller' => $this->seller(),
-            'notifications' => $this->notifications(),
-            'page' => $pages[$key],
-        ]);
-    }
-
     public function salesReport(Request $request, SellerEarningsService $earnings): View
     {
         $range = $earnings->reportRange($request->query('from'), $request->query('to'));
@@ -565,19 +552,6 @@ class SellerController extends Controller
             'notifications' => $this->notifications(),
             'preferences' => $preferences,
         ]);
-    }
-
-    private function workspacePages(): array
-    {
-        return [
-            'fulfillment-waybills' => ['title' => 'Waybills', 'subtitle' => 'Generate and print shipping labels for packed orders.', 'kpis' => [['Ready to print', '3'], ['Printed today', '12'], ['Reprint needed', '1'], ['Pickup cutoff', '2:30 PM']], 'columns' => ['Order', 'Courier', 'Packages', 'Destination', 'Label Status', 'Pickup', 'Status'], 'rows' => [['#BR-1057', 'Bearly Logistics', '1', 'Santa Rosa, Laguna', 'Ready to print', 'Today · 3:00 PM', 'Pending'], ['#BR-1056', 'Bearly Logistics', '2', 'Calamba, Laguna', 'Printed', 'Today · 3:00 PM', 'Ready']], 'action' => 'Print Waybill'],
-            'fulfillment-pickups' => ['title' => 'Pickup Requests', 'subtitle' => 'Submit labeled and packed parcels for logistics approval and pickup assignment.', 'kpis' => [['Ready to request', '2'], ['Approved today', '5'], ['Awaiting approval', '1'], ['Next approved pickup', '3:00 PM']], 'columns' => ['Request', 'Orders', 'Packages', 'Logistics Provider', 'Preferred Time', 'Pickup Location', 'Status'], 'rows' => [['PU-0901-01', '3 orders', '4', 'Bearly Logistics', 'Today · 3:00 PM', 'Juan’s Clothing Shop', 'Approved'], ['Draft request', '2 orders', '2', 'Bearly Logistics', 'Choose preferred time', 'Store address', 'Draft']], 'action' => 'View Request'],
-            'fulfillment-tracking' => ['title' => 'Shipment Tracking', 'subtitle' => 'Monitor parcels after rider handover through sorting and final delivery.', 'kpis' => [['At sorting center', '3'], ['Assigned to rider', '2'], ['Out for delivery', '2'], ['Delivered today', '9']], 'columns' => ['Tracking No.', 'Order', 'Logistics Provider', 'Destination', 'Latest Update', 'Updated', 'Status'], 'rows' => [['BRLY-784201', '#BR-1054', 'Bearly Logistics', 'Biñan, Laguna', 'Parcel received at sorting center', 'Today · 8:40 AM', 'At Sorting Center'], ['BRLY-784188', '#BR-1052', 'Bearly Logistics', 'Cabuyao, Laguna', 'Assigned to delivery rider', 'Today · 9:15 AM', 'Assigned to Rider'], ['BRLY-784176', '#BR-1051', 'Bearly Logistics', 'Calamba, Laguna', 'Rider is delivering the parcel', 'Today · 10:05 AM', 'Out for Delivery']], 'action' => 'Track'],
-            'products-pricing' => ['title' => 'Pricing & Promotions', 'subtitle' => 'Manage product prices, discounts, and voucher eligibility.', 'kpis' => [['Active products', '24'], ['Discounted', '6'], ['Voucher eligible', '12'], ['Ending soon', '2']], 'columns' => ['Product', 'SKU', 'Regular Price', 'Sale Price', 'Discount', 'Voucher', 'Status'], 'rows' => [['Classic Linen Shirt', 'CLS-LINEN-SHIRT', '₱1,299', '₱1,169', '10%', 'Eligible', 'Active'], ['Canvas Tote Bag', 'CNV-TOTE-BAG', '₱899', '₱899', '—', 'Not eligible', 'Regular']], 'action' => 'Edit Pricing'],
-            'settings-account' => ['title' => 'Account', 'subtitle' => 'Manage the seller contact information used for account communication.', 'kpis' => [['Account status', 'Active'], ['Email', 'Verified'], ['Phone', 'Verified'], ['Role', 'Seller']], 'columns' => ['Field', 'Current Value', 'Visibility', 'Verification', 'Last Updated', 'Managed By', 'Status'], 'rows' => [['Full name', 'Bea Rivera', 'Private', 'Verified', 'Registration', 'Seller', 'Locked'], ['Email', 'bea@juansclothing.test', 'Private', 'Verified', 'Aug 31, 2026', 'Seller', 'Active']], 'action' => 'Edit'],
-            'settings-security' => ['title' => 'Security', 'subtitle' => 'Protect account access and review recent sign-in activity.', 'kpis' => [['Password', 'Set'], ['Two-step verification', 'Off'], ['Active sessions', '1'], ['Security alerts', '0']], 'columns' => ['Security Item', 'Current State', 'Recommendation', 'Last Updated', 'Device', 'Location', 'Status'], 'rows' => [['Password', 'Set', 'Change regularly', 'Aug 20, 2026', '—', '—', 'Protected'], ['Current session', 'Active', 'Recognized device', 'Now', 'Windows · Edge', 'Laguna', 'Active']], 'action' => 'Manage'],
-            'settings-notifications' => ['title' => 'Notifications', 'subtitle' => 'Choose which seller events are shown in-app or sent by email.', 'kpis' => [['Order alerts', 'On'], ['Stock alerts', 'On'], ['Pickup alerts', 'On'], ['Marketing', 'Off']], 'columns' => ['Notification', 'In-app', 'Email', 'Trigger', 'Priority', 'Last Sent', 'Status'], 'rows' => [['New order', 'Enabled', 'Enabled', 'Order placed', 'High', '5 min ago', 'Active'], ['Low stock', 'Enabled', 'Enabled', 'Below threshold', 'Medium', '42 min ago', 'Active']], 'action' => 'Configure'],
-        ];
     }
 
     public function inventory(Request $request, SellerInventoryService $inventory): View

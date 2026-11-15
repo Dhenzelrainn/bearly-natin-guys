@@ -1,5 +1,7 @@
 @php
-    $campaignOffers = collect($campaigns ?? []);
+    $campaignOffers = collect($campaigns ?? [])
+        ->filter(fn (array $campaign): bool => filled($campaign['banner_url'] ?? null))
+        ->values();
     $campaignTypeTabs = $campaignOffers
         ->groupBy(fn (array $campaign): string => (string) ($campaign['type_key'] ?? 'general'))
         ->map(fn ($group, $key): array => [
@@ -7,17 +9,19 @@
             'label' => (string) ($group->first()['type_label'] ?? 'Campaign'),
         ])
         ->values();
+    $campaignTrackLayout = match ($campaignOffers->count()) {
+        1 => 'has-one-campaign',
+        2 => 'has-two-campaigns',
+        default => '',
+    };
 @endphp
 
 @if ($campaignOffers->isNotEmpty())
 <section class="home-campaign-showcase" data-home-campaigns aria-labelledby="home-campaigns-title">
     <div class="home-campaigns-heading">
-        <div>
-            <p>Bearly events</p>
-            <h2 id="home-campaigns-title">Campaigns &amp; Offers</h2>
-        </div>
-        <a class="home-campaigns-view-all" href="{{ route('flash-deals') }}">
-            View all deals <span aria-hidden="true">→</span>
+        <h2 id="home-campaigns-title">Campaigns &amp; Offers</h2>
+        <a class="home-campaigns-view-all" href="{{ route('campaigns.index') }}">
+            View all campaigns <span aria-hidden="true">→</span>
         </a>
     </div>
 
@@ -30,73 +34,50 @@
         </div>
     @endif
 
-    <div class="home-campaign-carousel">
-        <button class="home-campaign-arrow home-campaign-prev" type="button" data-campaign-prev aria-label="Previous campaigns" hidden>
-            <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
-        </button>
-
-        <div class="home-campaign-track" data-campaign-track tabindex="0" aria-label="Active Bearly campaigns">
-            @foreach ($campaignOffers as $campaign)
-                @php
-                    $campaignTypeKey = (string) ($campaign['type_key'] ?? 'general');
-                    $campaignEndsAt = $campaign['ends_at']
-                        ? \Illuminate\Support\Carbon::parse($campaign['ends_at'])->timezone('Asia/Manila')
-                        : null;
-                    $campaignDateLabel = $campaignEndsAt ? 'Until '.$campaignEndsAt->format('M j, Y') : 'Live now';
-                    $campaignDescription = trim((string) ($campaign['description'] ?? ''));
-                    $campaignIcon = match ($campaignTypeKey) {
-                        'flash_deal' => 'bolt',
-                        'piso_sale' => 'local_offer',
-                        'payday_sale' => 'payments',
-                        'monthly_deal' => 'calendar_month',
-                        'double_date' => 'celebration',
-                        default => 'campaign',
-                    };
-                @endphp
-                <article class="home-campaign-card" data-campaign-card data-campaign-type="{{ $campaignTypeKey }}">
-                    <a class="home-campaign-link" href="{{ route('campaigns.show', $campaign['id']) }}">
-                        <span class="home-campaign-banner">
-                            @if ($campaign['banner_url'])
-                                <img
-                                    src="{{ $campaign['banner_url'] }}"
-                                    alt="{{ $campaign['banner_title'] ?: $campaign['name'].' campaign banner' }}"
-                                    loading="lazy"
-                                >
-                            @else
-                                <span class="home-campaign-fallback" data-campaign-tone="{{ $campaignTypeKey }}">
-                                    <span class="material-symbols-outlined" aria-hidden="true">{{ $campaignIcon }}</span>
-                                    <span class="home-campaign-fallback-copy">
-                                        <small>{{ $campaign['type_label'] }}</small>
-                                        <strong>{{ $campaign['name'] }}</strong>
-                                    </span>
-                                </span>
-                            @endif
-                        </span>
-
-                        <span class="home-campaign-copy">
-                            <small class="home-campaign-type">{{ $campaign['type_label'] }}</small>
-                            <span class="home-campaign-title-row">
-                                <strong>{{ $campaign['name'] }}</strong>
-                                <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
-                            </span>
-                            <span class="home-campaign-description">
-                                {{ $campaignDescription !== '' ? \Illuminate\Support\Str::limit(strip_tags($campaignDescription), 108) : 'Shop participating products from this Bearly campaign.' }}
-                            </span>
-                            <span class="home-campaign-date">
-                                <span class="material-symbols-outlined" aria-hidden="true">calendar_today</span>
-                                {{ $campaignDateLabel }}
-                            </span>
-                        </span>
+    <div class="home-campaign-track {{ $campaignTrackLayout }}" data-campaign-track aria-label="Active Bearly campaign banners">
+        @foreach ($campaignOffers as $campaign)
+            <article
+                class="home-campaign-card"
+                data-campaign-card
+                data-campaign-type="{{ $campaign['type_key'] ?? 'general' }}"
+                data-campaign-id="{{ $campaign['id'] }}"
+            >
+                <a
+                    class="home-campaign-link"
+                    href="{{ route('campaigns.show', $campaign['id']) }}"
+                    aria-label="View campaign details for {{ $campaign['name'] }}"
+                >
+                    <img
+                        class="home-campaign-banner"
+                        src="{{ $campaign['banner_url'] }}"
+                        alt="{{ $campaign['banner_title'] ?: $campaign['name'].' campaign banner' }}"
+                        loading="lazy"
+                        decoding="async"
+                >
+                </a>
+                <div class="home-campaign-meta">
+                    <div class="home-campaign-copy">
+                        <h3 class="home-campaign-title-row"><strong>{{ $campaign['name'] }}</strong></h3>
+                        <p class="home-campaign-type">{{ $campaign['funding_label'] }}</p>
+                        @if (filled($campaign['starts_on_label'] ?? null) && filled($campaign['ends_on_label'] ?? null))
+                            <p class="home-campaign-date">
+                                <span class="material-symbols-outlined" aria-hidden="true">calendar_month</span>
+                                <time datetime="{{ $campaign['starts_on'] }}">{{ $campaign['starts_on_label'] }}</time>
+                                <span aria-hidden="true">–</span>
+                                <time datetime="{{ $campaign['ends_on'] }}">{{ $campaign['ends_on_label'] }}</time>
+                            </p>
+                        @endif
+                    </div>
+                    <a
+                        class="home-campaign-cta"
+                        href="{{ route('campaigns.show', $campaign['id']) }}"
+                        aria-label="View details for {{ $campaign['name'] }}"
+                    >
+                        View Details <span aria-hidden="true">→</span>
                     </a>
-                </article>
-            @endforeach
-        </div>
-
-        <button class="home-campaign-arrow home-campaign-next" type="button" data-campaign-next aria-label="Next campaigns" hidden>
-            <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
-        </button>
+                </div>
+            </article>
+        @endforeach
     </div>
-
-    <div class="home-campaign-dots" data-campaign-dots role="group" aria-label="Campaign pages" hidden></div>
 </section>
 @endif

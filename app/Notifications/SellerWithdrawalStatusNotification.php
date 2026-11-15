@@ -49,6 +49,18 @@ class SellerWithdrawalStatusNotification extends BearlyNotification
         return route('seller.finance.wallet');
     }
 
+    /** @return array<string, mixed> */
+    public function emailData(): array
+    {
+        return [
+            'withdrawal_no' => $this->withdrawalNo,
+            'amount_minor' => $this->amountMinor,
+            'amount' => $this->formatAmount($this->amountMinor),
+            'status' => $this->status,
+            'reason' => $this->reason,
+        ];
+    }
+
     /**
      * Keep the historical stored payload unchanged; existing consumers and
      * regression tests depend on these exact keys.
@@ -79,5 +91,14 @@ class SellerWithdrawalStatusNotification extends BearlyNotification
             'failed' => "The transfer for withdrawal {$this->withdrawalNo} failed. The reserved funds were returned to your available balance.",
             default => "Withdrawal {$this->withdrawalNo} status changed.",
         };
+    }
+
+    private function formatAmount(int $amountMinor): string
+    {
+        $absolute = abs($amountMinor);
+        $major = number_format(intdiv($absolute, 100));
+        $fraction = str_pad((string) ($absolute % 100), 2, '0', STR_PAD_LEFT);
+
+        return ($amountMinor < 0 ? '-' : '').'₱'.$major.'.'.$fraction;
     }
 }

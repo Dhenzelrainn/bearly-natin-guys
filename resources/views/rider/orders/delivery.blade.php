@@ -507,6 +507,7 @@
                             </div>
 
                             <div id="delivery-parcel-camera-panel" class="waybill-camera-panel rider-delivery-camera-panel" data-delivery-camera-panel hidden>
+                                <div class="waybill-camera-fallback" data-delivery-camera-fallback hidden></div>
                                 <video data-delivery-camera-video playsinline muted></video>
                                 <button class="button button-small" type="button" data-delivery-camera-close>Stop camera</button>
                             </div>
@@ -590,7 +591,6 @@
                                     type="file"
                                     name="proof_photo"
                                     accept="image/jpeg,image/png,image/webp"
-                                    capture="environment"
                                     aria-invalid="{{ $errors->has('proof_photo') ? 'true' : 'false' }}"
                                     aria-describedby="delivery-proof-help{{ $errors->has('proof_photo') ? ' delivery-proof-error' : '' }}"
                                     required

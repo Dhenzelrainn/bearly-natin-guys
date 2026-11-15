@@ -20,9 +20,11 @@
         </h2>
 
         <p>
-            Review pickup jobs assigned to you by your
+            @include('partials.dashboard-greeting') Review pickup jobs assigned to you by your
             Logistics provider.
         </p>
+
+        @include('partials.dashboard-context')
     </div>
 
     <div class="page-actions rider-dashboard-actions">

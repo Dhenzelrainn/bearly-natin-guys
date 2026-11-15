@@ -130,8 +130,13 @@ class NotificationCenterTest extends TestCase
 
         $this->assertTrue($events->has('account_status_changed'));
         $this->assertTrue($events->has('seller_withdrawal_status_changed'));
+        $this->assertTrue($events->has('seller_campaign_available'));
         $this->assertTrue($events['account_status_changed']['mandatory']);
         $this->assertTrue($events['account_status_changed']['in_app']);
+        $this->assertTrue($events['seller_campaign_available']['mandatory']);
+        $this->assertTrue($events['seller_campaign_available']['in_app']);
+        $this->assertFalse($events['seller_campaign_available']['email']);
+        $this->assertTrue($events['announcement_published']['email']);
         $this->assertTrue($events['seller_withdrawal_status_changed']['in_app']);
         $this->assertTrue($events['seller_withdrawal_status_changed']['email']);
         $this->assertTrue($events['seller_order_updates']['email']);
@@ -146,6 +151,7 @@ class NotificationCenterTest extends TestCase
             ->keyBy('key');
 
         $this->assertTrue($buyerEvents->has('account_status_changed'));
+        $this->assertTrue($buyerEvents['announcement_published']['email']);
         $this->assertFalse($buyerEvents->has('seller_withdrawal_status_changed'));
         $this->assertTrue($buyerEvents['buyer_shipment_updates']['email']);
         $this->assertTrue($buyerEvents['buyer_message_received']['email']);
@@ -162,11 +168,102 @@ class NotificationCenterTest extends TestCase
             'logistics_linehaul_cargo_loaded' => false,
             'logistics_linehaul_departed' => false,
             'logistics_linehaul_arrived' => true,
+            'logistics_return_delivery_completed' => false,
         ] as $event => $emailDefault) {
             $this->assertTrue($logisticsEvents->has($event));
             $this->assertTrue($logisticsEvents[$event]['in_app']);
             $this->assertSame($emailDefault, $logisticsEvents[$event]['email']);
         }
+    }
+
+    public function test_admin_return_deadline_escalations_are_registered_in_the_returns_category(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin', 'status' => 'active']);
+        $events = collect($this->actingAs($admin)
+            ->getJson(route('notifications.preferences'))
+            ->assertOk()
+            ->json('data.events'))
+            ->keyBy('key');
+
+        $this->assertTrue($events->has('admin_return_response_overdue'));
+        $this->assertTrue($events['admin_return_response_overdue']['in_app']);
+        $this->assertTrue($events['admin_return_response_overdue']['email']);
+        $this->assertContains(
+            'admin_return_response_overdue',
+            app(NotificationCategoryService::class)->eventsFor('admin', 'returns'),
+        );
+        $this->assertTrue($events->has('admin_return_ready_for_refund'));
+        $this->assertTrue($events['admin_return_ready_for_refund']['in_app']);
+        $this->assertTrue($events['admin_return_ready_for_refund']['email']);
+        $this->assertContains(
+            'admin_return_ready_for_refund',
+            app(NotificationCategoryService::class)->eventsFor('admin', 'returns'),
+        );
+        $this->assertTrue($events->has('admin_return_buyer_refund_updates'));
+        $this->assertTrue($events['admin_return_buyer_refund_updates']['in_app']);
+        $this->assertTrue($events['admin_return_buyer_refund_updates']['email']);
+        $this->assertContains(
+            'admin_return_buyer_refund_updates',
+            app(NotificationCategoryService::class)->eventsFor('admin', 'returns'),
+        );
+    }
+
+    public function test_admin_logistics_refund_cash_receipt_notification_is_registered_in_finance(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin', 'status' => 'active']);
+        $events = collect($this->actingAs($admin)
+            ->getJson(route('notifications.preferences'))
+            ->assertOk()
+            ->json('data.events'))
+            ->keyBy('key');
+
+        $event = 'admin_refund_cash_received_by_logistics';
+        $this->assertTrue($events->has($event));
+        $this->assertTrue($events[$event]['in_app']);
+        $this->assertTrue($events[$event]['email']);
+        $this->assertContains($event, app(NotificationCategoryService::class)->eventsFor('admin', 'finance'));
+    }
+
+    public function test_cash_refund_tracking_and_actionable_events_are_registered_for_each_role(): void
+    {
+        $buyer = $this->buyer();
+        $buyerEvents = collect($this->actingAs($buyer)
+            ->getJson(route('notifications.preferences'))
+            ->assertOk()
+            ->json('data.events'))
+            ->keyBy('key');
+
+        $buyerEvent = 'buyer_refund_cash_tracking';
+        $this->assertTrue($buyerEvents->has($buyerEvent));
+        $this->assertTrue($buyerEvents[$buyerEvent]['in_app']);
+        $this->assertFalse($buyerEvents[$buyerEvent]['email']);
+        $this->assertContains($buyerEvent, app(NotificationCategoryService::class)->eventsFor('buyer', 'returns'));
+
+        $logistics = User::factory()->create(['role' => 'logistics', 'status' => 'active']);
+        $logisticsEvents = collect($this->actingAs($logistics)
+            ->getJson(route('notifications.preferences'))
+            ->assertOk()
+            ->json('data.events'))
+            ->keyBy('key');
+
+        $logisticsEvent = 'logistics_refund_cash_verification_required';
+        $this->assertTrue($logisticsEvents->has($logisticsEvent));
+        $this->assertTrue($logisticsEvents[$logisticsEvent]['in_app']);
+        $this->assertFalse($logisticsEvents[$logisticsEvent]['email']);
+        $this->assertContains($logisticsEvent, app(NotificationCategoryService::class)->eventsFor('logistics', 'cash'));
+
+        $admin = User::factory()->create(['role' => 'admin', 'status' => 'active']);
+        $adminEvents = collect($this->actingAs($admin)
+            ->getJson(route('notifications.preferences'))
+            ->assertOk()
+            ->json('data.events'))
+            ->keyBy('key');
+
+        $adminEvent = 'admin_refund_cash_ready_for_finance';
+        $this->assertTrue($adminEvents->has($adminEvent));
+        $this->assertTrue($adminEvents[$adminEvent]['in_app']);
+        $this->assertTrue($adminEvents[$adminEvent]['email']);
+        $this->assertContains($adminEvent, app(NotificationCategoryService::class)->eventsFor('admin', 'finance'));
     }
 
     public function test_every_role_receives_registry_events_on_their_declared_default_channels(): void
@@ -203,7 +300,7 @@ class NotificationCenterTest extends TestCase
         }
     }
 
-    public function test_platform_announcements_default_to_in_app_without_broadcast_email(): void
+    public function test_platform_announcements_default_to_in_app_and_email(): void
     {
         foreach (['buyer', 'seller', 'logistics', 'rider'] as $role) {
             $user = User::factory()->create([
@@ -215,8 +312,32 @@ class NotificationCenterTest extends TestCase
                 ->channelsFor($user, 'announcement_published');
 
             $this->assertTrue($channels['in_app']);
-            $this->assertFalse($channels['email']);
+            $this->assertTrue($channels['email']);
         }
+    }
+
+    public function test_platform_announcements_queue_email_by_default_but_respect_a_saved_opt_out(): void
+    {
+        $buyer = $this->buyer();
+        $optedOutBuyer = $this->buyer();
+
+        app(NotificationPreferenceService::class)->updateForUser($optedOutBuyer, [
+            'announcement_published' => ['in_app' => true, 'email' => false],
+        ]);
+
+        Queue::fake();
+        $notification = new WorkflowNotification(
+            eventKey: 'announcement_published',
+            title: 'Marketplace update',
+            body: 'A new platform announcement is available.',
+        );
+
+        app(NotificationService::class)->send($buyer, $notification);
+        app(NotificationService::class)->send($optedOutBuyer, $notification);
+
+        Queue::assertPushed(SendBearlyNotificationEmail::class, 1);
+        $this->assertSame(1, $buyer->notifications()->count());
+        $this->assertSame(1, $optedOutBuyer->notifications()->count());
     }
 
     public function test_saving_preferences_persists_rows_and_mandatory_events_stay_in_app(): void
@@ -255,6 +376,9 @@ class NotificationCenterTest extends TestCase
             'in_app' => 1,
             'email' => 0,
         ]);
+        $this->assertFalse(
+            app(NotificationPreferenceService::class)->channelsFor($seller, 'announcement_published')['email'],
+        );
 
         // Saving again updates the same rows instead of duplicating them.
         $this->actingAs($seller)
@@ -505,11 +629,17 @@ class NotificationCenterTest extends TestCase
         $mail = (new SellerWithdrawalStatusNotification(9, 'WD-9', 15_000, 'completed'))->toMail($seller);
 
         $this->assertSame('Withdrawal completed', $mail->subject);
-        $this->assertContains(
-            'Withdrawal WD-9 is complete. Finance verified the bank transfer.',
-            $mail->introLines,
-        );
-        $this->assertSame(route('seller.finance.wallet'), $mail->actionUrl);
+        $this->assertSame('emails.notifications.workflow', $mail->view['html']);
+        $this->assertSame('emails.text.workflow', $mail->view['text']);
+        $this->assertSame(route('seller.finance.wallet'), $mail->viewData['actionUrl']);
+
+        $html = (string) $mail->render();
+        $text = view($mail->view['text'], $mail->viewData)->render();
+
+        $this->assertStringContainsString('Withdrawal WD-9 is complete. Finance verified the bank transfer.', $html);
+        $this->assertStringContainsString('₱150.00', $html);
+        $this->assertStringContainsString('₱150.00', $text);
+        $this->assertStringContainsString(route('seller.finance.wallet'), $text);
     }
 
     public function test_history_filters_by_role_category_and_keeps_account_events_visible(): void
@@ -790,6 +920,7 @@ class NotificationCenterTest extends TestCase
         $this->assertNull($categories->categoryForEvent('buyer', 'account_status_changed'));
         $this->assertNull($categories->categoryForEvent('seller', 'account_status_changed'));
         $this->assertSame('linehaul', $categories->categoryForEvent('rider', 'rider_linehaul_assigned'));
+        $this->assertSame('campaigns', $categories->categoryForEvent('seller', 'seller_campaign_available'));
         $this->assertSame('handoffs', $categories->categoryForEvent('logistics', 'logistics_linehaul_assigned'));
         $this->assertSame('handoffs', $categories->categoryForEvent('logistics', 'logistics_linehaul_loading_started'));
         $this->assertSame('handoffs', $categories->categoryForEvent('logistics', 'logistics_linehaul_cargo_loaded'));

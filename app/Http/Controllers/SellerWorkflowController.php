@@ -1054,7 +1054,10 @@ class SellerWorkflowController extends Controller
                             'parcels',
                             'logisticsProfile.user',
                             'sellerOrders.order:id,status,city_municipality,province',
-                            'sellerOrders.items',
+                            'sellerOrders.items.product.images.variant',
+                            'sellerOrders.items.variant',
+                            'sellerOrder.items.product.images.variant',
+                            'sellerOrder.items.variant',
                         ]),
                 ])
                 ->orderBy('ready_at')
@@ -1112,6 +1115,10 @@ class SellerWorkflowController extends Controller
                     $sellerOrders = $shipment->includedSellerOrders(withItems: true);
                     $primarySellerOrder = $sellerOrders->firstWhere('id', (int) $shipment->seller_order_id)
                         ?? $sellerOrders->first();
+                    $previewItems = $sellerOrders
+                        ->flatMap(fn (SellerOrder $sellerOrder) => $sellerOrder->items)
+                        ->unique('id')
+                        ->values();
 
                     if (! $primarySellerOrder || ! $shipment->logisticsProfile) {
                         return null;
@@ -1164,6 +1171,17 @@ class SellerWorkflowController extends Controller
                                 $order->province,
                             ]))
                             : 'Destination unavailable',
+                        'products' => $previewItems
+                            ->take(3)
+                            ->map(fn ($item): array => [
+                                'name' => $item->product_name ?: 'Unnamed product',
+                                'variant' => trim((string) $item->variant_name),
+                                'quantity' => (int) $item->quantity,
+                                'image_url' => $catalog->orderItemImageUrl($item),
+                            ])
+                            ->values()
+                            ->all(),
+                        'product_count' => $previewItems->count(),
                         'logistics_profile_id' => (int) $shipment->logistics_profile_id,
                         'provider_name' => (string) $shipment->logisticsProfile->display_name,
                         'allowed_provider_ids' => $allowedProviderOptions->pluck('id')->map(fn ($id): int => (int) $id)->all(),
@@ -1588,16 +1606,35 @@ class SellerWorkflowController extends Controller
 
         $returnRequests = ReturnRequest::query()
             ->where('store_id', $store->id)
-            ->with(['order:id,order_no', 'buyer:id,name', 'sellerOrder', 'items.orderItem.product.images.variant', 'items.orderItem.variant', 'evidence', 'events.actor', 'refunds.commissions', 'refunds.sellerTransactions', 'refunds.sellerRecovery.events.sellerPayout', 'returnShipment.waybill', 'returnShipment.events', 'returnShipment.shippingSettlement'])
+            ->with(['order:id,order_no', 'buyer:id,name', 'sellerOrder', 'items.orderItem.product.images.variant', 'items.orderItem.variant', 'items.quarantineReviewer:id,name', 'evidence', 'events.actor', 'refunds.commissions', 'refunds.sellerTransactions', 'refunds.sellerRecovery.events.sellerPayout', 'returnShipment.waybill', 'returnShipment.events', 'returnShipment.shippingSettlement'])
             ->latest('submitted_at')
             ->latest('id')
             ->get();
         $cases = $returnRequests->map(fn (ReturnRequest $case): array => $this->returnCaseData($case, $catalog))->all();
         $returnStatusVersion = $this->returnCasesStatusVersion($returnRequests);
-        $completedThisMonthMinor = Refund::query()
+        $monthStart = now()->startOfMonth();
+        $monthEnd = now()->endOfMonth();
+        $pendingQuarantineCaseCount = $returnRequests->filter(
+            fn (ReturnRequest $case): bool => $case->items->contains(
+                fn ($item): bool => $item->quarantine_review_status === 'pending',
+            ),
+        )->count();
+        $paidThisMonthMinor = Refund::query()
             ->whereHas('returnRequest', fn ($query) => $query->where('store_id', $store->id))
-            ->where('status', 'completed')
-            ->whereBetween('completed_at', [now()->startOfMonth(), now()->endOfMonth()])
+            ->payoutSent()
+            ->where(function ($dates) use ($monthStart, $monthEnd): void {
+                $dates->where(function ($external) use ($monthStart, $monthEnd): void {
+                    $external->whereIn('method', ['gcash', 'bank_transfer', 'other'])
+                        ->whereBetween('external_paid_on', [$monthStart->toDateString(), $monthEnd->toDateString()]);
+                })->orWhere(function ($completed) use ($monthStart, $monthEnd): void {
+                    $completed->where('status', 'completed')
+                        ->where(function ($fallback): void {
+                            $fallback->whereNull('external_paid_on')
+                                ->orWhereNotIn('method', ['gcash', 'bank_transfer', 'other']);
+                        })
+                        ->whereBetween('completed_at', [$monthStart, $monthEnd]);
+                    });
+            })
             ->sum('amount_minor');
         $countFor = fn (array $statuses): int => $returnRequests->whereIn('status', $statuses)->count();
 
@@ -1608,13 +1645,14 @@ class SellerWorkflowController extends Controller
                 ['label' => 'Action Required', 'value' => (string) $countFor(['awaiting_seller']), 'note' => 'Seller response required', 'icon' => 'triangle-alert', 'tone' => 'warning'],
                 ['label' => 'Under Review', 'value' => (string) $countFor(['under_review', 'awaiting_evidence']), 'note' => 'Admin review or evidence requested', 'icon' => 'scan-search', 'tone' => 'neutral'],
                 ['label' => 'Return in Progress', 'value' => (string) $countFor(['return_pickup_requested', 'return_dropoff_pending', 'return_in_transit', 'awaiting_inspection']), 'note' => 'Buyer handoff, Logistics delivery, and Seller inspection', 'icon' => 'package-open', 'tone' => 'info'],
-                ['label' => 'Refunded This Month', 'value' => $this->money((int) $completedThisMonthMinor / 100), 'note' => 'Externally paid and recorded', 'icon' => 'badge-check', 'tone' => 'success'],
+                ['label' => 'Refund Payouts This Month', 'value' => $this->money((int) $paidThisMonthMinor / 100), 'note' => 'Includes external payouts awaiting Buyer confirmation', 'icon' => 'badge-check', 'tone' => 'success'],
             ],
             'tabs' => [
                 ['key' => 'all', 'label' => 'All Cases', 'count' => $returnRequests->count()],
                 ['key' => 'action-required', 'label' => 'Action Required', 'count' => $countFor(['awaiting_seller'])],
                 ['key' => 'under-review', 'label' => 'Under Review', 'count' => $countFor(['under_review', 'awaiting_evidence'])],
                 ['key' => 'return-shipping', 'label' => 'Return Shipping', 'count' => $countFor(['return_pickup_requested', 'return_dropoff_pending', 'return_in_transit', 'awaiting_inspection'])],
+                ['key' => 'quarantine-review', 'label' => 'Quarantine Review', 'count' => $pendingQuarantineCaseCount],
                 ['key' => 'refund-pending', 'label' => 'Refund Pending', 'count' => $countFor(['refund_pending'])],
                 ['key' => 'resolved', 'label' => 'Resolved', 'count' => $countFor(['resolved', 'rejected'])],
             ],
@@ -1661,7 +1699,7 @@ class SellerWorkflowController extends Controller
         $returnRequest = ReturnRequest::query()
             ->where('store_id', $store->id)
             ->where('return_no', strtoupper($caseId))
-            ->with(['order:id,order_no', 'buyer:id,name', 'sellerOrder', 'items.orderItem.product.images.variant', 'items.orderItem.variant', 'evidence', 'events.actor', 'refunds.commissions', 'refunds.sellerTransactions', 'refunds.sellerRecovery.events.sellerPayout', 'returnShipment.waybill', 'returnShipment.events', 'returnShipment.shippingSettlement'])
+            ->with(['order:id,order_no', 'buyer:id,name', 'sellerOrder', 'items.orderItem.product.images.variant', 'items.orderItem.variant', 'items.quarantineReviewer:id,name', 'evidence', 'events.actor', 'refunds.commissions', 'refunds.sellerTransactions', 'refunds.sellerRecovery.events.sellerPayout', 'returnShipment.waybill', 'returnShipment.events', 'returnShipment.shippingSettlement'])
             ->firstOrFail();
         $case = $this->returnCaseData($returnRequest, $catalog);
 
@@ -1705,6 +1743,27 @@ class SellerWorkflowController extends Controller
         return redirect()
             ->route('seller.orders.returns.show', $case->return_no)
             ->with('success', 'Inspection was recorded. Admin can now record the approved external refund payout.');
+    }
+
+    public function finalizeQuarantineReview(Request $request, int $returnItem, ReturnRefundService $returns): RedirectResponse
+    {
+        $data = $request->validate([
+            'final_condition_code' => ['required', Rule::in(['sellable', 'damaged', 'opened', 'missing_parts'])],
+            'final_resolution' => ['required', Rule::in(['restock', 'dispose'])],
+            'note' => ['required', 'string', 'min:5', 'max:1000'],
+        ]);
+
+        $case = $returns->finalizeQuarantineReview(
+            $request->user(),
+            $returnItem,
+            $data['final_condition_code'],
+            $data['final_resolution'],
+            trim($data['note']),
+        );
+
+        return redirect()
+            ->route('seller.orders.returns.show', $case->return_no)
+            ->with('success', 'Quarantine review was recorded. The refund payout workflow is unchanged.');
     }
 
     public function addReturnEvidence(Request $request, int $returnRequest, ReturnRefundService $returns): RedirectResponse
@@ -1782,11 +1841,15 @@ class SellerWorkflowController extends Controller
         $items = $case->items;
         $evidenceCount = $case->evidence->count();
         $requestType = $case->request_type === 'refund_only' ? 'Refund Only' : 'Return & Refund';
+        $sellerResponseDeadlineMissed = $case->events->contains(
+            fn ($event): bool => $event->event_type === 'seller_response_deadline_missed',
+        );
         $status = match ($case->status) {
             'awaiting_seller' => ['Action Required', 'action-required', 'warning'],
             'under_review', 'awaiting_evidence' => ['Under Review', 'under-review', 'review'],
             'return_dropoff_pending' => ['Waiting for Buyer drop-off', 'return-shipping', 'shipping'],
-            'return_pickup_requested', 'return_in_transit', 'awaiting_inspection' => ['Return in Progress', 'return-shipping', 'shipping'],
+            'return_pickup_requested', 'return_in_transit' => ['Return in Progress', 'return-shipping', 'shipping'],
+            'awaiting_inspection' => ['Awaiting Seller Inspection', 'return-shipping', 'shipping'],
             'refund_pending' => ['Refund Payout Pending', 'refund-pending', 'review'],
             'resolved' => ['Resolved', 'resolved', 'resolved'],
             'rejected' => ['Rejected', 'resolved', 'warning'],
@@ -1805,12 +1868,13 @@ class SellerWorkflowController extends Controller
         $sellerRecoveredMinor = (int) ($sellerRecovery?->recovered_amount_minor ?? 0);
         $sellerRecoveryOutstandingMinor = $sellerRecovery?->outstandingMinor() ?? 0;
         $walletOffset = $sellerRecovery?->events->contains(fn ($event): bool => $event->method === 'wallet_offset') ?? false;
-        $commissionEffect = $refund?->status === 'completed'
+        $payoutSent = $refund?->isPayoutSent() ?? false;
+        $commissionEffect = $payoutSent
             ? ($refund->financially_responsible_party === 'platform'
                 ? 'Platform-funded refund; no Seller commission reversal'
                 : ($commissionReversal > 0 ? '+'.$this->money($commissionReversal / 100).' commission reversed' : 'No commission reversal recorded'))
             : 'No finalized financial adjustment';
-        $earningsEffect = $refund?->status === 'completed'
+        $earningsEffect = $payoutSent
             ? ($refund->financially_responsible_party === 'platform'
                 ? 'No Seller recovery; Platform is responsible'
                 : ($sellerRecoveryMinor > 0
@@ -1826,7 +1890,9 @@ class SellerWorkflowController extends Controller
         ))->all();
         $deadline = $case->status === 'awaiting_seller'
             ? ($case->response_due_at?->format('M j, Y · g:i A') ?? 'Response due date not recorded')
-            : ($case->seller_responded_at?->format('M j, Y · g:i A') ?? 'Seller response not yet submitted');
+            : ($sellerResponseDeadlineMissed
+                ? 'Missed · '.($case->response_due_at?->format('M j, Y · g:i A') ?? '48-hour deadline')
+                : ($case->seller_responded_at?->format('M j, Y · g:i A') ?? 'Seller response not yet submitted'));
 
         return [
             'database_id' => (int) $case->id,
@@ -1850,18 +1916,26 @@ class SellerWorkflowController extends Controller
                 'amount' => $this->money((int) $item->refund_amount_minor / 100),
                 'condition_code' => $item->condition_code,
                 'resolution' => $item->resolution,
+                'quarantine_review_status' => $item->quarantine_review_status,
+                'quarantine_final_condition_code' => $item->quarantine_final_condition_code,
+                'quarantine_final_resolution' => $item->quarantine_final_resolution,
+                'quarantine_review_note' => $item->quarantine_review_note,
+                'quarantine_reviewed_by' => $item->quarantineReviewer?->name,
+                'quarantine_reviewed_at' => $item->quarantine_reviewed_at?->format('M j, Y · g:i A'),
             ])->all(),
             'request' => $requestType,
             'reason' => Str::headline($case->reason_code),
             'amount' => $this->money((int) $case->requested_amount_minor / 100),
             'submitted' => $case->submitted_at?->format('M j, Y · g:i A') ?? '—',
             'deadline' => $deadline,
+            'seller_response_deadline_missed' => $sellerResponseDeadlineMissed,
             'status' => $status[0],
             'status_raw' => $case->status,
             'evidence_requested_from' => (string) ($evidenceRequestEvent?->metadata['requested_from'] ?? 'both'),
             'seller_evidence_submitted' => $sellerEvidenceSubmitted,
             'status_key' => $status[1],
             'tone' => $status[2],
+            'quarantine_review_pending' => $items->contains(fn ($item): bool => $item->quarantine_review_status === 'pending'),
             'evidence' => $evidenceCount.' '.Str::plural('file', $evidenceCount),
             'evidence_files' => $case->evidence->map(fn ($evidence): array => [
                 'id' => (int) $evidence->id,
@@ -1875,7 +1949,9 @@ class SellerWorkflowController extends Controller
             'buyer_note' => $case->buyer_note ?: 'No additional buyer note was provided.',
             'seller_response' => $case->seller_response ?: 'No Seller response submitted yet.',
             'resolution' => $case->resolution ?: 'No final resolution has been recorded.',
-            'action' => $case->status === 'awaiting_seller' ? 'Respond' : 'View case',
+            'action' => $items->contains(fn ($item): bool => $item->quarantine_review_status === 'pending')
+                ? 'Review item'
+                : ($case->status === 'awaiting_seller' ? 'Respond' : 'View case'),
             'tracking' => $requestType === 'Refund Only'
                 ? 'Not required'
                 : ($case->returnShipment?->waybill?->waybill_no ?: 'Awaiting Admin approval'),

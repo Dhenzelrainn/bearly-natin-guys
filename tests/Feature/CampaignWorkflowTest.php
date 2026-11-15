@@ -16,6 +16,7 @@ use App\Services\CampaignService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -220,6 +221,20 @@ class CampaignWorkflowTest extends TestCase
         $this->assertSame(8000, (int) $participation->items()->first()->campaign_price_minor);
         $this->assertSame(10000, (int) $participation->items()->first()->regular_price_minor);
 
+        $this->actingAs($seller)
+            ->getJson(route('seller.promotions.campaigns.participation-status', $campaign))
+            ->assertOk()
+            ->assertJsonPath('data.participation.id', (int) $participation->id)
+            ->assertJsonPath('data.participation.status', PlatformCampaignParticipation::STATUS_PENDING_REVIEW)
+            ->assertJsonPath('data.participation.can_withdraw', true)
+            ->assertHeader('Cache-Control', 'no-store, private');
+
+        $this->actingAs($seller)
+            ->get(route('seller.promotions.campaigns.show', $campaign))
+            ->assertOk()
+            ->assertSee('data-campaign-participation-live', false)
+            ->assertSee('data-participation-status-url="'.route('seller.promotions.campaigns.participation-status', $campaign).'"', false);
+
         $this->actingAs($admin)
             ->patch(route('admin.campaigns.update', $campaign), [
                 ...$createPayload,
@@ -242,6 +257,14 @@ class CampaignWorkflowTest extends TestCase
                 'reason' => 'Campaign price approved.',
             ])
             ->assertRedirect();
+
+        $this->actingAs($seller)
+            ->getJson(route('seller.promotions.campaigns.participation-status', $campaign))
+            ->assertOk()
+            ->assertJsonPath('data.participation.status', PlatformCampaignParticipation::STATUS_APPROVED)
+            ->assertJsonPath('data.participation.status_label', 'Approved')
+            ->assertJsonPath('data.participation.review_reason', 'Campaign price approved.')
+            ->assertJsonPath('data.participation.can_withdraw', true);
 
         $participation->refresh();
         $this->assertSame(PlatformCampaignParticipation::STATUS_APPROVED, $participation->status);
@@ -274,6 +297,45 @@ class CampaignWorkflowTest extends TestCase
 
         $this->assertSame(PlatformPromotion::STATUS_ENDED, $campaign->fresh()->status);
         $this->assertSame(4, AuditLog::query()->where('action', 'campaign.status_updated')->count());
+    }
+
+    public function test_campaign_participation_status_endpoint_is_scoped_to_the_authenticated_store(): void
+    {
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'campaign-live-status-owner');
+        [$otherSeller] = $this->sellerAndStore($category, 'campaign-live-status-other');
+        $campaign = $this->campaign();
+        $participation = PlatformCampaignParticipation::query()->create([
+            'platform_promotion_id' => $campaign->id,
+            'store_id' => $store->id,
+            'submitted_by' => $seller->id,
+            'status' => PlatformCampaignParticipation::STATUS_PENDING_REVIEW,
+            'terms_accepted_at' => now(),
+            'submitted_at' => now(),
+        ]);
+
+        $this->actingAs($seller)
+            ->getJson(route('seller.promotions.campaigns.participation-status', $campaign))
+            ->assertOk()
+            ->assertJsonPath('data.participation.id', (int) $participation->id);
+
+        $this->actingAs($otherSeller)
+            ->getJson(route('seller.promotions.campaigns.participation-status', $campaign))
+            ->assertNotFound();
+
+        $this->actingAs($this->user('admin'))
+            ->patch(route('admin.campaigns.participations.review', $participation), [
+                'decision' => 'reject',
+                'reason' => 'Please revise the submitted price.',
+            ])
+            ->assertRedirect();
+
+        $this->actingAs($seller)
+            ->getJson(route('seller.promotions.campaigns.participation-status', $campaign))
+            ->assertOk()
+            ->assertJsonPath('data.participation.status', PlatformCampaignParticipation::STATUS_REJECTED)
+            ->assertJsonPath('data.participation.review_reason', 'Please revise the submitted price.')
+            ->assertJsonPath('data.participation.can_withdraw', false);
     }
 
     public function test_admin_can_change_campaign_schedule_dates_and_times(): void
@@ -358,6 +420,163 @@ class CampaignWorkflowTest extends TestCase
             ->assertSee('value="'.$newEndsOn.'"', false)
             ->assertSee('value="21:45"', false)
             ->assertSee('value="'.$newJoinDeadline.'"', false);
+    }
+
+    public function test_admin_campaign_description_respects_2000_character_limit_and_storage(): void
+    {
+        $this->assertSame('text', Schema::getColumnType('platform_promotions', 'description'));
+
+        $admin = $this->user('admin');
+        $startsOn = now('Asia/Manila')->addDays(3)->toDateString();
+        $description = str_repeat('D', 2000);
+        $payload = [
+            'name' => 'Campaign Description Limit Test',
+            'campaign_type' => PlatformPromotion::CAMPAIGN_MONTHLY_DEAL,
+            'funding_type' => PlatformPromotion::FUNDING_PLATFORM,
+            'minimum_discount_percent' => '10',
+            'description' => $description,
+            'budget' => '100.00',
+            'starts_on' => $startsOn,
+            'start_time' => '09:00',
+            'ends_on' => now('Asia/Manila')->addDays(8)->toDateString(),
+            'end_time' => '23:59',
+            'join_deadline' => now('Asia/Manila')->addDays(2)->toDateString(),
+            'status' => PlatformPromotion::STATUS_DRAFT,
+        ];
+
+        $this->actingAs($admin)
+            ->get(route('admin.campaigns.create'))
+            ->assertOk()
+            ->assertSee('name="description" rows="3" maxlength="2000"', false)
+            ->assertSeeText('Maximum 2,000 characters. Typing stops at the limit.');
+
+        $this->actingAs($admin)
+            ->post(route('admin.campaigns.store'), $payload)
+            ->assertRedirect();
+
+        $campaign = PlatformPromotion::query()
+            ->where('name', 'Campaign Description Limit Test')
+            ->firstOrFail();
+
+        $this->assertSame($description, $campaign->description);
+
+        $this->actingAs($admin)
+            ->from(route('admin.campaigns.create'))
+            ->post(route('admin.campaigns.store'), [
+                ...$payload,
+                'name' => 'Over Limit Campaign Description Test',
+                'description' => str_repeat('D', 2001),
+            ])
+            ->assertSessionHasErrors('description');
+
+        $this->assertDatabaseMissing('platform_promotions', [
+            'name' => 'Over Limit Campaign Description Test',
+        ]);
+    }
+
+    public function test_open_campaign_notifies_only_matching_sellers_once(): void
+    {
+        $category = $this->category();
+        [$eligibleSeller, $eligibleStore] = $this->sellerAndStore($category, 'campaign-notification-eligible');
+        [$otherSeller, $otherStore] = $this->sellerAndStore($category, 'campaign-notification-other');
+        $eligibleProduct = $this->product($eligibleStore, $category, 'Eligible Campaign Notification Product');
+        $otherProduct = $this->product($otherStore, $category, 'Other Campaign Notification Product');
+        $this->variant($eligibleProduct, 'CAMPAIGN-NOTIFY-ELIGIBLE-001', 10000);
+        $this->variant($otherProduct, 'CAMPAIGN-NOTIFY-OTHER-001', 10000);
+
+        $startsOn = now('Asia/Manila')->addDays(3)->toDateString();
+        $this->actingAs($this->user('admin'))
+            ->post(route('admin.campaigns.store'), [
+                'name' => 'New Seller Campaign Notification',
+                'campaign_type' => PlatformPromotion::CAMPAIGN_MONTHLY_DEAL,
+                'funding_type' => PlatformPromotion::FUNDING_PLATFORM,
+                'minimum_discount_percent' => '10',
+                'budget' => '100.00',
+                'starts_on' => $startsOn,
+                'start_time' => '09:00',
+                'ends_on' => now('Asia/Manila')->addDays(8)->toDateString(),
+                'end_time' => '23:59',
+                'join_deadline' => now('Asia/Manila')->addDays(2)->toDateString(),
+                'status' => PlatformPromotion::STATUS_OPEN,
+                'scope_submitted' => '1',
+                'store_ids' => [$eligibleStore->id],
+                'category_ids' => [$category->id],
+            ])
+            ->assertRedirect();
+
+        $campaign = PlatformPromotion::query()
+            ->where('name', 'New Seller Campaign Notification')
+            ->firstOrFail();
+        $notification = $eligibleSeller->notifications()
+            ->where('data->event', 'seller_campaign_available')
+            ->firstOrFail();
+
+        $this->assertSame((int) $campaign->id, (int) $notification->data['meta']['campaign_id']);
+        $this->assertSame(route('seller.promotions.campaigns.show', $campaign), $notification->data['url']);
+        $this->assertStringContainsString($campaign->name, $notification->data['body']);
+        $this->assertSame(0, $otherSeller->notifications()->count());
+
+        $this->artisan('campaigns:notify-eligible-sellers', ['campaign' => $campaign->id])
+            ->assertSuccessful();
+
+        $this->assertSame(
+            1,
+            $eligibleSeller->notifications()->where('data->event', 'seller_campaign_available')->count(),
+        );
+    }
+
+    public function test_draft_campaign_notifies_matching_sellers_when_admin_first_opens_it(): void
+    {
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'campaign-notification-first-open');
+        $product = $this->product($store, $category, 'First Open Campaign Notification Product');
+        $this->variant($product, 'CAMPAIGN-NOTIFY-FIRST-OPEN-001', 10000);
+        $campaign = $this->campaign([
+            'status' => PlatformPromotion::STATUS_DRAFT,
+            'starts_on' => now('Asia/Manila')->addDays(3)->toDateString(),
+            'ends_on' => now('Asia/Manila')->addDays(8)->toDateString(),
+            'join_deadline' => now('Asia/Manila')->addDays(2)->toDateString(),
+        ]);
+        $campaign->stores()->sync([$store->id]);
+        $campaign->categories()->sync([$category->id]);
+
+        $this->actingAs($this->user('admin'))
+            ->patch(route('admin.campaigns.status', $campaign), [
+                'status' => PlatformPromotion::STATUS_OPEN,
+            ])
+            ->assertRedirect();
+
+        $this->assertSame(
+            1,
+            $seller->notifications()->where('data->event', 'seller_campaign_available')->count(),
+        );
+    }
+
+    public function test_campaign_backfill_notifies_eligible_sellers_for_an_existing_live_campaign_once(): void
+    {
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'campaign-notification-backfill');
+        $product = $this->product($store, $category, 'Live Campaign Notification Product');
+        $this->variant($product, 'CAMPAIGN-NOTIFY-BACKFILL-001', 10000);
+        $campaign = $this->campaign([
+            'name' => 'November Deal Backfill Test',
+            'status' => PlatformPromotion::STATUS_ACTIVE,
+            'starts_on' => now('Asia/Manila')->toDateString(),
+            'ends_on' => now('Asia/Manila')->addDays(8)->toDateString(),
+            'join_deadline' => now('Asia/Manila')->subDays(2)->toDateString(),
+        ]);
+        $campaign->stores()->sync([$store->id]);
+        $campaign->categories()->sync([$category->id]);
+
+        $this->artisan('campaigns:notify-eligible-sellers', ['campaign' => $campaign->id])
+            ->assertSuccessful();
+        $this->artisan('campaigns:notify-eligible-sellers', ['campaign' => $campaign->id])
+            ->assertSuccessful();
+
+        $this->assertSame(
+            1,
+            $seller->notifications()->where('data->event', 'seller_campaign_available')->count(),
+        );
     }
 
     public function test_admin_requires_a_whole_minimum_discount_for_new_campaigns(): void
@@ -449,6 +668,198 @@ class CampaignWorkflowTest extends TestCase
             ->patch(route('admin.campaigns.update', $createdCampaign), $withoutBudget)
             ->assertSessionHasErrors('budget');
         $this->assertSame(10000, (int) $createdCampaign->fresh()->budget_minor);
+    }
+
+    public function test_admin_piso_sale_uses_fixed_price_without_a_campaign_minimum_and_keeps_budget_required(): void
+    {
+        $admin = $this->user('admin');
+        $payload = [
+            'name' => 'Piso Sale Fixed Price Campaign',
+            'campaign_type' => PlatformPromotion::CAMPAIGN_PISO_SALE,
+            'funding_type' => PlatformPromotion::FUNDING_PLATFORM,
+            'budget' => '250.00',
+            'starts_on' => now('Asia/Manila')->addDays(3)->toDateString(),
+            'start_time' => '09:00',
+            'ends_on' => now('Asia/Manila')->addDays(8)->toDateString(),
+            'end_time' => '23:59',
+            'join_deadline' => now('Asia/Manila')->addDays(2)->toDateString(),
+            'status' => PlatformPromotion::STATUS_DRAFT,
+        ];
+
+        $this->actingAs($admin)
+            ->post(route('admin.campaigns.store'), [...$payload, 'budget' => ''])
+            ->assertSessionHasErrors('budget');
+
+        $this->actingAs($admin)
+            ->post(route('admin.campaigns.store'), $payload)
+            ->assertRedirect();
+
+        $campaign = PlatformPromotion::query()
+            ->where('name', 'Piso Sale Fixed Price Campaign')
+            ->firstOrFail();
+        $this->assertSame(PlatformPromotion::FUNDING_PLATFORM, $campaign->funding_type);
+        $this->assertNull($campaign->minimum_discount_percent);
+        $this->assertSame(25000, (int) $campaign->budget_minor);
+
+        $this->actingAs($admin)
+            ->get(route('admin.campaigns.edit', $campaign))
+            ->assertOk()
+            ->assertSee('Piso Sale fixed price: ₱1.00')
+            ->assertSee('data-piso-sale-notice', false)
+            ->assertSee('data-minimum-discount-field', false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.campaigns.show', $campaign))
+            ->assertOk()
+            ->assertSee('Fixed ₱1.00 (no percentage)');
+
+        $this->actingAs($admin)
+            ->from(route('admin.campaigns.edit', $campaign))
+            ->patch(route('admin.campaigns.update', $campaign), [
+                ...$payload,
+                'minimum_discount_percent' => '10',
+            ])
+            ->assertSessionHasErrors('minimum_discount_percent');
+
+        $legacySellerCampaign = $this->campaign([
+            'name' => 'Legacy Seller-Funded Campaign Cannot Become Piso',
+            'minimum_discount_percent' => null,
+            'starts_on' => now('Asia/Manila')->addDays(3)->toDateString(),
+            'ends_on' => now('Asia/Manila')->addDays(8)->toDateString(),
+            'join_deadline' => now('Asia/Manila')->addDays(2)->toDateString(),
+        ]);
+        $this->actingAs($admin)
+            ->patch(route('admin.campaigns.update', $legacySellerCampaign), [
+                'name' => $legacySellerCampaign->name,
+                'campaign_type' => PlatformPromotion::CAMPAIGN_PISO_SALE,
+                'funding_type' => PlatformPromotion::FUNDING_SELLER,
+                'starts_on' => $legacySellerCampaign->starts_on->toDateString(),
+                'start_time' => '00:00',
+                'ends_on' => $legacySellerCampaign->ends_on->toDateString(),
+                'end_time' => '23:59',
+                'join_deadline' => $legacySellerCampaign->join_deadline->toDateString(),
+            ])
+            ->assertSessionHasErrors('campaign_type');
+        $this->assertSame(PlatformPromotion::CAMPAIGN_MONTHLY_DEAL, $legacySellerCampaign->fresh()->campaign_type);
+    }
+
+    public function test_seller_can_join_a_scheduled_active_campaign_before_the_join_deadline(): void
+    {
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'campaign-scheduled-join');
+        $product = $this->product($store, $category, 'Scheduled Campaign Product');
+        $this->variant($product, 'CAMPAIGN-SCHEDULED-JOIN-001', 10000);
+
+        $manila = now('Asia/Manila');
+        $campaign = $this->campaign([
+            'status' => PlatformPromotion::STATUS_ACTIVE,
+            'starts_on' => $manila->copy()->addDays(3)->toDateString(),
+            'ends_on' => $manila->copy()->addDays(8)->toDateString(),
+            'join_deadline' => $manila->copy()->addDays(2)->toDateString(),
+        ]);
+
+        $this->assertSame('scheduled', $campaign->statusKey());
+        $this->assertTrue($campaign->isJoinable());
+
+        $this->actingAs($seller)
+            ->get(route('seller.promotions.campaigns.show', $campaign))
+            ->assertOk()
+            ->assertSee('Scheduled')
+            ->assertSee('data-campaign-join-form', false)
+            ->assertDontSee('Joining is closed for this campaign.');
+
+        $this->actingAs($seller)
+            ->post(route('seller.promotions.campaigns.join', $campaign), $this->joinPayload($product, 20))
+            ->assertRedirect(route('seller.promotions.campaigns.show', $campaign));
+
+        $this->assertDatabaseHas('platform_campaign_participations', [
+            'platform_promotion_id' => $campaign->id,
+            'store_id' => $store->id,
+            'status' => PlatformCampaignParticipation::STATUS_PENDING_REVIEW,
+        ]);
+    }
+
+    public function test_seller_piso_sale_join_uses_fixed_price_and_excludes_skus_at_or_below_one_peso(): void
+    {
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'piso-campaign-join');
+        $mixedProduct = $this->product($store, $category, 'Piso Mixed Price Product');
+        $eligibleVariant = $this->variant($mixedProduct, 'PISO-JOIN-ELIGIBLE-001', 5000);
+        $onePesoVariant = $this->variant($mixedProduct, 'PISO-JOIN-ONE-PESO-001', 100);
+        $lowPriceProduct = $this->product($store, $category, 'Piso Low Price Product');
+        $this->variant($lowPriceProduct, 'PISO-JOIN-LOW-001', 99);
+        $campaign = $this->campaign([
+            'campaign_type' => PlatformPromotion::CAMPAIGN_PISO_SALE,
+            'funding_type' => PlatformPromotion::FUNDING_PLATFORM,
+            'budget_minor' => 50000,
+        ]);
+
+        $this->actingAs($seller)
+            ->get(route('seller.promotions.campaigns.show', $campaign))
+            ->assertOk()
+            ->assertSee('fixed ₱1.00 price', false)
+            ->assertSee('Only SKUs with an effective Seller price above ₱1.00 can participate')
+            ->assertSee('data-piso-sale="1"', false)
+            ->assertDontSee('data-campaign-discount', false)
+            ->assertSee('PISO-JOIN-ELIGIBLE-001')
+            ->assertDontSee('PISO-JOIN-ONE-PESO-001')
+            ->assertDontSee('Piso Low Price Product');
+
+        $this->actingAs($seller)
+            ->post(route('seller.promotions.campaigns.join', $campaign), [
+                'terms_accepted' => '1',
+                'items' => [[
+                    'product_id' => $mixedProduct->id,
+                    'discount_percent' => '50',
+                ]],
+            ])
+            ->assertSessionHasErrors();
+
+        $this->actingAs($seller)
+            ->post(route('seller.promotions.campaigns.join', $campaign), [
+                'terms_accepted' => '1',
+                'items' => [['product_id' => $lowPriceProduct->id]],
+            ])
+            ->assertSessionHasErrors('items');
+
+        $this->actingAs($seller)
+            ->post(route('seller.promotions.campaigns.join', $campaign), [
+                'terms_accepted' => '1',
+                'items' => [['product_id' => $mixedProduct->id]],
+            ])
+            ->assertRedirect(route('seller.promotions.campaigns.show', $campaign));
+
+        $participation = PlatformCampaignParticipation::query()
+            ->where('platform_promotion_id', $campaign->id)
+            ->where('store_id', $store->id)
+            ->firstOrFail();
+        $items = $participation->items()->get();
+        $this->assertCount(1, $items);
+        $this->assertSame((int) $eligibleVariant->id, (int) $items->sole()->product_variant_id);
+        $this->assertSame(5000, (int) $items->sole()->regular_price_minor);
+        $this->assertSame(PlatformPromotion::PISO_SALE_PRICE_MINOR, (int) $items->sole()->campaign_price_minor);
+        $this->assertNull($items->sole()->discount_percent);
+        $this->assertNotSame((int) $onePesoVariant->id, (int) $items->sole()->product_variant_id);
+    }
+
+    public function test_scheduled_active_campaign_join_still_respects_deadline_and_paused_status(): void
+    {
+        $manila = now('Asia/Manila');
+        $expiredCampaign = $this->campaign([
+            'status' => PlatformPromotion::STATUS_ACTIVE,
+            'starts_on' => $manila->copy()->addDays(3)->toDateString(),
+            'ends_on' => $manila->copy()->addDays(8)->toDateString(),
+            'join_deadline' => $manila->copy()->subDay()->toDateString(),
+        ]);
+        $pausedCampaign = $this->campaign([
+            'status' => PlatformPromotion::STATUS_PAUSED,
+            'starts_on' => $manila->copy()->addDays(3)->toDateString(),
+            'ends_on' => $manila->copy()->addDays(8)->toDateString(),
+            'join_deadline' => $manila->copy()->addDays(2)->toDateString(),
+        ]);
+
+        $this->assertFalse($expiredCampaign->isJoinable());
+        $this->assertFalse($pausedCampaign->isJoinable());
     }
 
     public function test_seller_discount_is_computed_for_each_active_sku_and_must_meet_the_campaign_minimum(): void
@@ -773,7 +1184,7 @@ class CampaignWorkflowTest extends TestCase
             'name' => 'Campaign '.$this->sequence,
             'code' => null,
             'kind' => PlatformPromotion::KIND_SELLER_CAMPAIGN,
-            'campaign_type' => PlatformPromotion::CAMPAIGN_PISO_SALE,
+            'campaign_type' => PlatformPromotion::CAMPAIGN_MONTHLY_DEAL,
             'funding_type' => PlatformPromotion::FUNDING_SELLER,
             'discount_type' => PlatformPromotion::DISCOUNT_FIXED,
             'status' => PlatformPromotion::STATUS_OPEN,

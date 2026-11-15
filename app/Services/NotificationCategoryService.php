@@ -28,7 +28,7 @@ class NotificationCategoryService
             ],
             'returns' => [
                 'label' => 'Returns & refunds',
-                'events' => ['buyer_return_updates'],
+                'events' => ['buyer_return_updates', 'buyer_refund_cash_tracking'],
             ],
             'messages' => [
                 'label' => 'Messages',
@@ -72,6 +72,10 @@ class NotificationCategoryService
                 'label' => 'Finance & withdrawals',
                 'events' => ['seller_withdrawal_status_changed', 'seller_cod_cash_reconciled'],
             ],
+            'campaigns' => [
+                'label' => 'Bearly campaigns',
+                'events' => ['seller_campaign_available'],
+            ],
             'announcements' => [
                 'label' => 'Announcements',
                 'events' => ['announcement_published'],
@@ -98,11 +102,11 @@ class NotificationCategoryService
             ],
             'deliveries' => [
                 'label' => 'Delivery monitoring',
-                'events' => ['logistics_delivery_parcels_verified'],
+                'events' => ['logistics_delivery_parcels_verified', 'logistics_return_delivery_completed'],
             ],
             'cash' => [
                 'label' => 'COD & refund cash',
-                'events' => ['logistics_cod_collected', 'logistics_refund_cash_issued'],
+                'events' => ['logistics_cod_collected', 'logistics_refund_cash_issued', 'logistics_refund_cash_verification_required'],
             ],
             'riders' => [
                 'label' => 'Rider applications',
@@ -154,11 +158,11 @@ class NotificationCategoryService
             ],
             'returns' => [
                 'label' => 'Returns & refunds',
-                'events' => ['admin_return_submitted'],
+                'events' => ['admin_return_submitted', 'admin_return_response_overdue', 'admin_return_ready_for_refund', 'admin_return_buyer_refund_updates'],
             ],
             'finance' => [
                 'label' => 'Finance & COD',
-                'events' => ['admin_withdrawal_submitted', 'admin_cod_remitted', 'admin_cod_discrepancy'],
+                'events' => ['admin_withdrawal_submitted', 'admin_cod_remitted', 'admin_cod_discrepancy', 'admin_refund_cash_received_by_logistics', 'admin_refund_cash_ready_for_finance'],
             ],
             'messages' => [
                 'label' => 'Support messages',

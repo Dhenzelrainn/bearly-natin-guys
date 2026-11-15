@@ -59,6 +59,8 @@ class PlatformPromotion extends Model
 
     public const CAMPAIGN_PISO_SALE = 'piso_sale';
 
+    public const PISO_SALE_PRICE_MINOR = 100;
+
     public const CAMPAIGN_PAYDAY_SALE = 'payday_sale';
 
     public const CAMPAIGN_MONTHLY_DEAL = 'monthly_deal';
@@ -146,7 +148,7 @@ class PlatformPromotion extends Model
 
     public function isJoinable(): bool
     {
-        return $this->status === self::STATUS_OPEN
+        return in_array($this->status, [self::STATUS_OPEN, self::STATUS_ACTIVE], true)
             && $this->join_deadline !== null
             && $this->join_deadline->toDateString() >= now('Asia/Manila')->toDateString()
             && $this->ends_on !== null

@@ -19,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -63,6 +64,9 @@ class AdminController extends Controller
             'role' => 'Admin',
             'email' => (string) ($user?->email ?? ''),
             'initials' => $initials !== '' ? $initials : 'AD',
+            'photo_url' => $user?->profile_photo_path
+                ? Storage::disk('public')->url($user->profile_photo_path)
+                : '',
         ];
     }
 
@@ -1045,6 +1049,9 @@ class AdminController extends Controller
 
         $cases = $returnRequests
             ->map(function (ReturnRequest $returnRequest) use ($paidSellerPayouts, $catalog): array {
+                $sellerResponseDeadlineMissed = $returnRequest->events->contains(
+                    fn ($event): bool => $event->event_type === 'seller_response_deadline_missed',
+                );
                 $requestType = match ($returnRequest->request_type) {
                     'return_refund',
                     'return_and_refund',
@@ -1083,6 +1090,9 @@ class AdminController extends Controller
 
                 $refund = $returnRequest->refunds->sortByDesc('id')->first();
                 $cashPayout = $refund?->cashPayout;
+                $buyerPayoutIssue = $returnRequest->events
+                    ->where('event_type', 'buyer_refund_receipt_not_received')
+                    ->last();
                 $items = $returnRequest->items->map(fn ($item): array => [
                     'name' => $item->orderItem?->product_name ?? 'Purchased item',
                     'variant' => $item->orderItem?->variant_name ?? 'Standard',
@@ -1123,6 +1133,7 @@ class AdminController extends Controller
 
                     'status' => $status,
                     'status_key' => $returnRequest->status,
+                    'seller_response_deadline_missed' => $sellerResponseDeadlineMissed,
 
                     'seller_response' => $returnRequest->seller_response
                         ?: 'No seller response submitted yet.',
@@ -1136,6 +1147,12 @@ class AdminController extends Controller
                     'refund_id' => $refund?->id,
                     'refund_no' => $refund?->refund_no,
                     'refund_status' => $refund?->status,
+                    'payout_confirmation_pending' => $refund?->status === 'processing'
+                        && $returnRequest->status === 'refund_pending',
+                    'buyer_payout_not_received_reported' => $buyerPayoutIssue !== null,
+                    'buyer_payout_not_received_note' => $buyerPayoutIssue?->note,
+                    'buyer_payout_not_received_actor' => $buyerPayoutIssue?->actor?->name,
+                    'buyer_payout_not_received_at' => $buyerPayoutIssue?->created_at?->format('M j, Y · g:i A'),
                     'refund_amount' => $refund ? '₱'.number_format((int) $refund->amount_minor / 100, 2) : null,
                     'cash_payout' => $cashPayout ? [
                         'payout_no' => $cashPayout->payout_no,
@@ -1146,7 +1163,7 @@ class AdminController extends Controller
                         'next_step' => match ($cashPayout->status) {
                             'awaiting_logistics_receipt' => 'Logistics must acknowledge the physical cash handoff.',
                             'awaiting_rider_assignment' => 'Logistics must assign an approved Rider.',
-                            'assigned_to_rider' => 'Logistics must print the Buyer acknowledgment slip and give it to the Rider with the cash.',
+                            'assigned_to_rider' => 'Logistics must print the Buyer acknowledgment form and give it to the Rider with the cash.',
                             'cash_with_rider' => 'The Rider has confirmed the cash and printed form; delivery can start.',
                             'out_for_delivery' => 'The Rider is delivering the cash refund to the Buyer.',
                             'cash_return_pending' => 'The Rider must return the undelivered cash to Logistics before another attempt.',
@@ -1213,7 +1230,7 @@ class AdminController extends Controller
                     'payout_method' => $refund?->method,
                     'payout_reference' => $refund?->provider_reference,
                     'payout_date' => $refund?->external_paid_on?->format('M j, Y'),
-                    'payout_receipt_url' => $refund?->status === 'completed' && filled($refund?->payout_receipt_path)
+                    'payout_receipt_url' => in_array($refund?->status, ['processing', 'completed'], true) && filled($refund?->payout_receipt_path)
                         ? route('admin.compliance.returns-refunds.payout-receipt', $refund->id)
                         : null,
                     'evidence_files' => $returnRequest->evidence->map(function ($evidence): array {
@@ -1649,6 +1666,45 @@ class AdminController extends Controller
                 'last_sign_in' => $admin?->last_login_at?->format('M j, Y · g:i A') ?? 'No sign-in recorded yet',
             ],
         ]));
+    }
+
+    public function updateAccountPhoto(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'profile_photo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+        ]);
+
+        /** @var User $admin */
+        $admin = $request->user();
+        $oldPhoto = $admin->profile_photo_path;
+        $newPhoto = $request->file('profile_photo')->store('profile-photos', 'public');
+
+        $admin->forceFill(['profile_photo_path' => $newPhoto])->save();
+
+        if ($oldPhoto && $oldPhoto !== $newPhoto) {
+            Storage::disk('public')->delete($oldPhoto);
+        }
+
+        return redirect(route('admin.account').'#profile-photo-editor')
+            ->with('success', 'Admin profile photo updated.');
+    }
+
+    public function removeAccountPhoto(Request $request): RedirectResponse
+    {
+        /** @var User $admin */
+        $admin = $request->user();
+        $oldPhoto = $admin->profile_photo_path;
+
+        if (! $oldPhoto) {
+            return redirect(route('admin.account').'#profile-photo-editor')
+                ->with('success', 'There is no profile photo to remove.');
+        }
+
+        $admin->forceFill(['profile_photo_path' => null])->save();
+        Storage::disk('public')->delete($oldPhoto);
+
+        return redirect(route('admin.account').'#profile-photo-editor')
+            ->with('success', 'Admin profile photo removed.');
     }
 
     public function updatePassword(Request $request): RedirectResponse

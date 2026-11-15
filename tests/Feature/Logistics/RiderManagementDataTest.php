@@ -600,6 +600,56 @@ class RiderManagementDataTest extends TestCase
         $this->assertSame(5, $profile->fresh()->parcel_capacity);
     }
 
+    public function test_delivered_parcels_in_open_dispatch_batch_do_not_count_against_capacity(): void
+    {
+        $provider = $this->makeLogisticsProvider(
+            'DELIVERED-LOAD',
+            'capacity-delivered-load@example.test',
+        );
+        $rider = $this->makePendingRider(
+            $provider['user'],
+            'DELIVERED-LOAD',
+            'San Pablo City',
+        );
+
+        $rider['application']->documents()->update([
+            'verification_status' => 'verified',
+            'verified_by' => $provider['user']->id,
+            'verified_at' => now(),
+            'rejection_reason' => null,
+        ]);
+
+        app(RegistrationLifecycleService::class)->approve(
+            $rider['user'],
+            $provider['user'],
+        );
+
+        $profile = $rider['user']->riderProfile()->firstOrFail();
+        $profile->update([
+            'work_type' => 'local',
+            'parcel_capacity' => 5,
+        ]);
+
+        $assignment = $this->makeWorkloadAssignment(
+            $provider,
+            $profile,
+            'DELIVERED-LOAD',
+            2,
+            ParcelStatus::Delivered->value,
+        );
+
+        $this->actingAs($provider['user'])
+            ->patch(
+                route('logistics.riders.capacity.update', $rider['user']),
+                ['parcel_capacity' => 1],
+            )
+            ->assertRedirect(route('logistics.riders.show', $rider['user']))
+            ->assertSessionHas('success', 'Local Rider parcel capacity was updated.');
+
+        $this->assertSame('dispatched', $assignment['batch']->fresh()->status);
+        $this->assertSame(1, $profile->fresh()->parcel_capacity);
+    }
+
     public function test_logistics_cannot_update_a_foreign_rider_capacity(): void
     {
         $providerA = $this->makeLogisticsProvider(

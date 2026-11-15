@@ -9,6 +9,9 @@ use App\Models\Category;
 use App\Models\InventoryMovement;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
+use App\Models\PlatformCampaignParticipation;
+use App\Models\PlatformCampaignParticipationItem;
+use App\Models\PlatformPromotion;
 use App\Models\Policy;
 use App\Models\Product;
 use App\Models\ProductImage;
@@ -20,7 +23,9 @@ use App\Models\SystemSetting;
 use App\Models\User;
 use App\Notifications\WorkflowNotification;
 use App\Services\CheckoutService;
+use App\Services\PisoSaleEligibilityService;
 use App\Services\PostalCodeLookup;
+use App\Services\ProductPricingService;
 use App\Services\ShippingZoneClassifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -309,6 +314,68 @@ class OrdersCheckoutIntegrationTest extends TestCase
             'reason' => 'Retry',
         ])->assertRedirect(route('checkout.confirmation', $order->order_no))
             ->assertSessionHas('warning', CheckoutService::BUYER_ORDER_ALREADY_CANCELLED_MESSAGE);
+    }
+
+    public function test_piso_sale_checkout_reserves_eligibility_until_cancellation_then_restores_it(): void
+    {
+        Notification::fake();
+
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'piso-reservation');
+        $product = $this->product($store, $category, 'Piso Reservation Product');
+        $variant = $this->variant($product, 'PISO-RESERVATION-001', 10_000, 8);
+        $campaign = $this->pisoSaleCampaign($seller, $store, $product, $variant);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+        $quoteToken = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+        $eligibility = app(PisoSaleEligibilityService::class);
+
+        $this->assertTrue($eligibility->canApply($buyer));
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $quoteToken,
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+
+        $order = Order::query()->with('sellerOrders.items')->sole();
+        $this->assertTrue($order->piso_sale_used);
+        $this->assertSame(10000, (int) $order->sellerOrders->sole()->items->sole()->subtotal_minor);
+        $this->assertSame(9900, (int) $order->sellerOrders->sole()->items->sole()->campaign_platform_discount_minor);
+        $this->assertTrue($eligibility->canDisplay($buyer));
+        $this->assertTrue($eligibility->isReserved($buyer));
+        $this->assertFalse($eligibility->canApply($buyer));
+
+        $this->actingAs($buyer)->get(route('home'))
+            ->assertOk()
+            ->assertSee('Reserved in your current order');
+        $this->actingAs($buyer)->get(route('campaigns.show', $campaign))
+            ->assertOk()
+            ->assertSee('This Piso Sale is reserved for an order you’ve already placed.');
+        $this->cartItem($buyer, $variant, 1);
+        $this->actingAs($buyer)->getJson(route('cart.data'))
+            ->assertOk()
+            ->assertJsonPath('data.items.0.price_minor', 10_000)
+            ->assertJsonPath('data.items.0.campaign_name', null);
+
+        $this->actingAs($buyer)->post(route('checkout.cancel', $order->id), [
+            'reason' => 'Changed my mind',
+        ])->assertRedirect(route('checkout.confirmation', $order->order_no));
+
+        $cancelledOrder = $order->fresh();
+        $this->assertTrue($cancelledOrder->piso_sale_used, 'The order snapshot remains immutable after cancellation.');
+        $this->assertFalse($eligibility->isReserved($buyer));
+        $this->assertTrue($eligibility->canApply($buyer));
+        $this->actingAs($buyer)->getJson(route('cart.data'))
+            ->assertOk()
+            ->assertJsonPath('data.items.0.price_minor', 100)
+            ->assertJsonPath('data.items.0.campaign_name', 'Piso Sale Checkout Test');
+
+        $price = app(ProductPricingService::class)->priceForVariant($product->fresh(), $variant->fresh(), buyer: $buyer->fresh());
+        $this->assertSame(100, $price['unit_price_minor']);
+        $this->assertSame('campaign', $price['price_source']);
     }
 
     public function test_stale_buyer_cancellation_after_seller_acceptance_shows_notice_without_cancelling(): void
@@ -1693,5 +1760,43 @@ class OrdersCheckoutIntegrationTest extends TestCase
         ])->assertOk();
 
         return (string) $response->json('data.quote_token');
+    }
+
+    private function pisoSaleCampaign(User $seller, Store $store, Product $product, ProductVariant $variant): PlatformPromotion
+    {
+        $manila = now('Asia/Manila');
+        $campaign = PlatformPromotion::query()->create([
+            'name' => 'Piso Sale Checkout Test',
+            'kind' => PlatformPromotion::KIND_SELLER_CAMPAIGN,
+            'campaign_type' => PlatformPromotion::CAMPAIGN_PISO_SALE,
+            'funding_type' => PlatformPromotion::FUNDING_PLATFORM,
+            'discount_type' => PlatformPromotion::DISCOUNT_FIXED,
+            'status' => PlatformPromotion::STATUS_ACTIVE,
+            'value_minor' => 0,
+            'minimum_spend_minor' => 0,
+            'budget_minor' => 50000,
+            'starts_on' => $manila->copy()->subDay()->toDateString(),
+            'ends_on' => $manila->copy()->addDays(2)->toDateString(),
+            'is_public' => true,
+            'is_featured' => true,
+        ]);
+        $participation = PlatformCampaignParticipation::query()->create([
+            'platform_promotion_id' => $campaign->id,
+            'store_id' => $store->id,
+            'submitted_by' => $seller->id,
+            'status' => PlatformCampaignParticipation::STATUS_APPROVED,
+            'terms_accepted_at' => now(),
+            'submitted_at' => now(),
+            'reviewed_at' => now(),
+        ]);
+        PlatformCampaignParticipationItem::query()->create([
+            'platform_campaign_participation_id' => $participation->id,
+            'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
+            'regular_price_minor' => $variant->price_minor,
+            'campaign_price_minor' => 7000,
+        ]);
+
+        return $campaign;
     }
 }

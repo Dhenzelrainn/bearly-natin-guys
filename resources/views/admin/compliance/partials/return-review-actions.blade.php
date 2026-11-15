@@ -10,7 +10,7 @@
     @if ($case['can_decide'])
         <div class="return-review-important" role="note">
             <i data-lucide="circle-alert" aria-hidden="true"></i>
-            <p><strong>Important</strong><span>Check the Buyer’s reason, Seller’s response, and evidence before deciding.</span></p>
+            <p><strong>Important</strong><span>@if ($case['seller_response_deadline_missed'])The Seller missed the response deadline. Review the Buyer’s reason and available evidence; a Seller response is not required for this Admin decision.@else Check the Buyer’s reason, Seller’s response, and evidence before deciding.@endif</span></p>
         </div>
         <div class="return-action-grid">
             <form
@@ -96,23 +96,35 @@
         </div>
         <a class="button button-secondary button-small" href="{{ route('admin.payments') }}#refund-cash-assignments">View cash-refund progress</a>
     @elseif ($case['can_record_payout'])
-        <div class="return-payout-notice"><i data-lucide="info" aria-hidden="true"></i><p><strong>Completed external payout only · {{ $case['refund_amount'] }}</strong><span>Use this form only after GCash, bank transfer, or another external payout has reached the Buyer. Bearly records the proof; it does not send money.</span></p></div>
+        <div class="return-payout-notice"><i data-lucide="info" aria-hidden="true"></i><p><strong>Record successful external payout · {{ $case['refund_amount'] }}</strong><span>Use this form only after the provider confirms the exact transfer was successfully sent. Bearly records the proof; it does not send money. The case stays open until the Buyer confirms receipt.</span></p></div>
         <a class="button button-secondary button-small" href="{{ route('admin.payments') }}#refund-cash-dispatch">For a cash refund, open the Finance → Logistics → Rider workflow</a>
         <details class="return-payout-disclosure">
-            <summary class="return-payout-disclosure-trigger"><i data-lucide="receipt-text" aria-hidden="true"></i>Record completed external payout</summary>
+            <summary class="return-payout-disclosure-trigger"><i data-lucide="receipt-text" aria-hidden="true"></i>Record payout as sent</summary>
             <form method="POST" enctype="multipart/form-data" action="{{ route('admin.compliance.returns-refunds.record-payout', $case['refund_id']) }}" class="return-payout-form">
                 @csrf
-                <label class="return-payout-confirmation" for="refund-external-payout-confirmed-{{ $caseIndex }}">
-                    <input id="refund-external-payout-confirmed-{{ $caseIndex }}" type="checkbox" name="external_payout_confirmed" value="1" required>
-                    <span class="return-payout-confirmation-copy"><strong>I confirm this exact payout was already sent to the Buyer.</strong><small>Submitting records the payout, updates financial records, and resolves the case. It does not send money.</small></span>
+                <label class="return-payout-confirmation" for="refund-payout-sent-confirmed-{{ $caseIndex }}">
+                    <input id="refund-payout-sent-confirmed-{{ $caseIndex }}" type="checkbox" name="payout_sent_confirmed" value="1" required>
+                    <span class="return-payout-confirmation-copy"><strong>I verified the provider marked this exact payout as successfully sent.</strong><small>Submitting records the payout and financial entries. It does not confirm Buyer receipt or resolve the case.</small></span>
                 </label>
                 <label for="refund-method-{{ $caseIndex }}">External payout method<select id="refund-method-{{ $caseIndex }}" name="method" required><option value="">Choose method</option><option value="gcash">GCash</option><option value="bank_transfer">Bank transfer</option><option value="other">Other</option></select></label>
                 <label for="refund-reference-{{ $caseIndex }}">External payout reference<input id="refund-reference-{{ $caseIndex }}" name="provider_reference" type="text" maxlength="150" required></label>
                 <label for="refund-paid-on-{{ $caseIndex }}">Date paid<input id="refund-paid-on-{{ $caseIndex }}" name="external_paid_on" type="date" max="{{ now()->toDateString() }}" required></label>
                 <label for="refund-receipt-{{ $caseIndex }}">Payout receipt<input id="refund-receipt-{{ $caseIndex }}" name="receipt" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required><small>JPG, PNG, WebP, or PDF · max 5 MB. Upload the genuine external transaction confirmation.</small></label>
-                <button type="submit" class="button button-primary"><i data-lucide="check-check" aria-hidden="true"></i>Confirm &amp; record payout</button>
+                <button type="submit" class="button button-primary"><i data-lucide="check-check" aria-hidden="true"></i>Record payout as sent</button>
             </form>
         </details>
+    @elseif ($case['payout_confirmation_pending'])
+        <div class="return-payout-notice" role="status">
+            <i data-lucide="hourglass" aria-hidden="true"></i>
+            <p><strong>External payout recorded · awaiting Buyer confirmation</strong><span>The financial payout is recorded. The case remains open until the Buyer confirms receipt.</span></p>
+        </div>
+        @if ($case['payout_receipt_url'])<a class="button button-secondary button-small" href="{{ $case['payout_receipt_url'] }}">Review payout receipt</a>@endif
+        @if ($case['buyer_payout_not_received_reported'])
+            <div class="return-payout-notice" role="alert">
+                <i data-lucide="triangle-alert" aria-hidden="true"></i>
+                <p><strong>Buyer reports the payout was not received · {{ $case['buyer_payout_not_received_at'] }}</strong><span>{{ $case['buyer_payout_not_received_actor'] ?? 'Buyer' }}: {{ $case['buyer_payout_not_received_note'] }}</span></p>
+            </div>
+        @endif
     @elseif ($case['can_record_responsibility'])
         <div class="return-payout-notice"><i data-lucide="info" aria-hidden="true"></i><p><strong>Financial responsibility is missing</strong><span>This legacy approved refund must have a documented Seller or Platform responsibility decision before Admin can record a payout.</span></p></div>
         <form method="POST" action="{{ route('admin.compliance.returns-refunds.responsibility', $case['refund_id']) }}" class="return-responsibility-form">

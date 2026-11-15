@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\AccountStatus;
+use App\Enums\ParcelStatus;
 use App\Enums\RiderWorkType;
 use App\Enums\UserRole;
 use App\Models\AuditLog;
@@ -144,10 +145,20 @@ class RiderCapacityService
                 '=',
                 'dispatch_batch_parcels.dispatch_batch_id',
             )
+            ->join(
+                'parcels',
+                'parcels.id',
+                '=',
+                'dispatch_batch_parcels.parcel_id',
+            )
             ->where('dispatch_batches.rider_profile_id', $riderProfileId)
             ->whereNotIn('dispatch_batches.status', [
                 'completed',
                 'cancelled',
+            ])
+            ->whereNotIn('parcels.status', [
+                ParcelStatus::Delivered->value,
+                ParcelStatus::Returned->value,
             ])
             ->count('dispatch_batch_parcels.parcel_id');
     }

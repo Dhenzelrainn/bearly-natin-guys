@@ -1,5 +1,24 @@
 /* BEARLY shared buyer JavaScript: homepage + legacy page + category V2. */
 import { toggleBuyerWishlist } from './buyer-wishlist';
+import { formatCampaignTimeRemaining } from './campaign-countdown';
+import {
+    categoryResultsUrl,
+    catalogPriceLimit,
+    defaults,
+    matchesCatalogSubcategory,
+    normalizeCategoryFacets,
+    normalizeCategorySlug,
+    readState,
+} from './buyer-category-filters.js';
+
+export {
+    categoryResultsUrl,
+    catalogPriceLimit,
+    defaults,
+    matchesCatalogSubcategory,
+    normalizeCategoryFacets,
+    readState,
+} from './buyer-category-filters.js';
 
 const buyerStorageKey = key => window.bearlyStorageKey?.(key) || `bearly-${key}-v1`;
 const SEARCH_HISTORY_KEY = buyerStorageKey('search-history');
@@ -18,20 +37,6 @@ export function selectProducts(products, { category = '', search = '', sort = 'f
     if (sort === 'name') selected.sort((a, b) => a.name.localeCompare(b.name));
 
     return selected;
-}
-
-function normalizeCategorySlug(slug) {
-    const value = String(slug ?? '').trim().toLowerCase();
-
-    const legacyMap = {
-        'mens': 'men-s-apparel',
-        'mens-apparel': 'men-s-apparel',
-        'womens': 'women-s-apparel',
-        'womens-apparel': 'women-s-apparel',
-        'foods-and-gourmet': 'food-and-gourmet',
-    };
-
-    return legacyMap[value] ?? value;
 }
 
 export function photoPosition(index) {
@@ -329,6 +334,59 @@ function bindProductReviewButton(detail) {
 
 if (typeof document !== 'undefined') {
     initialize();
+    initializeDailyDiscoveriesFilters();
+}
+
+function initializeDailyDiscoveriesFilters() {
+    const form = document.getElementById('daily-discoveries-filter-form');
+    if (!form) return;
+
+    const minInput = document.getElementById('daily-discoveries-min');
+    const maxInput = document.getElementById('daily-discoveries-max');
+    const minRange = document.getElementById('daily-discoveries-min-range');
+    const maxRange = document.getElementById('daily-discoveries-max-range');
+    const priceLimit = Number(form.dataset.priceLimit) || 5000;
+
+    const syncRange = (input, range, fallback) => {
+        const value = input.value === '' ? fallback : Number(input.value);
+        if (Number.isFinite(value)) {
+            range.value = String(Math.min(priceLimit, Math.max(0, value)));
+        }
+    };
+
+    minInput.addEventListener('input', () => syncRange(minInput, minRange, 0));
+    maxInput.addEventListener('input', () => syncRange(maxInput, maxRange, priceLimit));
+
+    minRange.addEventListener('input', () => {
+        let value = Number(minRange.value);
+        const maximum = maxInput.value === '' ? priceLimit : Number(maxInput.value);
+        if (value > maximum) {
+            value = maximum;
+            minRange.value = String(value);
+        }
+        minInput.value = value === 0 ? '' : String(value);
+    });
+
+    maxRange.addEventListener('input', () => {
+        let value = Number(maxRange.value);
+        const minimum = minInput.value === '' ? 0 : Number(minInput.value);
+        if (value < minimum) {
+            value = minimum;
+            maxRange.value = String(value);
+        }
+        maxInput.value = value >= priceLimit ? '' : String(value);
+    });
+
+    const collapseButton = form.closest('.daily-discoveries-filter-body')
+        ?.querySelector('[data-daily-discoveries-collapse]');
+    const groups = [...form.querySelectorAll('[data-daily-filter-group]')];
+
+    collapseButton?.addEventListener('click', () => {
+        const expand = groups.every(group => !group.open);
+        groups.forEach(group => { group.open = expand; });
+        collapseButton.setAttribute('aria-expanded', String(expand));
+        collapseButton.textContent = expand ? 'Collapse all' : 'Expand all';
+    });
 }
 
 function initialize() {
@@ -575,10 +633,8 @@ function initialize() {
 
         $('result-count').textContent = `Showing ${visible.length} of ${results.length} ${live ? 'products' : 'sample products'}`;
 
-        $('view-all').hidden = false;
-        $('view-all').innerHTML = filtered
-            ? 'Clear all <span aria-hidden="true">×</span>'
-            : 'View all <span aria-hidden="true">→</span>';
+        $('view-all').hidden = filtered;
+        $('clear-home-filters').hidden = !filtered;
 
         $('active-filters').innerHTML = [
             state.category
@@ -657,6 +713,7 @@ function initialize() {
 
     const mobileQuery = window.matchMedia('(max-width:980px)');
     const sidebarShell = document.querySelector('.shell');
+    const sidebar = $('sidebar');
     const sidebarCollapse = $('sidebar-collapse');
     const sidebarExpand = $('sidebar-expand');
 
@@ -664,6 +721,7 @@ function initialize() {
         if (mobileQuery.matches) return;
 
         sidebarShell.classList.toggle('is-sidebar-collapsed', collapsed);
+        sidebar.inert = collapsed;
         sidebarCollapse.hidden = collapsed;
         sidebarExpand.hidden = !collapsed;
         sidebarCollapse.setAttribute('aria-expanded', String(!collapsed));
@@ -701,6 +759,11 @@ function initialize() {
     $('sidebar-backdrop').addEventListener('click', () => menu(false));
     sidebarCollapse.addEventListener('click', () => setSidebarCollapsed(true, true));
     sidebarExpand.addEventListener('click', () => setSidebarCollapsed(false, true));
+    sidebarExpand.addEventListener('pointerenter', event => {
+        if (mobileQuery.matches || event.pointerType !== 'mouse') return;
+
+        setSidebarCollapsed(false);
+    });
 
     document.addEventListener('keydown', event => {
         if (!$('sidebar').classList.contains('is-open')) return;
@@ -749,16 +812,7 @@ function initialize() {
         change();
     });
 
-    $('view-all').addEventListener('click', () => {
-        const filtered = Boolean(state.category || state.search || state.sort !== 'featured');
-        if (filtered) {
-            reset();
-            return;
-        }
-
-        state.limit = products.length;
-        render();
-    });
+    $('clear-home-filters').addEventListener('click', reset);
     $('reset-search').addEventListener('click', reset);
 
     $('load-more').addEventListener('click', () => {
@@ -2589,23 +2643,6 @@ if (typeof document !== 'undefined') {
    CATEGORY PAGE V2
    ========================================================= */
 
-export const defaults = (priceLimit = 5000) => ({
-    search: '',
-    subcategory: '',
-    min: 0,
-    max: priceLimit,
-    size: [],
-    color: [],
-    condition: [],
-    location: [],
-    shipping: false,
-    voucher: false,
-    rating: 0,
-    sort: 'featured',
-    saved: false,
-    view: 'grid',
-});
-
 export function catalogWithFilterGroups(products, category) {
     const groupsByCategory = {
         'kids-and-baby': {
@@ -2676,16 +2713,6 @@ export function catalogWithFilterGroups(products, category) {
     }));
 }
 
-export function matchesCatalogSubcategory(product, subcategory) {
-    if (!subcategory) return false;
-
-    const selected = String(subcategory);
-    return String(product.marketplace_subcategory_slug || '') === selected ||
-        String(product.marketplace_subcategory_id || '') === selected ||
-        product.subcategory === selected ||
-        (product.filter_groups || []).includes(selected);
-}
-
 export function filterCatalog(products, state, savedIds = []) {
     const search = state.search.trim().toLowerCase();
 
@@ -2703,7 +2730,6 @@ export function filterCatalog(products, state, savedIds = []) {
                     !state[key].length ||
                     state[key].includes(product[key])
             ) &&
-            (!state.shipping || product.free_shipping) &&
             (!state.voucher || product.voucher) &&
             product.rating >= state.rating &&
             (!state.saved || savedIds.includes(product.id))
@@ -2722,76 +2748,6 @@ export function filterCatalog(products, state, savedIds = []) {
     }
 
     return rows;
-}
-
-export function readState(params, products) {
-    const priceLimit = catalogPriceLimit(products);
-    const state = defaults(priceLimit);
-
-    state.search = (params.get('q') || '').slice(0, 120);
-
-    state.subcategory = products.some(
-        product => matchesCatalogSubcategory(product, params.get('sub'))
-    )
-        ? params.get('sub')
-        : '';
-
-    for (const key of ['size', 'color', 'condition', 'location']) {
-        const valid = new Set(
-            products.flatMap(product =>
-                key === 'size'
-                    ? product.sizes
-                    : [product[key]]
-            )
-        );
-
-        state[key] = [
-            ...new Set(params.getAll(key)),
-        ].filter(value => valid.has(value));
-    }
-
-    for (const key of ['min', 'max']) {
-        const value = Number(params.get(key) ?? state[key]);
-
-        if (Number.isFinite(value)) {
-            state[key] = Math.min(
-                priceLimit,
-                Math.max(0, value)
-            );
-        }
-    }
-
-    if (state.min > state.max) {
-        state.min = 0;
-        state.max = priceLimit;
-    }
-
-    state.shipping = params.get('shipping') === '1';
-    state.voucher = params.get('voucher') === '1';
-    state.saved = params.get('saved') === '1';
-    state.rating = params.get('rating') === '4' ? 4 : 0;
-
-    state.sort = [
-        'featured',
-        'newest',
-        'price-low',
-        'price-high',
-    ].includes(params.get('sort'))
-        ? params.get('sort')
-        : 'featured';
-
-    state.view =
-        params.get('view') === 'list'
-            ? 'list'
-            : 'grid';
-
-    return state;
-}
-
-export function catalogPriceLimit(products) {
-    return Math.max(5000, ...products.map(product =>
-        Math.ceil((Number(product.price) || 0) / 1000) * 1000
-    ));
 }
 
 const categoryEscapeHtml = value =>
@@ -2825,12 +2781,11 @@ function init() {
     const $ = id => document.getElementById(id);
     const usingLiveCatalog = document.body.dataset.liveCatalog === 'true';
     const canonicalLiveTaxonomy = usingLiveCatalog && document.body.dataset.canonicalMarketplaceTaxonomy === 'true';
-    const nextPageNumber = Number(document.body.dataset.nextPage || 0);
     const catalogNoun = count => usingLiveCatalog
         ? (count === 1 ? 'product' : 'products')
         : (count === 1 ? 'sample product' : 'sample products');
 
-    const products = catalogWithFilterGroups(
+    let products = catalogWithFilterGroups(
         JSON.parse($('bc-data').textContent),
         document.body.dataset.category
     );
@@ -2845,7 +2800,21 @@ function init() {
             navigation.after(note);
         }
     }
-    const priceLimit = catalogPriceLimit(products);
+    let priceLimit = Math.max(
+        catalogPriceLimit(products),
+        Number(new URLSearchParams(location.search).get('min')) || 0,
+        Number(new URLSearchParams(location.search).get('max')) || 0,
+    );
+    const remoteMode = usingLiveCatalog;
+    let remoteTotal = products.length;
+    let remotePage = 1;
+    let remoteLastPage = Number(document.body.dataset.nextPage || 0) > 0 ? 2 : 1;
+    let remoteHasMore = remotePage < remoteLastPage;
+    let remoteSavedCount = products.filter(product => product.is_wishlisted).length;
+    let remoteLoading = false;
+    let remoteController = null;
+    let remoteError = '';
+    let searchTimeout = null;
 
     for (const id of ['bc-min', 'bc-max', 'bc-min-range', 'bc-max-range']) {
         $(id).max = String(priceLimit);
@@ -2858,7 +2827,8 @@ function init() {
 
     let state = readState(
         new URLSearchParams(location.search),
-        products
+        products,
+        remoteMode,
     );
 
     let limit = 20;
@@ -2896,7 +2866,11 @@ function init() {
     };
 
     function option(container, key, values) {
-        $(container).innerHTML = values
+        const target = $(container);
+        if (!target) return;
+
+        target.innerHTML = values.length
+            ? values
             .map(value => {
                 if (key === 'size') {
                     return `
@@ -2941,29 +2915,51 @@ function init() {
                     </label>
                 `;
             })
-            .join('');
+            .join('')
+            : '<p class="filter-empty-option">No options available in this category.</p>';
     }
 
-    option(
-        'bc-size-options',
-        'size',
-        [...new Set(products.flatMap(product => product.sizes))]
-    );
+    function renderFacets(facets) {
+        facets = normalizeCategoryFacets(facets);
+        const facetMap = {
+            size: facets.sizes || [],
+            color: facets.colors || [],
+            condition: facets.conditions || [],
+            location: facets.locations || [],
+        };
 
-    for (const key of [
-        'color',
-        'condition',
-        'location',
-    ]) {
-        option(
-            `bc-${key}-options`,
-            key,
-            [
-                ...new Set(
-                    products.map(product => product[key])
-                ),
-            ]
+        for (const [key, values] of Object.entries(facetMap)) {
+            option(`bc-${key}-options`, key, values);
+            const valid = new Set(values.map(value => String(value).toLocaleLowerCase()));
+            state[key] = state[key].filter(value => valid.has(String(value).toLocaleLowerCase()));
+        }
+
+        const explicitMax = new URLSearchParams(location.search).has('max');
+        priceLimit = Math.max(
+            facets.price_limit,
+            state.min,
+            explicitMax ? state.max : 0,
         );
+        if (!explicitMax) {
+            state.max = priceLimit;
+        }
+
+        for (const id of ['bc-min', 'bc-max', 'bc-min-range', 'bc-max-range']) {
+            $(id).max = String(priceLimit);
+        }
+        $('bc-max').placeholder = String(priceLimit);
+        const upperPricePreset = document.querySelector('[data-price="1001,5000"]');
+        if (upperPricePreset) upperPricePreset.dataset.price = `1001,${priceLimit}`;
+    }
+
+    if (!remoteMode) {
+        renderFacets({
+            sizes: [...new Set(products.flatMap(product => product.sizes))],
+            colors: [...new Set(products.flatMap(product => product.colors || [product.color]).filter(Boolean))],
+            conditions: [...new Set(products.map(product => product.condition).filter(Boolean))],
+            locations: [...new Set(products.map(product => product.location).filter(Boolean))],
+            price_limit: priceLimit,
+        });
     }
 
     function chips() {
@@ -3013,14 +3009,6 @@ function init() {
                     value,
                 ])
             );
-        }
-
-        if (state.shipping) {
-            result.push([
-                'shipping',
-                '',
-                'Free shipping',
-            ]);
         }
 
         if (state.voucher) {
@@ -3127,16 +3115,11 @@ function init() {
     }
 
     function render() {
-        const filtered = filterCatalog(
-            products,
-            state,
-            saved
-        );
-
-        const shown = filtered.slice(
-            0,
-            limit
-        );
+        const filtered = remoteMode
+            ? products
+            : filterCatalog(products, state, saved);
+        const resultCount = remoteMode ? remoteTotal : filtered.length;
+        const shown = remoteMode ? filtered : filtered.slice(0, limit);
 
         const fragment =
             document.createDocumentFragment();
@@ -3228,19 +3211,18 @@ function init() {
 
             const heart =
                 card.querySelector('[data-save]');
+            const isSaved = remoteMode
+                ? Boolean(product.is_wishlisted)
+                : saved.includes(Number(product.id));
 
             heart.setAttribute(
                 'aria-pressed',
-                String(saved.includes(product.id))
+                String(isSaved)
             );
 
             heart.setAttribute(
                 'aria-label',
-                `${
-                    saved.includes(product.id)
-                        ? 'Remove'
-                        : 'Save'
-                } ${product.name}`
+                `${isSaved ? 'Remove' : 'Save'} ${product.name}`
             );
 
             fragment.append(card);
@@ -3254,15 +3236,18 @@ function init() {
         );
 
         $('bc-count').textContent =
-            `${filtered.length} ${catalogNoun(filtered.length)}`;
+            `${resultCount} ${catalogNoun(resultCount)}`;
 
-        $('bc-status').textContent = wishlistNotice
-            || `Showing ${shown.length} of ${filtered.length} ${catalogNoun(filtered.length)}`;
+        $('bc-status').textContent = remoteError
+            ? 'Unable to load products. Select Retry to try again.'
+            : remoteLoading
+                ? 'Loading category products…'
+                : wishlistNotice || `Showing ${shown.length} of ${resultCount} ${catalogNoun(resultCount)}`;
+        $('bc-grid').setAttribute('aria-busy', String(remoteLoading));
 
-        $('bc-empty').hidden =
-            filtered.length > 0;
+        $('bc-empty').hidden = remoteLoading || Boolean(remoteError) || resultCount > 0;
 
-        if (usingLiveCatalog && filtered.length === 0) {
+        if (usingLiveCatalog && resultCount === 0 && !remoteLoading && !remoteError) {
             const hasActiveFilters = chips().length > 0;
             const emptyTitle = $('bc-empty').querySelector('h2');
             const emptyCopy = $('bc-empty').querySelector('p');
@@ -3282,8 +3267,15 @@ function init() {
         }
 
         const hasLocalMore = shown.length < filtered.length;
-        $('bc-more').hidden = !hasLocalMore && !(usingLiveCatalog && nextPageNumber > 0);
-        $('bc-more').textContent = hasLocalMore ? 'Load more products' : 'Load next page';
+        $('bc-more').hidden = remoteMode
+            ? !remoteError && !remoteHasMore
+            : !hasLocalMore;
+        $('bc-more').disabled = remoteLoading;
+        $('bc-more').textContent = remoteLoading
+            ? 'Loading…'
+            : remoteError
+                ? 'Retry'
+                : 'Load more products';
 
         const selected = chips();
 
@@ -3314,10 +3306,10 @@ function init() {
                 : '';
 
         $('bc-show-results').textContent =
-            `Show ${filtered.length} results`;
+            `Show ${resultCount} results`;
 
         $('bc-saved-count').textContent =
-            saved.length;
+            remoteMode ? remoteSavedCount : saved.length;
 
         $('bc-saved-filter').setAttribute(
             'aria-pressed',
@@ -3406,6 +3398,7 @@ function init() {
             'location',
             'min',
             'max',
+            'page',
             'shipping',
             'voucher',
             'rating',
@@ -3467,11 +3460,7 @@ function init() {
             );
         }
 
-        for (const key of [
-            'shipping',
-            'voucher',
-            'saved',
-        ]) {
+        for (const key of ['voucher', 'saved']) {
             if (state[key]) {
                 url.searchParams.set(key, '1');
             }
@@ -3505,23 +3494,89 @@ function init() {
         );
     }
 
+    async function loadCategoryResults({ append = false } = {}) {
+        if (!remoteMode || (append && remoteLoading)) return;
+
+        if (!append) remoteController?.abort();
+
+        const controller = new AbortController();
+        remoteController = controller;
+        remoteLoading = true;
+        remoteError = '';
+
+        if (!append) {
+            products = [];
+            remoteTotal = 0;
+            remotePage = 1;
+            remoteLastPage = 1;
+            remoteHasMore = false;
+        }
+
+        render();
+
+        const endpoint = categoryResultsUrl(
+            location.href,
+            '/products/category-data',
+            document.body.dataset.category,
+            append ? remotePage + 1 : 1,
+        );
+
+        try {
+            const response = await fetch(endpoint, {
+                credentials: 'same-origin',
+                headers: { Accept: 'application/json' },
+                signal: controller.signal,
+            });
+            const payload = await response.json();
+            if (!response.ok || !payload?.data) {
+                throw new Error(payload?.message || 'Unable to load category products.');
+            }
+            if (remoteController !== controller) return;
+
+            const data = payload.data;
+            const nextProducts = catalogWithFilterGroups(
+                Array.isArray(data.products) ? data.products : [],
+                document.body.dataset.category,
+            );
+
+            products = append
+                ? [...products, ...nextProducts.filter(product => !products.some(existing => Number(existing.id) === Number(product.id)))]
+                : nextProducts;
+            remoteTotal = Number(data.pagination?.total) || 0;
+            remotePage = Number(data.pagination?.current_page) || 1;
+            remoteLastPage = Number(data.pagination?.last_page) || 1;
+            remoteHasMore = Boolean(data.pagination?.has_more);
+            remoteSavedCount = Number(data.saved_count) || 0;
+
+            renderFacets(data.facets || {});
+            syncInputs();
+            writeUrl();
+        } catch (error) {
+            if (error?.name === 'AbortError') return;
+            if (remoteController === controller) {
+                remoteError = error?.message || 'Unable to load category products.';
+            }
+        } finally {
+            if (remoteController === controller) {
+                remoteLoading = false;
+                render();
+            }
+        }
+    }
+
     function change() {
         limit = 20;
         syncInputs();
-        render();
         writeUrl();
+
+        if (remoteMode) {
+            loadCategoryResults();
+        } else {
+            render();
+        }
     }
 
     function reset() {
-        if (canonicalLiveTaxonomy) {
-            const url = new URL(location.href);
-            for (const key of ['q', 'sub', 'size', 'color', 'condition', 'location', 'min', 'max', 'shipping', 'voucher', 'rating', 'sort', 'saved', 'view', 'page']) {
-                url.searchParams.delete(key);
-            }
-            location.assign(url);
-            return;
-        }
-
         const view = state.view;
 
         state = defaults(priceLimit);
@@ -3552,9 +3607,13 @@ function init() {
                 state.search;
 
             limit = 20;
-
-            render();
             writeUrl();
+            if (remoteMode) {
+                window.clearTimeout(searchTimeout);
+                searchTimeout = window.setTimeout(() => loadCategoryResults(), 250);
+            } else {
+                render();
+            }
         }
     );
 
@@ -3704,10 +3763,8 @@ function init() {
     $('bc-more').addEventListener(
         'click',
         () => {
-            if (usingLiveCatalog && nextPageNumber > 0 && $('bc-grid').children.length >= filterCatalog(products, state, saved).length) {
-                const url = new URL(location.href);
-                url.searchParams.set('page', String(nextPageNumber));
-                location.assign(url);
+            if (remoteMode) {
+                loadCategoryResults({ append: !remoteError });
                 return;
             }
 
@@ -4819,18 +4876,6 @@ function init() {
                     'data-sub'
                 )
             ) {
-                if (canonicalLiveTaxonomy) {
-                    const url = new URL(location.href);
-                    const selectedSubcategory = state.subcategory === button.dataset.sub
-                        ? ''
-                        : button.dataset.sub;
-                    if (selectedSubcategory) url.searchParams.set('sub', selectedSubcategory);
-                    else url.searchParams.delete('sub');
-                    url.searchParams.delete('page');
-                    location.assign(url);
-                    return;
-                }
-
                 state.subcategory =
                     state.subcategory ===
                     button.dataset.sub
@@ -4851,8 +4896,8 @@ function init() {
                 state.view =
                     button.dataset.view;
 
-                render();
                 writeUrl();
+                render();
             }
 
             if (
@@ -4919,9 +4964,16 @@ function init() {
                 saveButton.disabled = true;
                 try {
                     const result = await toggleBuyerWishlist(id);
+                    const wasSaved = products.some(product =>
+                        Number(product.id) === id && Boolean(product.is_wishlisted)
+                    );
                     saved = result.is_wishlisted
                         ? [...new Set([...saved, id])]
                         : saved.filter(value => value !== id);
+                    products = products.map(product => Number(product.id) === id
+                        ? { ...product, is_wishlisted: Boolean(result.is_wishlisted) }
+                        : product);
+                    remoteSavedCount = Math.max(0, remoteSavedCount + (result.is_wishlisted ? (wasSaved ? 0 : 1) : (wasSaved ? -1 : 0)));
                     wishlistNotice = result.is_wishlisted ? 'Saved to My Likes.' : 'Removed from My Likes.';
                 } catch (error) {
                     wishlistNotice = error.message || 'Unable to update My Likes.';
@@ -4929,7 +4981,11 @@ function init() {
                     saveButton.disabled = false;
                 }
 
-                render();
+                if (remoteMode && state.saved) {
+                    loadCategoryResults();
+                } else {
+                    render();
+                }
                 $('bc-grid')
                     .querySelector(`[data-id="${id}"] [data-save]`)
                     ?.focus({ preventScroll: true });
@@ -5048,18 +5104,21 @@ function init() {
                 new URLSearchParams(
                     location.search
                 ),
-                products
+                products,
+                remoteMode,
             );
 
             limit = 20;
 
             syncInputs();
-            render();
+            if (remoteMode) loadCategoryResults();
+            else render();
         }
     );
 
     syncInputs();
     render();
+    if (remoteMode) loadCategoryResults();
 }
 
 
@@ -5589,9 +5648,33 @@ function initBearlyHomeCampaigns() {
     applyFilter('all');
 }
 
+function initCampaignCountdowns() {
+    const countdowns = [...document.querySelectorAll('[data-campaign-countdown]')];
+    if (!countdowns.length) return;
+
+    const update = () => {
+        countdowns.forEach(countdown => {
+            const output = countdown.querySelector('[data-campaign-countdown-value]');
+            if (!output) return;
+
+            const remaining = formatCampaignTimeRemaining(countdown.dataset.campaignEndsAt);
+            output.textContent = remaining;
+            countdown.dataset.campaignCountdownExpired = String(remaining === 'Ended');
+        });
+    };
+
+    update();
+    window.setInterval(update, 1000);
+}
+
 if (typeof document !== 'undefined') {
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initBearlyHomeCampaigns);
-    else initBearlyHomeCampaigns();
+    const initializeBuyerCampaignWidgets = () => {
+        initBearlyHomeCampaigns();
+        initCampaignCountdowns();
+    };
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeBuyerCampaignWidgets);
+    else initializeBuyerCampaignWidgets();
 }
 
 /* Bearly global navbar state: keeps notification/cart badges in sync across buyer pages. */

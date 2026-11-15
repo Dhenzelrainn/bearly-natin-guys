@@ -453,7 +453,7 @@
                                     <input type="hidden" name="scan_method" value="manual" data-waybill-scan-method>
                                     <small id="rider-waybill-scan-help">Scan the Code 128 barcode printed on a Parcel label, use a USB/Bluetooth scanner, or enter the Waybill reference shown above.</small>
                                 </div>
-                                <div class="waybill-camera-panel" data-waybill-camera-panel hidden><video data-waybill-camera-video playsinline muted></video><p class="waybill-camera-status" data-waybill-camera-status>Point the camera at the Code 128 Parcel barcode.</p><button type="button" class="button button-small" data-waybill-camera-close>Cancel camera</button></div>
+                                <div class="waybill-camera-panel" data-waybill-camera-panel hidden><div class="waybill-camera-fallback" data-waybill-camera-fallback hidden></div><video data-waybill-camera-video playsinline muted></video><p class="waybill-camera-status" data-waybill-camera-status role="status" aria-live="polite">Point the camera at the Code 128 Parcel barcode.</p><button type="button" class="button button-small" data-waybill-camera-close>Cancel camera</button></div>
                             </div>
 
                             <button

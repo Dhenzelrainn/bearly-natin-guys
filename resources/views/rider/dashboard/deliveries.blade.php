@@ -15,9 +15,11 @@
         </h2>
 
         <p>
-            Review real dispatch assignments released
+            @include('partials.dashboard-greeting') Review real dispatch assignments released
             by your Logistics sorting center.
         </p>
+
+        @include('partials.dashboard-context')
     </div>
 
     <div class="page-actions">

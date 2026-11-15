@@ -25,8 +25,7 @@ async function setupRiderAttendanceQr() {
         return new Intl.DateTimeFormat('en-PH', {
             timeZone: 'Asia/Manila',
             dateStyle: 'medium',
-            hour: 'numeric',
-            minute: '2-digit',
+            timeStyle: 'short',
         }).format(date);
     };
 

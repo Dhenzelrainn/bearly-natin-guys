@@ -43,7 +43,7 @@ return [
             'group' => 'announcements',
             'audience' => ['buyer', 'seller', 'logistics', 'rider'],
             'mandatory' => true,
-            'defaults' => ['in_app' => true, 'email' => false],
+            'defaults' => ['in_app' => true, 'email' => true],
         ],
 
         /*
@@ -77,6 +77,15 @@ return [
             'audience' => ['buyer'],
             'mandatory' => false,
             'defaults' => ['in_app' => true, 'email' => true],
+        ],
+
+        'buyer_refund_cash_tracking' => [
+            'label' => 'COD cash refund tracking',
+            'description' => 'Rider delivery attempts and Logistics/Finance verification progress for your COD cash refund.',
+            'group' => 'returns',
+            'audience' => ['buyer'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => false],
         ],
 
         'buyer_message_received' => [
@@ -175,6 +184,15 @@ return [
             'defaults' => ['in_app' => true, 'email' => true],
         ],
 
+        'seller_campaign_available' => [
+            'label' => 'Bearly campaigns',
+            'description' => 'New Bearly campaigns available to your published Store.',
+            'group' => 'campaigns',
+            'audience' => ['seller'],
+            'mandatory' => true,
+            'defaults' => ['in_app' => true, 'email' => false],
+        ],
+
         /*
         |------------------------------------------------------------------
         | Admin events
@@ -208,6 +226,33 @@ return [
             'defaults' => ['in_app' => true, 'email' => true],
         ],
 
+        'admin_return_response_overdue' => [
+            'label' => 'Overdue Seller return responses',
+            'description' => 'Return and refund cases escalated to Admin review after the Seller response deadline passed.',
+            'group' => 'returns',
+            'audience' => ['admin'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => true],
+        ],
+
+        'admin_return_ready_for_refund' => [
+            'label' => 'Returns ready for refund review',
+            'description' => 'Seller-inspected return cases ready for Admin refund review.',
+            'group' => 'returns',
+            'audience' => ['admin'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => true],
+        ],
+
+        'admin_return_buyer_refund_updates' => [
+            'label' => 'Buyer refund receipt updates',
+            'description' => 'Buyer confirmations and reports about externally paid refunds awaiting receipt confirmation.',
+            'group' => 'returns',
+            'audience' => ['admin'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => true],
+        ],
+
         'admin_withdrawal_submitted' => [
             'label' => 'Withdrawal reviews',
             'description' => 'Seller withdrawals waiting for Finance review.',
@@ -229,6 +274,24 @@ return [
         'admin_cod_discrepancy' => [
             'label' => 'COD discrepancies',
             'description' => 'COD collections where the cash received differs from the amount due.',
+            'group' => 'finance',
+            'audience' => ['admin'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => true],
+        ],
+
+        'admin_refund_cash_received_by_logistics' => [
+            'label' => 'Refund cash received by Logistics',
+            'description' => 'Refund cash handoffs acknowledged by Logistics and awaiting Rider assignment.',
+            'group' => 'finance',
+            'audience' => ['admin'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => true],
+        ],
+
+        'admin_refund_cash_ready_for_finance' => [
+            'label' => 'Refund cash ready for Finance',
+            'description' => 'Logistics-verified Buyer acknowledgments awaiting Finance completion.',
             'group' => 'finance',
             'audience' => ['admin'],
             'mandatory' => false,
@@ -298,6 +361,15 @@ return [
         'logistics_delivery_parcels_verified' => [
             'label' => 'Delivery parcel verification',
             'description' => 'One alert when every Parcel assigned to a Rider delivery stop has been barcode-verified.',
+            'group' => 'shipments',
+            'audience' => ['logistics'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => false],
+        ],
+
+        'logistics_return_delivery_completed' => [
+            'label' => 'Return delivery completed',
+            'description' => 'Rider-confirmed return deliveries to Sellers, now awaiting Seller inspection.',
             'group' => 'shipments',
             'audience' => ['logistics'],
             'mandatory' => false,
@@ -383,6 +455,15 @@ return [
             'audience' => ['logistics'],
             'mandatory' => false,
             'defaults' => ['in_app' => true, 'email' => true],
+        ],
+
+        'logistics_refund_cash_verification_required' => [
+            'label' => 'Refund cash delivery verification',
+            'description' => 'Rider-reported cash deliveries awaiting signed Buyer acknowledgment verification.',
+            'group' => 'cash',
+            'audience' => ['logistics'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => false],
         ],
 
         'logistics_message_received' => [

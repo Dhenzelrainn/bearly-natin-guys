@@ -32,7 +32,7 @@
                 <input id="transfer-center" type="text" value="{{ $sortingCenter?->name ?? 'No active Sorting Center available' }}" readonly>
             </div>
         </div>
-        <div class="waybill-camera-panel" data-waybill-camera-panel hidden><video data-waybill-camera-video playsinline muted></video><p class="waybill-camera-status" data-waybill-camera-status>Point the camera at the Code 128 Parcel barcode.</p><button type="button" class="button button-small" data-waybill-camera-close>Cancel camera</button></div>
+        <div class="waybill-camera-panel" data-waybill-camera-panel hidden><div class="waybill-camera-fallback" data-waybill-camera-fallback hidden></div><video data-waybill-camera-video playsinline muted></video><p class="waybill-camera-status" data-waybill-camera-status role="status" aria-live="polite">Point the camera at the Code 128 Parcel barcode.</p><button type="button" class="button button-small" data-waybill-camera-close>Cancel camera</button></div>
         <div class="zone-routing-note is-handoff" data-handoff-preview hidden aria-live="polite">
             <strong data-handoff-preview-waybill></strong>
             <small data-handoff-preview-count></small>

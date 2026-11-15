@@ -43,7 +43,14 @@ test('Rider pickup camera scans the printed Code 128 Parcel barcode', () => {
     assert.match(riderPickupView, /data-waybill-scan-form/);
     assert.match(riderPickupView, /Printed Parcel barcode \(Code 128\):/);
     assert.match(riderPickupView, />Scan Parcel<\/button>/);
-    assert.match(scanner, /new window\.BarcodeDetector\(\{ formats: \['code_128'\] \}\)/);
+    assert.match(scanner, /createNativeCode128Detector\(window\.BarcodeDetector\)/);
+    assert.match(scanner, /await import\('html5-qrcode'\)/);
+    assert.match(scanner, /formatsToSupport:\s*\[Html5QrcodeSupportedFormats\.CODE_128\]/);
+    assert.match(scanner, /useBarCodeDetectorIfSupported:\s*false/);
+    assert.match(scanner, /new Html5Qrcode\(fallbackHost\.id/);
+    assert.match(riderPickupView, /data-waybill-camera-fallback/);
+    assert.match(intakeView, /data-waybill-camera-fallback/);
+    assert.match(transfersView, /data-waybill-camera-fallback/);
     assert.match(scanner, /input\.value = value;\s*method\.value = 'camera'/);
 });
 
@@ -60,11 +67,15 @@ test('camera scanning requests rear high-resolution video and optional continuou
     assert.match(scanner, /track\.applyConstraints\(\{ advanced: \[\{ focusMode: 'continuous' \}\] \}\)/);
 });
 
+test('software Code 128 decoder requests high-resolution rear camera video', () => {
+    assert.match(scanner, /fallbackScanner\.start\(\s*\{ facingMode: 'environment' \},\s*\{\s*fps: 10,\s*videoConstraints: \{\s*facingMode: \{ ideal: 'environment' \},\s*width: \{ ideal: 1920 \},\s*height: \{ ideal: 1080 \}/);
+});
+
 test('camera decoder requires stable valid reads and keeps intake scanning after a failed lookup', () => {
     assert.match(scanner, /observeBarcodeRead\(candidateState, rawValue, performance\.now\(\)\)/);
     assert.match(decoderUtils, /REQUIRED_STABLE_BARCODE_READS = 3/);
     assert.match(decoderUtils, /!\/\^\[a-z\\d-\]\+\$\/i\.test\(raw\)/);
-    assert.match(scanner, /const loaded = await loadParcels\(value\);[\s\S]*?if \(loaded\) \{\s*stop\(\);\s*return;\s*\}[\s\S]*?Could not confirm that code[\s\S]*?Move the barcode out of view/);
+    assert.match(scanner, /const loaded = await loadParcels\(value\);[\s\S]*?if \(loaded\) \{\s*await stop\(\);\s*return;\s*\}[\s\S]*?Could not confirm that code[\s\S]*?Move the barcode out of view/);
 });
 
 test('City handoff scanning previews the parent Waybill before explicit whole-shipment acceptance', () => {
@@ -86,7 +97,7 @@ test('City handoff scanning previews the parent Waybill before explicit whole-sh
 });
 
 test('failed handoff camera lookup leaves the camera running for another scan', () => {
-    assert.match(scanner, /const preview = await lookupIncomingHandoff\(value\);\s*\n\s*if \(!scanning\) return;\s*\n\s*if \(preview\) \{\s*stop\(\);[\s\S]*?No eligible incoming Waybill was found/);
+    assert.match(scanner, /const preview = await lookupIncomingHandoff\(value\);\s*\n\s*if \(!scanning\) return;\s*\n\s*if \(preview\) \{\s*await stop\(\);[\s\S]*?No eligible incoming Waybill was found/);
     assert.match(scanner, /if \(requiresHandoffLookup\) clearHandoffPreview\(\)/);
     assert.match(scanner, /setHandoffStatus\(error\?\.message \|\| 'Could not find an incoming Waybill/);
 });

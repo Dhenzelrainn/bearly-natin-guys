@@ -1,6 +1,21 @@
 export const REQUIRED_STABLE_BARCODE_READS = 3;
 export const BARCODE_READ_GAP_MS = 1200;
 
+export async function createNativeCode128Detector(BarcodeDetectorConstructor) {
+    if (typeof BarcodeDetectorConstructor !== 'function') return null;
+
+    try {
+        if (typeof BarcodeDetectorConstructor.getSupportedFormats === 'function') {
+            const supportedFormats = await BarcodeDetectorConstructor.getSupportedFormats();
+            if (Array.isArray(supportedFormats) && !supportedFormats.includes('code_128')) return null;
+        }
+
+        return new BarcodeDetectorConstructor({ formats: ['code_128'] });
+    } catch {
+        return null;
+    }
+}
+
 export function createBarcodeReadState() {
     return {
         value: '',

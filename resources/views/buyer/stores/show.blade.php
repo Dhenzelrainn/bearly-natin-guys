@@ -103,7 +103,7 @@
             @endif
             <div class="store-identity">
                 @if ($store->logo_path)
-                    <span class="store-avatar"><img src="{{ $logoUrl }}" alt="{{ $store->name }} logo"></span>
+                    <span class="store-avatar"><img class="avatar-photo" src="{{ $logoUrl }}" alt="{{ $store->name }} logo"></span>
                 @else
                     <span class="store-avatar" aria-hidden="true">{{ strtoupper(substr($store->name, 0, 1)) }}</span>
                 @endif

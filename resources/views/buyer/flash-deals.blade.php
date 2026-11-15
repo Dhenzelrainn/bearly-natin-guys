@@ -51,6 +51,12 @@
                             <p class="flash-campaign-description">{{ $campaign['description'] }}</p>
                         @endif
                     </div>
+                    @if (filled($campaign['ends_at'] ?? null))
+                        <div class="campaign-countdown flash-campaign-countdown" data-campaign-countdown data-campaign-ends-at="{{ $campaign['ends_at'] }}">
+                            <span>Ends in</span>
+                            <time data-campaign-countdown-value datetime="{{ $campaign['ends_at'] }}" role="timer" aria-label="Time remaining for {{ $campaign['name'] }}">--:--:--</time>
+                        </div>
+                    @endif
                     <a class="flash-campaign-details" href="{{ route('campaigns.show', $campaign['id']) }}">
                         Campaign details
                         <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
@@ -95,6 +101,10 @@
                                         'product_discount_name' => $product['product_discount_name'] ?? null,
                                     ])
                                 </div>
+                                @include('buyer.partials.campaign-sales-indicator', [
+                                    'soldUnits' => $product['campaign_sold_units'] ?? 0,
+                                    'stockLimit' => $product['campaign_stock_limit'] ?? null,
+                                ])
                                 @if (filled($product['store_slug'] ?? null))
                                     <a class="flash-product-store" href="{{ route('stores.show', ['store' => $product['store_slug']]) }}">Sold by {{ $product['seller_name'] }}</a>
                                 @else

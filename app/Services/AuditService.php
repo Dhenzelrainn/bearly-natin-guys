@@ -19,11 +19,12 @@ class AuditService
         string $severity = 'info',
         ?Request $request = null,
         ?User $actor = null,
+        bool $systemActor = false,
     ): AuditLog {
         $request ??= request();
 
         return AuditLog::query()->create([
-            'actor_user_id' => ($actor ?? $request->user())?->id,
+            'actor_user_id' => $systemActor ? null : ($actor ?? $request->user())?->id,
             'action' => $action,
             'module' => $module,
             'auditable_type' => $subject?->getMorphClass(),

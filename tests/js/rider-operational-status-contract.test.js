@@ -61,6 +61,17 @@ test('QR attendance confirmation refreshes the Rider state and Logistics roster 
     assert.match(courierView, /data-rider-attendance-indicator/);
     assert.match(riderAttendancePartial, /data-attendance-scan-status/);
     assert.match(riderAttendanceScript, /updateShiftIndicator\(result\.data \|\| \{\}\)/);
+    const attendanceFormatterOptions = riderAttendanceScript.match(/new Intl\.DateTimeFormat\('en-PH', \{([\s\S]*?)\}\)\.format\(date\)/)?.[1];
+    assert.ok(attendanceFormatterOptions, 'Rider attendance timestamps should use an explicit Philippine-time formatter.');
+    assert.match(attendanceFormatterOptions, /timeZone:\s*'Asia\/Manila'/);
+    assert.match(attendanceFormatterOptions, /dateStyle:\s*'medium'/);
+    assert.match(attendanceFormatterOptions, /timeStyle:\s*'short'/);
+    assert.doesNotMatch(attendanceFormatterOptions, /\b(?:hour|minute)\s*:/);
+    const formatterOptions = Object.fromEntries(
+        [...attendanceFormatterOptions.matchAll(/([A-Za-z]+):\s*'([^']+)'/g)]
+            .map(([, key, value]) => [key, value]),
+    );
+    assert.doesNotThrow(() => new Intl.DateTimeFormat('en-PH', formatterOptions).format(new Date('2026-11-13T01:00:00Z')));
     assert.match(riderAttendanceScript, /This QR was already used\. Refreshing to check your saved attendance status/);
     assert.match(riderAttendanceScript, /window\.location\.reload\(\)/);
     assert.match(logisticsAttendanceView, /data-updates-url="\{\{ route\('logistics\.rider-attendance\.updates'\) \}\}"/);

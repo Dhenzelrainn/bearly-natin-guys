@@ -17,8 +17,10 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Shipment;
 use App\Models\Store;
+use App\Models\User;
 use App\Models\Wishlist;
 use App\Services\BuyerCatalogService;
+use App\Services\BuyerCategoryFilterService;
 use App\Services\BuyerOrderConfirmationService;
 use App\Services\BuyerTrackingRouteService;
 use App\Services\CampaignService;
@@ -63,6 +65,49 @@ class BuyerController extends Controller
             && Schema::hasTable('marketplace_subcategories')
             && Schema::hasTable('marketplace_category_business_categories')
             && Schema::hasColumn('products', 'marketplace_subcategory_id');
+    }
+
+    public function categoryProductData(Request $request, BuyerCategoryFilterService $filters): JsonResponse
+    {
+        $validated = $request->validate([
+            'category' => ['required', 'string', Rule::in(BuyerCategoryFilterService::CATEGORY_SLUGS)],
+            'sub' => ['nullable', 'string', 'max:100'],
+            'q' => ['nullable', 'string', 'max:120'],
+            'size' => ['sometimes', 'array', 'max:20'],
+            'size.*' => ['string', 'max:100'],
+            'color' => ['sometimes', 'array', 'max:20'],
+            'color.*' => ['string', 'max:100'],
+            'condition' => ['sometimes', 'array', 'max:10'],
+            'condition.*' => ['string', 'max:100'],
+            'location' => ['sometimes', 'array', 'max:40'],
+            'location.*' => ['string', 'max:180'],
+            'min' => ['nullable', 'integer', 'min:0', 'max:100000000'],
+            'max' => array_values(array_filter([
+                'nullable',
+                'integer',
+                'min:0',
+                'max:100000000',
+                $request->filled('min') ? 'gte:min' : null,
+            ])),
+            'voucher' => ['sometimes', 'in:1'],
+            'saved' => ['sometimes', 'in:1'],
+            'rating' => ['sometimes', 'in:4'],
+            'sort' => ['nullable', 'string', Rule::in(['featured', 'price-low', 'price-high'])],
+            'page' => ['nullable', 'integer', 'min:1', 'max:10000'],
+        ]);
+
+        $data = $filters->results(
+            categorySlug: (string) $validated['category'],
+            subcategorySlug: isset($validated['sub']) ? (string) $validated['sub'] : null,
+            filters: $validated,
+            buyer: $request->user(),
+            page: (int) ($validated['page'] ?? 1),
+        );
+
+        return response()->json([
+            'data' => $data,
+            'message' => 'Category products retrieved successfully.',
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     /**
@@ -970,7 +1015,6 @@ class BuyerController extends Controller
     public function home(
         Request $request,
         BuyerCatalogService $catalog,
-        PromotionService $promotions,
         CampaignService $campaigns,
         ProductReviewService $reviews,
     ): View|RedirectResponse {
@@ -1077,7 +1121,8 @@ class BuyerController extends Controller
             ],
         ];
 
-        $homeFlashDealGroups = $this->buyerFlashDealProductGroups($request, $campaigns, $catalog, 4);
+        $homeFlashDealGroups = $this->buyerFlashDealProductGroups($request, $campaigns, $catalog, 6);
+        $homeCampaigns = $campaigns->buyerHomeCampaigns($request->user());
 
         return view('buyer.Dashboard.home', [
             'categories' => $categories,
@@ -1089,17 +1134,118 @@ class BuyerController extends Controller
                 $catalog->publishedProducts(limit: 60),
                 $request->user(),
             ),
-            'activePromotions' => $promotions->publicOffers([
-                PlatformPromotion::KIND_VOUCHER,
-                PlatformPromotion::KIND_AUTOMATIC_DISCOUNT,
-                PlatformPromotion::KIND_FREE_SHIPPING,
-                PlatformPromotion::KIND_FLASH_DEAL,
-                PlatformPromotion::KIND_SELLER_CAMPAIGN,
-            ], true)->take(4),
-            'liveCampaigns' => $campaigns->activeBuyerCampaigns()
-                ->map(fn (PlatformPromotion $campaign): array => $campaigns->buyerCampaignSummaryPayload($campaign))
-                ->values(),
+            'liveCampaigns' => $homeCampaigns['campaigns'],
+            'carouselCampaigns' => $homeCampaigns['carousel'],
             'liveFlashDealGroups' => $homeFlashDealGroups,
+        ]);
+    }
+
+    public function dailyDiscoveries(
+        Request $request,
+        BuyerCatalogService $catalog,
+        BuyerCategoryFilterService $filters,
+    ): View|RedirectResponse
+    {
+        $validated = $request->validate([
+            'category' => ['nullable', 'string', Rule::in(BuyerCategoryFilterService::CATEGORY_SLUGS)],
+            'q' => ['nullable', 'string', 'max:120'],
+            'size' => ['sometimes', 'array', 'max:20'],
+            'size.*' => ['string', 'max:100'],
+            'color' => ['sometimes', 'array', 'max:20'],
+            'color.*' => ['string', 'max:100'],
+            'min' => ['nullable', 'integer', 'min:0', 'max:100000000'],
+            'max' => array_values(array_filter([
+                'nullable',
+                'integer',
+                'min:0',
+                'max:100000000',
+                $request->filled('min') ? 'gte:min' : null,
+            ])),
+            'sort' => ['nullable', 'string', Rule::in(['featured', 'price-low', 'price-high'])],
+            'page' => ['nullable', 'integer', 'min:1', 'max:10000'],
+        ]);
+
+        $categorySlug = isset($validated['category']) ? (string) $validated['category'] : null;
+        $sort = (string) ($validated['sort'] ?? 'featured');
+        $hasPriceFilter = ($validated['min'] ?? null) !== null || ($validated['max'] ?? null) !== null;
+        $hasFacetFilter = trim((string) ($validated['q'] ?? '')) !== ''
+            || ($validated['size'] ?? []) !== []
+            || ($validated['color'] ?? []) !== [];
+        $needsEffectivePriceProcessing = $hasPriceFilter
+            || $hasFacetFilter
+            || in_array($sort, ['price-low', 'price-high'], true);
+
+        $queryParameters = collect($validated)
+            ->except('page')
+            ->filter(fn ($value): bool => $value !== null && $value !== '')
+            ->all();
+
+        if ($needsEffectivePriceProcessing) {
+            $results = $filters->results(
+                categorySlug: $categorySlug,
+                subcategorySlug: null,
+                filters: $validated,
+                buyer: $request->user(),
+                page: (int) ($validated['page'] ?? 1),
+            );
+
+            if ((int) ($validated['page'] ?? 1) > $results['pagination']['last_page']) {
+                return redirect()->route('buyer.daily-discoveries.index', array_merge(
+                    $queryParameters,
+                    ['page' => $results['pagination']['last_page']],
+                ));
+            }
+
+            $availableFacets = $results['facets'];
+        } else {
+            $paginator = $catalog->publishedProductsPage(
+                categorySlug: $categorySlug,
+                perPage: 20,
+            );
+
+            if ($paginator->currentPage() > $paginator->lastPage()) {
+                return redirect()->route('buyer.daily-discoveries.index', array_merge(
+                    $queryParameters,
+                    ['page' => $paginator->lastPage()],
+                ));
+            }
+
+            $results = [
+                'products' => $catalog->cards($paginator->getCollection(), $request->user()),
+                'pagination' => [
+                    'total' => $paginator->total(),
+                    'current_page' => $paginator->currentPage(),
+                    'last_page' => $paginator->lastPage(),
+                    'per_page' => $paginator->perPage(),
+                    'has_more' => $paginator->hasMorePages(),
+                ],
+            ];
+            $availableFacets = $filters->availableFacets($categorySlug);
+        }
+
+        $categories = collect(json_decode(
+            file_get_contents(resource_path('data/buyer-categories.json')),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        ))
+            ->filter(fn (array $category): bool => in_array(
+                $category['slug'] ?? null,
+                BuyerCategoryFilterService::CATEGORY_SLUGS,
+                true,
+            ))
+            ->map(fn (array $category): array => [
+                'name' => (string) $category['name'],
+                'slug' => (string) $category['slug'],
+            ])
+            ->values();
+
+        return view('buyer.daily-discoveries.index', [
+            'categories' => $categories,
+            'dailyDiscoveryResults' => $results,
+            'dailyDiscoveryFacets' => $availableFacets,
+            'dailyDiscoveryFilters' => $validated,
+            'dailyDiscoveryQuery' => $queryParameters,
         ]);
     }
 
@@ -1197,13 +1343,22 @@ class BuyerController extends Controller
             PlatformPromotion::KIND_AUTOMATIC_DISCOUNT,
             PlatformPromotion::KIND_FREE_SHIPPING,
             PlatformPromotion::KIND_SELLER_CAMPAIGN,
-        ])->reject(fn (array $offer): bool => ($offer['campaign_type'] ?? null) === PlatformPromotion::CAMPAIGN_FLASH_DEAL)
+        ], buyer: $request->user())->reject(fn (array $offer): bool => ($offer['campaign_type'] ?? null) === PlatformPromotion::CAMPAIGN_FLASH_DEAL)
             ->take(4)
             ->values();
 
         return view('buyer.flash-deals', [
             'flashDealGroups' => $flashDealGroups,
             'otherOffers' => $otherOffers,
+        ]);
+    }
+
+    public function campaignIndex(Request $request, CampaignService $campaigns): View
+    {
+        $buyerCampaigns = $campaigns->buyerHomeCampaigns($request->user());
+
+        return view('buyer.campaigns.index', [
+            'campaigns' => $buyerCampaigns['campaigns'],
         ]);
     }
 
@@ -1218,7 +1373,7 @@ class BuyerController extends Controller
     ): array {
         return $campaigns->activeBuyerFlashDealCampaigns()
             ->map(function (PlatformPromotion $campaign) use ($campaigns, $catalog, $request, $productsPerCampaign): ?array {
-                $products = $campaigns->buyerCampaignProductPreview($campaign, $productsPerCampaign);
+                $products = $campaigns->buyerCampaignProductPreview($campaign, $productsPerCampaign, $request->user());
                 if ($products->isEmpty()) {
                     return null;
                 }
@@ -1235,7 +1390,18 @@ class BuyerController extends Controller
                         && $campaignItemId > 0
                         && $campaignItemId === (int) ($expectedCampaignItems->get($productId) ?? 0);
                 }));
+                $campaignSalesIndicators = $campaigns->buyerCampaignSalesIndicators(
+                    $campaign,
+                    array_map(
+                        fn (array $card): int => (int) $card['campaign_participation_item_id'],
+                        $productCards,
+                    ),
+                );
                 foreach ($productCards as &$productCard) {
+                    $campaignItemId = (int) $productCard['campaign_participation_item_id'];
+                    $salesIndicator = $campaignSalesIndicators[$campaignItemId] ?? null;
+                    $productCard['campaign_sold_units'] = (int) ($salesIndicator['sold_units'] ?? 0);
+                    $productCard['campaign_stock_limit'] = $salesIndicator['stock_limit'] ?? null;
                     unset($productCard['campaign_participation_item_id']);
                 }
                 unset($productCard);
@@ -1255,16 +1421,18 @@ class BuyerController extends Controller
     }
 
     public function showCampaign(
+        Request $request,
         PlatformPromotion $campaign,
         CampaignService $campaigns,
         BuyerCatalogService $catalog,
     ): View {
-        $campaign = $campaigns->buyerCampaignDetail($campaign);
-        $products = $campaigns->buyerCampaignProducts($campaign);
+        $buyer = $request->user();
+        $campaign = $campaigns->buyerCampaignDetail($campaign, buyer: $buyer);
+        $products = $campaigns->buyerCampaignProducts($campaign, $buyer);
 
         return view('buyer.campaigns.show', [
-            'campaign' => $campaigns->buyerCampaignPayload($campaign),
-            'productCards' => $catalog->cards($products, request()->user()),
+            'campaign' => $campaigns->buyerCampaignPayload($campaign, $buyer),
+            'productCards' => $catalog->cards($products, $buyer),
         ]);
     }
 
@@ -1489,7 +1657,7 @@ class BuyerController extends Controller
             $catalog->relatedProducts($product, 4),
             request()->user(),
         );
-        $productCard = $catalog->card($product);
+        $productCard = $catalog->card($product, buyer: request()->user());
         $detailVariantSpecs = $product->variants
             ->mapWithKeys(fn (ProductVariant $variant): array => [(int) $variant->id => [
                 'sku' => (string) $variant->sku,
@@ -1640,7 +1808,7 @@ class BuyerController extends Controller
             ->all();
 
         return view('buyer.cart', [
-            'cartItems' => $cart ? $this->cartPayload($cart, $catalog) : [],
+            'cartItems' => $cart ? $this->cartPayload($cart, $catalog, $request->user()) : [],
             'wishlistProductIds' => $wishlistProductIds,
         ]);
     }
@@ -1651,7 +1819,7 @@ class BuyerController extends Controller
 
         return response()->json([
             'data' => [
-                'items' => $cart ? $this->cartPayload($cart, $catalog) : [],
+                'items' => $cart ? $this->cartPayload($cart, $catalog, $request->user()) : [],
                 'cart_count' => $this->cartCount($request->user()),
             ],
             'message' => 'Cart retrieved successfully.',
@@ -1731,7 +1899,7 @@ class BuyerController extends Controller
 
         return response()->json([
             'data' => [
-                'item' => $this->cartItemPayload($item, $catalog),
+                'item' => $this->cartItemPayload($item, $catalog, $request->user()),
                 'cart_count' => $this->cartCount($request->user()),
             ],
             'message' => 'Product added to cart',
@@ -1800,7 +1968,7 @@ class BuyerController extends Controller
 
         return response()->json([
             'data' => [
-                'item' => $this->cartItemPayload($item, $catalog),
+                'item' => $this->cartItemPayload($item, $catalog, $request->user()),
                 'cart_count' => $this->cartCount($request->user()),
             ],
             'message' => 'Product prepared for single-item checkout.',
@@ -1850,7 +2018,7 @@ class BuyerController extends Controller
 
         return response()->json([
             'data' => [
-                'item' => $this->cartItemPayload($cartItem, $catalog),
+                'item' => $this->cartItemPayload($cartItem, $catalog, $request->user()),
                 'cart_count' => $this->cartCount($request->user()),
             ],
             'message' => 'Cart updated',
@@ -1953,7 +2121,7 @@ class BuyerController extends Controller
             : 0;
     }
 
-    private function cartPayload(Cart $cart, BuyerCatalogService $catalog): array
+    private function cartPayload(Cart $cart, BuyerCatalogService $catalog, User $buyer): array
     {
         return $cart->items()
             ->with([
@@ -1962,12 +2130,12 @@ class BuyerController extends Controller
             ])
             ->orderBy('id')
             ->get()
-            ->map(fn (CartItem $item) => $this->cartItemPayload($item, $catalog))
+            ->map(fn (CartItem $item) => $this->cartItemPayload($item, $catalog, $buyer))
             ->values()
             ->all();
     }
 
-    private function cartItemPayload(CartItem $item, BuyerCatalogService $catalog): array
+    private function cartItemPayload(CartItem $item, BuyerCatalogService $catalog, User $buyer): array
     {
         $variant = $item->variant;
         $product = $variant?->product;
@@ -1980,7 +2148,7 @@ class BuyerController extends Controller
         $imagePath = (string) ($primaryImage?->path ?? '');
         $imageDisk = (string) ($primaryImage?->disk ?: 'public');
         $price = $product && $variant
-            ? $this->pricing->priceForVariant($product, $variant, (int) $item->quantity)
+            ? $this->pricing->priceForVariant($product, $variant, (int) $item->quantity, buyer: $buyer)
             : null;
 
         return [
@@ -2037,7 +2205,7 @@ class BuyerController extends Controller
         return $wishlist
             ->latest('id')
             ->get()
-            ->map(function (Wishlist $item) use ($hasMarketplaceTaxonomy): array {
+            ->map(function (Wishlist $item) use ($hasMarketplaceTaxonomy, $user): array {
                 $product = $item->product;
                 $image = $product?->images?->firstWhere('is_primary', true)
                     ?: $product?->images?->first();
@@ -2060,7 +2228,7 @@ class BuyerController extends Controller
                 $imagePath = (string) ($image?->path ?? '');
                 $imageDisk = (string) ($image?->disk ?: 'public');
                 $price = $product && $variant
-                    ? $this->pricing->priceForVariant($product, $variant)
+                    ? $this->pricing->priceForVariant($product, $variant, buyer: $user)
                     : null;
 
                 return [

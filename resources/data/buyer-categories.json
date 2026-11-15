@@ -3,6 +3,7 @@
     "name": "Pet Supplies",
     "slug": "pet-supplies",
     "icon": "pets",
+    "image": "/images/categories/01_Pet.png",
     "subcategories": [
       "Food & Treats",
       "Bowls & Feeding",
@@ -16,6 +17,7 @@
     "name": "Electronics and Gadgets",
     "slug": "electronics-and-gadgets",
     "icon": "devices",
+    "image": "/images/categories/02_Electronics_and_Gadgets.jpg",
     "subcategories": [
       "Phones & Tablets",
       "Computers & Accessories",
@@ -29,6 +31,7 @@
     "name": "Women's Apparel",
     "slug": "women-s-apparel",
     "icon": "checkroom",
+    "image": "/images/categories/03_Womens_Apparel.jpg",
     "subcategories": [
       "Dresses & Skirts",
       "Tops & Blouses",
@@ -42,6 +45,7 @@
     "name": "Men's Apparel",
     "slug": "men-s-apparel",
     "icon": "apparel",
+    "image": "/images/categories/04_Mens_Apparel.jpg",
     "subcategories": [
       "Suits & Blazers",
       "Casual Shirts & Pants",
@@ -55,6 +59,7 @@
     "name": "Kids and Baby",
     "slug": "kids-and-baby",
     "icon": "child_care",
+    "image": "/images/categories/kids and baby.png",
     "subcategories": [
       "Baby Clothing & Care",
       "Kids Clothing & Footwear",
@@ -68,6 +73,7 @@
     "name": "Home and Garden",
     "slug": "home-and-garden",
     "icon": "home_and_garden",
+    "image": "/images/categories/06_Home_and_Garden.jpg",
     "subcategories": [
       "Garden & Plants",
       "Furniture & Decor",
@@ -81,6 +87,7 @@
     "name": "Sports and Outdoors",
     "slug": "sports-and-outdoors",
     "icon": "sports_basketball",
+    "image": "/images/categories/07_Sports_and_Outdoors.jpg",
     "subcategories": [
       "Team & Racquet Sports",
       "Fitness Equipment",
@@ -94,6 +101,7 @@
     "name": "Health and Beauty",
     "slug": "health-and-beauty",
     "icon": "spa",
+    "image": "/images/categories/08_Health_and_Beauty.jpg",
     "subcategories": [
       "Skincare",
       "Haircare",
@@ -107,6 +115,7 @@
     "name": "Books and Media",
     "slug": "books-and-media",
     "icon": "menu_book",
+    "image": "/images/categories/books and media.png",
     "subcategories": [
       "Fiction & Non-Fiction Books",
       "Children, Comics & Reference",
@@ -120,6 +129,7 @@
     "name": "Food and Gourmet",
     "slug": "food-and-gourmet",
     "icon": "grocery",
+    "image": "/images/categories/foud and gourmet.png",
     "subcategories": [
       "Pantry & Cooking Essentials",
       "Coffee, Tea & Beverages",
@@ -133,6 +143,7 @@
     "name": "Furniture and Office Equipment",
     "slug": "furniture-and-office-equipment",
     "icon": "chair",
+    "image": "/images/categories/11_Furniture_and_Office_Equipment.jpg",
     "subcategories": [
       "Home Furniture",
       "Office Desks & Chairs",
@@ -146,6 +157,7 @@
     "name": "Jewelry and Watches",
     "slug": "jewelry-and-watches",
     "icon": "watch",
+    "image": "/images/categories/12_Jewelry_and_Watches.jpg",
     "subcategories": [
       "Necklaces & Pendants",
       "Rings & Earrings",

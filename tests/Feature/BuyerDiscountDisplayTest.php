@@ -304,7 +304,7 @@ class BuyerDiscountDisplayTest extends TestCase
         ]);
         $promotion->products()->attach($product->id);
 
-        $activeCard = (new BuyerCatalogService(new ProductPricingService))
+        $activeCard = app(BuyerCatalogService::class)
             ->cards(collect([$product]))[0];
 
         $this->assertSame(960, $activeCard['price']);
@@ -315,22 +315,22 @@ class BuyerDiscountDisplayTest extends TestCase
         $this->assertSame($promotion->startsAt()->toIso8601String(), $activeCard['product_discount_starts_at']);
         $this->assertSame($promotion->endsAt()->toIso8601String(), $activeCard['product_discount_ends_at']);
 
-        $beforeStart = (new ProductPricingService)->priceForVariant(
+        $beforeStart = app(ProductPricingService::class)->priceForVariant(
             $product->fresh(),
             $variant->fresh(),
             at: $promotion->startsAt()->copy()->subSecond(),
         );
-        $atStart = (new ProductPricingService)->priceForVariant(
+        $atStart = app(ProductPricingService::class)->priceForVariant(
             $product->fresh(),
             $variant->fresh(),
             at: $promotion->startsAt(),
         );
-        $atEnd = (new ProductPricingService)->priceForVariant(
+        $atEnd = app(ProductPricingService::class)->priceForVariant(
             $product->fresh(),
             $variant->fresh(),
             at: $promotion->endsAt(),
         );
-        $afterEnd = (new ProductPricingService)->priceForVariant(
+        $afterEnd = app(ProductPricingService::class)->priceForVariant(
             $product->fresh(),
             $variant->fresh(),
             at: $promotion->endsAt()->copy()->addSecond(),
@@ -351,7 +351,7 @@ class BuyerDiscountDisplayTest extends TestCase
             'ends_on' => now()->addWeek()->toDateString(),
         ]);
 
-        $scheduledCard = (new BuyerCatalogService(new ProductPricingService))
+        $scheduledCard = app(BuyerCatalogService::class)
             ->cards(collect([$product]))[0];
 
         $this->assertSame(1200, $scheduledCard['price']);
@@ -363,7 +363,7 @@ class BuyerDiscountDisplayTest extends TestCase
             'ends_on' => now()->subDay()->toDateString(),
         ]);
 
-        $expiredCard = (new BuyerCatalogService(new ProductPricingService))
+        $expiredCard = app(BuyerCatalogService::class)
             ->cards(collect([$product]))[0];
 
         $this->assertSame(1200, $expiredCard['price']);

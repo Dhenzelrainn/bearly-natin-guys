@@ -10,10 +10,20 @@
         && in_array($case['evidence_requested_from'], ['seller', 'both'], true)
         && ! $case['seller_evidence_submitted'];
     $canInspect = $status === 'awaiting_inspection' && $case['return_status'] === 'delivered';
-    $hasSellerAction = $canRespond || $sellerEvidenceRequested || $canInspect || $status === 'awaiting_inspection';
+    $pendingQuarantineItems = array_values(array_filter(
+        $case['items'],
+        fn (array $item): bool => $item['quarantine_review_status'] === 'pending',
+    ));
+    $hasSellerAction = $canRespond || $sellerEvidenceRequested || $canInspect || $status === 'awaiting_inspection' || $pendingQuarantineItems !== [];
     $isPhysicalReturn = $case['request'] === 'Return & Refund';
     $showFinancialImpact = $case['commission_effect'] !== 'No finalized financial adjustment'
         || $case['earnings_effect'] !== 'No finalized financial adjustment';
+    $refundTone = match ($case['refund']['status'] ?? null) {
+        'completed' => 'is-complete',
+        'pending', 'processing' => 'is-pending',
+        null => '',
+        default => 'is-attention',
+    };
 
     [$stageTitle, $stageDescription, $stageLabel, $stageValue, $stageClass, $stageIcon] = match (true) {
         $canRespond => [
@@ -31,6 +41,14 @@
             $case['evidence_requested_from'] === 'both' ? 'You and the Buyer' : 'You',
             '',
             'file-plus-2',
+        ],
+        $status === 'under_review' && $case['seller_response_deadline_missed'] => [
+            'Response deadline passed',
+            'Admin review continues without your initial reply. Answer any additional evidence request sent to you.',
+            'Deadline',
+            $case['deadline'],
+            'is-review',
+            'clock-alert',
         ],
         $status === 'awaiting_evidence' && $case['seller_evidence_submitted'] => [
             'Your files were received',
@@ -66,7 +84,7 @@
         ],
         in_array($status, ['return_pickup_requested', 'return_in_transit', 'awaiting_inspection'], true) => [
             $canInspect
-                ? 'Check the returned items'
+                ? 'Awaiting Seller Inspection'
                 : ($status === 'return_pickup_requested' ? 'Pickup is being arranged' : 'Return delivery in progress'),
             $canInspect
                 ? 'Check each item before Bearly processes the refund.'
@@ -76,9 +94,17 @@
             'is-shipping',
             $canInspect ? 'clipboard-check' : 'truck',
         ],
+        $status === 'refund_pending' && ($case['refund']['status'] ?? null) === 'processing' => [
+            'Payout sent · awaiting Buyer confirmation',
+            'Admin recorded the successful external payout. The case stays open until the Buyer confirms receipt.',
+            'Refund status',
+            'Awaiting Buyer confirmation',
+            'is-review',
+            'hourglass',
+        ],
         $status === 'refund_pending' => [
             'Refund is being processed',
-            'Bearly will mark it complete after confirming payment to the Buyer.',
+            'Admin is arranging the approved refund through the appropriate payout workflow. The case stays open until that workflow’s required confirmation is complete.',
             'Status',
             'Processing',
             'is-review',
@@ -170,7 +196,22 @@
                                             <i data-lucide="package" aria-hidden="true"></i>
                                         @endif
                                     </span>
-                                    <span class="case-item-copy"><strong>{{ $item['name'] }}</strong><small>{{ $item['variant'] }} · Item code {{ $item['sku'] }}</small></span>
+                                    <span class="case-item-copy">
+                                        <strong>{{ $item['name'] }}</strong>
+                                        <small>{{ $item['variant'] }} · Item code {{ $item['sku'] }}</small>
+                                        @if ($item['condition_code'])
+                                            <small>Seller inspection: {{ ucwords(str_replace('_', ' ', $item['condition_code'])) }} · {{ ucwords(str_replace('_', ' ', $item['resolution'] ?? 'not recorded')) }}</small>
+                                        @endif
+                                        @if ($item['resolution'] === 'quarantine')
+                                            @if ($item['quarantine_review_status'] === 'pending')
+                                                <small class="case-quarantine-state is-pending">Quarantined · awaiting review; excluded from sellable stock</small>
+                                            @elseif ($item['quarantine_review_status'] === 'completed')
+                                                <small class="case-quarantine-state is-complete">Final review: {{ ucwords(str_replace('_', ' ', $item['quarantine_final_condition_code'])) }} · {{ $item['quarantine_final_resolution'] === 'restock' ? 'Restocked' : 'Disposed / written off' }}</small>
+                                                <small>Reviewed by {{ $item['quarantine_reviewed_by'] ?: 'Seller' }} · {{ $item['quarantine_reviewed_at'] ?: 'Time unavailable' }}</small>
+                                                <small>Review note: {{ $item['quarantine_review_note'] }}</small>
+                                            @endif
+                                        @endif
+                                    </span>
                                     <span class="case-item-metrics">
                                         <span><small>Quantity requested</small><strong>{{ $item['quantity'] }} {{ $item['quantity'] === 1 ? 'item' : 'items' }}</strong></span>
                                         <span><small>Refund for this item</small><strong>{{ $item['amount'] }}</strong></span>
@@ -226,7 +267,7 @@
                     @if ($isPhysicalReturn && $case['tracking'] !== 'Awaiting Admin approval')
                         <section class="case-content-section" aria-labelledby="case-shipment-heading">
                             <h3 id="case-shipment-heading">Return delivery</h3>
-                            <p class="case-shipment-summary"><span><strong>{{ $case['tracking'] }}</strong><small>Tracking number · Original shipment’s Logistics provider</small></span><span><strong>{{ $case['return_status'] ? ucfirst(str_replace('_', ' ', $case['return_status'])) : 'Not yet assigned' }}</strong><small>Delivery status · No return fee</small></span></p>
+                            <p class="case-shipment-summary"><span><strong>{{ $case['tracking'] }}</strong><small>Tracking number · Original shipment’s Logistics provider</small></span><span><strong>{{ $case['return_status'] ? ucfirst(str_replace('_', ' ', $case['return_status'])) : 'Not yet assigned' }}</strong><small>Delivery status · Return-delivery fee handled separately</small></span></p>
                             @if (count($case['shipment_events']))
                                 <ol class="case-shipment-events">
                                     @foreach (array_reverse($case['shipment_events']) as $event)
@@ -248,14 +289,15 @@
                     @if ($case['refund'])
                         <section class="case-content-section">
                             <h3>Refund and financial responsibility</h3>
-                            <p class="case-refund-summary">{{ $case['refund']['status'] === 'completed' ? ($case['refund']['payout_amount'] ?? $case['refund']['amount']).' paid' : $case['refund']['amount'].' approved' }} · {{ ucwords(str_replace('_', ' ', $case['refund']['status'])) }}</p>
+                            <p class="case-refund-summary {{ $refundTone }}">{{ in_array($case['refund']['status'], ['processing', 'completed'], true) ? ($case['refund']['payout_amount'] ?? $case['refund']['amount']).' sent' : $case['refund']['amount'].' approved' }} · {{ $case['refund']['status'] === 'processing' ? 'Awaiting Buyer confirmation' : ucwords(str_replace('_', ' ', $case['refund']['status'])) }}</p>
                             <dl class="case-refund-details">
                                 <div><dt>Financially responsible</dt><dd>{{ $case['refund']['financially_responsible_party'] ? ucfirst($case['refund']['financially_responsible_party']) : 'Not recorded' }}</dd></div>
                                 @if ($case['return_shipping_fee_minor'] !== null)<div><dt>Return delivery fee</dt><dd>₱{{ number_format((int) $case['return_shipping_fee_minor'] / 100, 2) }} · covered by {{ ucfirst((string) $case['return_shipping_fee_payer']) }}; not deducted from the Buyer refund</dd></div>@endif
                                 @if ($case['refund']['financial_responsibility_reason'])<div><dt>Admin’s reason</dt><dd>{{ $case['refund']['financial_responsibility_reason'] }}</dd></div>@endif
-                                @if ($case['refund']['status'] === 'completed')
-                                    <div><dt>Paid externally by Admin</dt><dd>{{ ucfirst(str_replace('_', ' ', $case['refund']['method'])) }} · {{ $case['refund']['paid_on'] ?? 'Date unavailable' }}</dd></div>
+                                @if (in_array($case['refund']['status'], ['processing', 'completed'], true))
+                                    <div><dt>External payout recorded by Admin</dt><dd>{{ ucfirst(str_replace('_', ' ', $case['refund']['method'])) }} · {{ $case['refund']['paid_on'] ?? 'Date unavailable' }}</dd></div>
                                     <div><dt>Buyer payout reference</dt><dd>{{ $case['refund']['reference'] ?: 'Not recorded' }}</dd></div>
+                                    @if ($case['refund']['status'] === 'processing')<div><dt>Receipt confirmation</dt><dd>Waiting for the Buyer; this case is still open</dd></div>@endif
                                 @else
                                     <div><dt>Buyer payout</dt><dd>Not yet recorded as paid</dd></div>
                                 @endif
@@ -273,7 +315,7 @@
                                         </ul>
                                     @endif
                                 </div>
-                            @elseif ($case['refund']['status'] === 'completed' && $case['refund']['financially_responsible_party'] === 'platform')
+                            @elseif (in_array($case['refund']['status'], ['processing', 'completed'], true) && $case['refund']['financially_responsible_party'] === 'platform')
                                 <p class="case-recovery-details">Platform responsibility recorded. No Seller recovery balance was created.</p>
                             @endif
                         </section>
@@ -295,6 +337,47 @@
 
         @if ($hasSellerAction)
             <aside class="case-side-column">
+            @if ($pendingQuarantineItems !== [])
+                <section class="case-panel case-action-panel" aria-labelledby="seller-quarantine-heading">
+                    <header class="case-panel-heading"><div><i data-lucide="package-search" aria-hidden="true"></i><span><strong id="seller-quarantine-heading">Review quarantined items</strong></span></div></header>
+                    <div class="case-response-form">
+                        <p class="case-quarantine-refund-note">This Seller-owned stock review does not delay, change, or approve the Buyer refund. Admin’s payout and the Buyer confirmation workflow continue independently.</p>
+                        @foreach ($pendingQuarantineItems as $item)
+                            <form method="POST" action="{{ route('seller.orders.returns.quarantine-review', $item['id']) }}" class="case-quarantine-review-form">
+                                @csrf
+                                <fieldset class="case-inspection-item">
+                                    <legend>{{ $item['name'] }} · {{ $item['variant'] }} · {{ $item['quantity'] }} {{ $item['quantity'] === 1 ? 'item' : 'items' }}</legend>
+                                    <p class="case-form-note">Original inspection: {{ ucwords(str_replace('_', ' ', $item['condition_code'] ?: 'not recorded')) }} · Hold for review. This quantity is still excluded from sellable stock.</p>
+                                    <label>
+                                        <span>Final item condition <b>Required</b></span>
+                                        <select name="final_condition_code" required aria-describedby="quarantine-guidance-{{ $item['id'] }}">
+                                            <option value="">Select final condition</option>
+                                            <option value="sellable" @selected(old('final_condition_code') === 'sellable')>Sellable</option>
+                                            <option value="damaged" @selected(old('final_condition_code') === 'damaged')>Damaged</option>
+                                            <option value="opened" @selected(old('final_condition_code') === 'opened')>Opened</option>
+                                            <option value="missing_parts" @selected(old('final_condition_code') === 'missing_parts')>Missing parts</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <span>Final disposition <b>Required</b></span>
+                                        <select name="final_resolution" required>
+                                            <option value="">Select outcome</option>
+                                            <option value="restock" @selected(old('final_resolution') === 'restock')>Restock as sellable</option>
+                                            <option value="dispose" @selected(old('final_resolution') === 'dispose')>Dispose / write off</option>
+                                        </select>
+                                    </label>
+                                    <small class="case-inspection-guidance" id="quarantine-guidance-{{ $item['id'] }}">Only a final Sellable condition can be restocked. A non-sellable item must be disposed / written off.</small>
+                                    <label class="case-response-field">
+                                        <span>Review note <b>Required</b></span>
+                                        <textarea name="note" rows="3" minlength="5" maxlength="1000" required placeholder="Record what you found and why you chose this outcome.">{{ old('note') }}</textarea>
+                                    </label>
+                                    <button class="seller-primary-button" type="submit"><i data-lucide="clipboard-check" aria-hidden="true"></i>Save final review</button>
+                                </fieldset>
+                            </form>
+                        @endforeach
+                    </div>
+                </section>
+            @endif
             @if ($canRespond)
                 <section class="case-panel case-action-panel" aria-labelledby="seller-response-heading">
                     <header class="case-panel-heading"><div><i data-lucide="reply" aria-hidden="true"></i><span><strong id="seller-response-heading">Your reply</strong></span></div></header>

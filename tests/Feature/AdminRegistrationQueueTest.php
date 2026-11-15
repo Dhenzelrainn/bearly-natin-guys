@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Enums\AccountStatus;
 use App\Models\AccountApplication;
-use App\Models\ApplicationDocument;
 use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
@@ -164,6 +163,163 @@ class AdminRegistrationQueueTest extends TestCase
             ->assertOk()
             ->assertSee('Applicant 01')
             ->assertDontSee('Applicant 11');
+    }
+
+    public function test_admin_can_start_review_for_a_submitted_application(): void
+    {
+        $application = $this->makeApplication(
+            'seller',
+            'Seller Starting Review',
+            'seller.start-review@example.test',
+        );
+
+        $this->actingAs($this->admin)
+            ->from(route('admin.registrations.sellers'))
+            ->post(route('admin.applications.start-review', $application->user), [
+                'review_application_id' => $application->id,
+            ])
+            ->assertRedirect(route('admin.registrations.sellers'))
+            ->assertSessionHas('success', "{$application->user->name}'s application is now under review.");
+
+        $application->refresh();
+
+        $this->assertSame('under_review', $application->status);
+        $this->assertNotNull($application->review_started_at);
+        $this->assertSame($this->admin->id, $application->reviewed_by);
+        $this->assertSame(AccountStatus::Pending->value, $application->user->fresh()->status);
+    }
+
+    public function test_start_review_preserves_the_existing_review_cycle_for_an_under_review_application(): void
+    {
+        $previousReviewer = User::factory()->create([
+            'role' => 'admin',
+            'status' => AccountStatus::Active->value,
+        ]);
+        $startedAt = now()->subDay()->startOfSecond();
+        $application = $this->makeApplication(
+            'logistics',
+            'Logistics Already Reviewing',
+            'logistics.already-reviewing@example.test',
+            'under_review',
+        );
+        $application->forceFill([
+            'review_started_at' => $startedAt,
+            'reviewed_by' => $previousReviewer->id,
+        ])->save();
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.applications.start-review', $application->user), [
+                'review_application_id' => $application->id,
+            ])
+            ->assertRedirect();
+
+        $application->refresh();
+
+        $this->assertSame('under_review', $application->status);
+        $this->assertTrue($application->review_started_at->equalTo($startedAt));
+        $this->assertSame($previousReviewer->id, $application->reviewed_by);
+    }
+
+    public function test_application_needing_revision_cannot_be_started_for_review(): void
+    {
+        $application = $this->makeApplication(
+            'seller',
+            'Seller Needs Revision',
+            'seller.needs-revision@example.test',
+            'needs_revision',
+        );
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.applications.start-review', $application->user), [
+                'review_application_id' => $application->id,
+            ])
+            ->assertRedirect(route('admin.registrations.sellers'));
+
+        $application->refresh();
+
+        $this->assertSame('needs_revision', $application->status);
+        $this->assertNull($application->review_started_at);
+        $this->assertNull($application->reviewed_by);
+        $this->assertSame(AccountStatus::NeedsRevision->value, $application->user->fresh()->status);
+    }
+
+    public function test_start_review_cannot_target_an_application_owned_by_another_user(): void
+    {
+        $routeApplication = $this->makeApplication(
+            'seller',
+            'Seller Route Applicant',
+            'seller.route@example.test',
+        );
+        $otherApplication = $this->makeApplication(
+            'seller',
+            'Seller Other Applicant',
+            'seller.other@example.test',
+        );
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.applications.start-review', $routeApplication->user), [
+                'review_application_id' => $otherApplication->id,
+            ])
+            ->assertRedirect(route('admin.registrations.sellers'));
+
+        $this->assertSame('submitted', $routeApplication->fresh()->status);
+        $this->assertSame('submitted', $otherApplication->fresh()->status);
+        $this->assertNull($otherApplication->fresh()->reviewed_by);
+    }
+
+    public function test_non_admin_cannot_start_application_review(): void
+    {
+        $application = $this->makeApplication(
+            'seller',
+            'Seller Protected Review',
+            'seller.protected-review@example.test',
+        );
+        $seller = User::factory()->create([
+            'role' => 'seller',
+            'status' => AccountStatus::Active->value,
+        ]);
+
+        $this->actingAs($seller)
+            ->post(route('admin.applications.start-review', $application->user), [
+                'review_application_id' => $application->id,
+            ])
+            ->assertForbidden();
+
+        $this->assertSame('submitted', $application->fresh()->status);
+        $this->assertNull($application->fresh()->reviewed_by);
+    }
+
+    public function test_role_queues_render_a_csrf_protected_start_review_form_for_pending_applications(): void
+    {
+        $sellerApplication = $this->makeApplication(
+            'seller',
+            'Seller Form Applicant',
+            'seller.form@example.test',
+        );
+        $logisticsApplication = $this->makeApplication(
+            'logistics',
+            'Logistics Form Applicant',
+            'logistics.form@example.test',
+        );
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.registrations.sellers'))
+            ->assertOk()
+            ->assertSee('Start review')
+            ->assertSee('action="'.route('admin.applications.start-review', $sellerApplication->user).'"', false)
+            ->assertSee('name="review_application_id" value="'.$sellerApplication->id.'"', false)
+            ->assertSee('name="_token"', false)
+            ->assertDontSee('Mark as needs review')
+            ->assertDontSee('Mock email notification');
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.registrations.logistics'))
+            ->assertOk()
+            ->assertSee('Start review')
+            ->assertSee('action="'.route('admin.applications.start-review', $logisticsApplication->user).'"', false)
+            ->assertSee('name="review_application_id" value="'.$logisticsApplication->id.'"', false)
+            ->assertSee('name="_token"', false)
+            ->assertDontSee('Mock email notification');
     }
 
     private function makeApplication(

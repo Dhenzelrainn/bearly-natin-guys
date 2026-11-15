@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta charset="UTF-8">@include('partials.favicon')<meta name="viewport" content="width=device-width,initial-scale=1.0"><meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title','Rider Center') | Bearly Marketplace</title>
     <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     @include('partials.theme-preload')
@@ -60,14 +60,18 @@
         <nav class="ops-nav">
             <p class="ops-nav-label">Workspace</p>
             @if($isCourier)
-                <a href="{{ route('rider.courier.dashboard') }}" class="ops-nav-link {{ request()->routeIs('rider.courier.dashboard','rider.courier.runs.*') ? 'is-active' : '' }}"><i data-lucide="truck"></i><span>Courier runs</span></a>
+                @php($courierRunCount = (int) (($navigationTaskCounts ?? [])['rider.courier.dashboard'] ?? 0))
+                <a href="{{ route('rider.courier.dashboard') }}" class="ops-nav-link {{ request()->routeIs('rider.courier.dashboard','rider.courier.runs.*') ? 'is-active' : '' }}" @if ($courierRunCount > 0) aria-label="Courier runs, {{ $courierRunCount }} actionable {{ $courierRunCount === 1 ? 'task' : 'tasks' }}" title="Courier runs · {{ $courierRunCount }} actionable {{ $courierRunCount === 1 ? 'task' : 'tasks' }}" @endif><i data-lucide="truck"></i><span>Courier runs</span>@include('partials.navigation-task-count', ['count' => $courierRunCount, 'class' => 'nav-count'])</a>
                 <a href="{{ route('rider.courier.history.index') }}" class="ops-nav-link {{ request()->routeIs('rider.courier.history.*') ? 'is-active' : '' }}"><i data-lucide="history"></i><span>Line-haul History</span></a>
                 <p class="ops-nav-label">Finance & records</p>
                 <a href="{{ route('rider.earnings.index') }}" class="ops-nav-link {{ request()->routeIs('rider.earnings.*') ? 'is-active' : '' }}"><i data-lucide="wallet"></i><span>Earnings & payouts</span></a>
             @else
-                <a href="{{ route('rider.dashboard.pickups') }}" class="ops-nav-link {{ request()->routeIs('rider.dashboard.pickups','rider.orders.pickup*') ? 'is-active' : '' }}"><i data-lucide="package-plus"></i><span>Items for Pickup</span></a>
-                <a href="{{ route('rider.dashboard.deliveries') }}" class="ops-nav-link {{ request()->routeIs('rider.dashboard.deliveries','rider.orders.delivery*') ? 'is-active' : '' }}"><i data-lucide="bike"></i><span>Items for Delivery</span></a>
-                <a href="{{ route('rider.refund-cash.index') }}" class="ops-nav-link {{ request()->routeIs('rider.refund-cash.*') ? 'is-active' : '' }}"><i data-lucide="hand-coins"></i><span>Cash custody</span></a>
+                @php($riderPickupCount = (int) (($navigationTaskCounts ?? [])['rider.dashboard.pickups'] ?? 0))
+                <a href="{{ route('rider.dashboard.pickups') }}" class="ops-nav-link {{ request()->routeIs('rider.dashboard.pickups','rider.orders.pickup*') ? 'is-active' : '' }}" @if ($riderPickupCount > 0) aria-label="Items for Pickup, {{ $riderPickupCount }} actionable {{ $riderPickupCount === 1 ? 'task' : 'tasks' }}" title="Items for Pickup · {{ $riderPickupCount }} actionable {{ $riderPickupCount === 1 ? 'task' : 'tasks' }}" @endif><i data-lucide="package-plus"></i><span>Items for Pickup</span>@include('partials.navigation-task-count', ['count' => $riderPickupCount, 'class' => 'nav-count'])</a>
+                @php($riderDeliveryCount = (int) (($navigationTaskCounts ?? [])['rider.dashboard.deliveries'] ?? 0))
+                <a href="{{ route('rider.dashboard.deliveries') }}" class="ops-nav-link {{ request()->routeIs('rider.dashboard.deliveries','rider.orders.delivery*') ? 'is-active' : '' }}" @if ($riderDeliveryCount > 0) aria-label="Items for Delivery, {{ $riderDeliveryCount }} actionable {{ $riderDeliveryCount === 1 ? 'task' : 'tasks' }}" title="Items for Delivery · {{ $riderDeliveryCount }} actionable {{ $riderDeliveryCount === 1 ? 'task' : 'tasks' }}" @endif><i data-lucide="bike"></i><span>Items for Delivery</span>@include('partials.navigation-task-count', ['count' => $riderDeliveryCount, 'class' => 'nav-count'])</a>
+                @php($riderCashCount = (int) (($navigationTaskCounts ?? [])['rider.refund-cash.index'] ?? 0))
+                <a href="{{ route('rider.refund-cash.index') }}" class="ops-nav-link {{ request()->routeIs('rider.refund-cash.*') ? 'is-active' : '' }}" @if ($riderCashCount > 0) aria-label="Cash custody, {{ $riderCashCount }} actionable {{ $riderCashCount === 1 ? 'task' : 'tasks' }}" title="Cash custody · {{ $riderCashCount }} actionable {{ $riderCashCount === 1 ? 'task' : 'tasks' }}" @endif><i data-lucide="hand-coins"></i><span>Cash custody</span>@include('partials.navigation-task-count', ['count' => $riderCashCount, 'class' => 'nav-count'])</a>
                 <p class="ops-nav-label">Finance & records</p>
                 <a href="{{ route('rider.earnings.index') }}" class="ops-nav-link {{ request()->routeIs('rider.earnings.*') ? 'is-active' : '' }}"><i data-lucide="wallet"></i><span>Earnings</span></a>
                 <a href="{{ route('rider.attendance.history') }}" class="ops-nav-link {{ request()->routeIs('rider.attendance.history') ? 'is-active' : '' }}"><i data-lucide="clock-4"></i><span>Attendance history</span></a>

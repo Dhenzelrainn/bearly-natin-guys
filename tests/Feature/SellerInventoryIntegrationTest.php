@@ -1,0 +1,606 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Category;
+use App\Models\InventoryMovement;
+use App\Models\MarketplaceCategory;
+use App\Models\MarketplaceSubcategory;
+use App\Models\Product;
+use App\Models\ProductVariant;
+use App\Models\SellerProfile;
+use App\Models\Store;
+use App\Models\StoreSubcategory;
+use App\Models\User;
+use App\Services\SellerInventoryService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Tests\TestCase;
+
+class SellerInventoryIntegrationTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_inventory_rows_show_matching_color_and_sku_images_with_primary_fallback(): void
+    {
+        Storage::fake('public');
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'inventory-images');
+        $product = $this->product($store, $category, 'Color Shirt', 'color-shirt');
+        $smallRed = $this->variant($product, 'IMG-S-RED', 'Small / Red', 5, 0, 2);
+        $largeRed = $this->variant($product, 'IMG-L-RED', 'Large / Red', 5, 0, 2);
+        $blue = $this->variant($product, 'IMG-BLUE', 'Small / Blue', 5, 0, 2);
+        $green = $this->variant($product, 'IMG-GREEN', 'Small / Green', 5, 0, 2);
+        $plain = $this->variant($product, 'IMG-PLAIN', 'Default', 5, 0, 2);
+        foreach ([[$smallRed, 'Red'], [$largeRed, 'Red'], [$blue, 'Blue'], [$green, 'Green']] as [$variant, $color]) {
+            $variant->update(['options' => ['Size' => 'Small', 'Colour' => $color]]);
+        }
+        $product->images()->create(['path' => 'inventory/primary.jpg', 'disk' => 'public', 'purpose' => 'primary', 'is_primary' => true]);
+        $product->images()->create(['variant_id' => $smallRed->id, 'path' => 'inventory/red-sku.jpg', 'disk' => 'public', 'purpose' => 'variant_sku']);
+        $redImage = $product->images()->create(['variant_id' => $smallRed->id, 'path' => 'inventory/red.jpg', 'disk' => 'public', 'purpose' => 'variant_color']);
+        $product->images()->create(['variant_id' => $blue->id, 'path' => 'inventory/blue.jpg', 'disk' => 'public', 'purpose' => 'variant_sku']);
+        $product->images()->create(['variant_id' => $green->id, 'path' => 'inventory/green.jpg', 'disk' => 'public', 'purpose' => 'variant']);
+
+        $items = app(SellerInventoryService::class)->inventoryFor($seller)['inventoryItems']->keyBy('id');
+        foreach ([[$smallRed, 'red'], [$largeRed, 'red'], [$blue, 'blue'], [$green, 'green'], [$plain, 'primary']] as [$variant, $filename]) {
+            $this->assertSame(Storage::disk('public')->url("inventory/{$filename}.jpg"), $items[$variant->id]['image']);
+        }
+        $this->actingAs($seller)->get(route('seller.inventory'))
+            ->assertOk()
+            ->assertSee('src="'.Storage::disk('public')->url('inventory/red.jpg').'"', false)
+            ->assertSee('src="'.Storage::disk('public')->url('inventory/blue.jpg').'"', false);
+
+        $redImage->update(['path' => 'inventory/red-replaced.jpg']);
+        $updatedItems = app(SellerInventoryService::class)->inventoryFor($seller)['inventoryItems']->keyBy('id');
+        $this->assertSame(Storage::disk('public')->url('inventory/red-replaced.jpg'), $updatedItems[$largeRed->id]['image']);
+    }
+
+    public function test_inventory_page_uses_store_variants_and_scoped_movement_history(): void
+    {
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'inventory-owner');
+        [$otherSeller, $otherStore] = $this->sellerAndStore($category, 'inventory-other');
+        $tops = $this->subcategory($store, $category, 'Tops');
+        $foreignSubcategory = $this->subcategory($otherStore, $category, 'Private subcategory');
+
+        $shirt = $this->product($store, $category, 'Inventory Shirt', 'inventory-shirt');
+        $shirt->update(['subcategory_id' => $tops->id]);
+        $inStock = $this->variant($shirt, 'INV-SHIRT-M', 'Medium', 12, 3, 5);
+        $lowStock = $this->variant($shirt, 'INV-SHIRT-L', 'Large', 6, 2, 5);
+        $soldOutProduct = $this->product($store, $category, 'Sold Out Item', 'sold-out-item');
+        $soldOut = $this->variant($soldOutProduct, 'INV-SOLD-OUT', 'Default', 2, 2, 4);
+        $archivedProduct = $this->product($store, $category, 'Archived Item', 'archived-item', 'archived');
+        $archived = $this->variant($archivedProduct, 'INV-ARCHIVED', 'Default', 9, 0, 3);
+        $foreignProduct = $this->product($otherStore, $category, 'Private Other Store Item', 'private-other-item');
+        $foreignProduct->update(['subcategory_id' => $foreignSubcategory->id]);
+        $foreignVariant = $this->variant($foreignProduct, 'INV-PRIVATE', 'Default', 40, 0, 5);
+
+        InventoryMovement::create([
+            'variant_id' => $lowStock->id,
+            'type' => 'adjustment',
+            'quantity_delta' => -1,
+            'balance_after' => 6,
+            'reason' => 'Manual stock count',
+            'created_by' => $seller->id,
+            'occurred_at' => now(),
+        ]);
+        InventoryMovement::create([
+            'variant_id' => $foreignVariant->id,
+            'type' => 'adjustment',
+            'quantity_delta' => 4,
+            'balance_after' => 40,
+            'reason' => 'Private movement',
+            'created_by' => $otherSeller->id,
+            'occurred_at' => now(),
+        ]);
+
+        $response = $this->actingAs($seller)
+            ->get(route('seller.inventory'))
+            ->assertOk();
+
+        $response
+            ->assertSee('<strong>3</strong>', false)
+            ->assertSee('<strong>13</strong>', false)
+            ->assertSee('2 SKU(s) need restocking')
+            ->assertSee('data-inventory-tab="needs-restocking"', false)
+            ->assertSee('Needs Restocking')
+            ->assertSee('INV-SHIRT-M')
+            ->assertSee('INV-SHIRT-L')
+            ->assertSee('INV-SOLD-OUT')
+            ->assertSee('INV-ARCHIVED')
+            ->assertSee('Filter by Store section')
+            ->assertSee('All Store Sections')
+            ->assertSee('Tops')
+            ->assertSee('data-store-section="'.$tops->id.'"', false)
+            ->assertSee('No Store Section')
+            ->assertSee('Manual stock count')
+            ->assertSee('Inventory Owner')
+            ->assertDontSee('INV-PRIVATE')
+            ->assertDontSee('Private Other Store Item')
+            ->assertDontSee('Private subcategory')
+            ->assertDontSee('Private movement');
+
+        preg_match('/<button\\b(?=[^>]*data-inventory-bulk="set-threshold")[^>]*>/s', $response->getContent(), $thresholdButton);
+        $this->assertNotEmpty($thresholdButton);
+        $this->assertStringNotContainsString('disabled', $thresholdButton[0]);
+
+        $this->assertDatabaseHas('product_variants', [
+            'id' => $inStock->id,
+            'stock_on_hand' => 12,
+        ]);
+        $this->assertDatabaseHas('product_variants', [
+            'id' => $soldOut->id,
+            'stock_on_hand' => 2,
+        ]);
+        $this->assertDatabaseHas('product_variants', [
+            'id' => $archived->id,
+            'stock_on_hand' => 9,
+        ]);
+    }
+
+    public function test_inventory_filters_store_sections_and_marketplace_subcategories_separately(): void
+    {
+        $businessCategory = $this->category();
+        [$seller, $store] = $this->sellerAndStore($businessCategory, 'inventory-taxonomy');
+        [, $otherStore] = $this->sellerAndStore($businessCategory, 'inventory-taxonomy-other');
+
+        $phonesSection = $this->subcategory($store, $businessCategory, 'Phones');
+        $audioSection = $this->subcategory($store, $businessCategory, 'Audio');
+        $privateSection = $this->subcategory($otherStore, $businessCategory, 'Private section');
+
+        $electronics = MarketplaceCategory::create([
+            'name' => 'Electronics & Gadgets',
+            'slug' => 'inventory-electronics-and-gadgets',
+            'is_active' => true,
+            'position' => 1,
+        ]);
+        $mobilePhones = $this->marketplaceSubcategory($electronics, 'Mobile Phones & Accessories', 'mobile-phones-accessories');
+        $audioVideo = $this->marketplaceSubcategory($electronics, 'Audio & Video Equipment', 'audio-video-equipment');
+
+        $privateMarketplaceCategory = MarketplaceCategory::create([
+            'name' => 'Private Marketplace Category',
+            'slug' => 'inventory-private-marketplace-category',
+            'is_active' => true,
+            'position' => 2,
+        ]);
+        $privateMarketplaceSubcategory = $this->marketplaceSubcategory($privateMarketplaceCategory, 'Private Marketplace Subcategory', 'private-marketplace-subcategory');
+
+        $phoneProduct = $this->product($store, $businessCategory, 'Phone Product', 'inventory-phone-product');
+        $phoneProduct->update([
+            'subcategory_id' => $phonesSection->id,
+            'marketplace_subcategory_id' => $mobilePhones->id,
+        ]);
+        $phoneVariant = $this->variant($phoneProduct, 'INV-TAX-PHONE', 'Default', 8, 0, 2);
+
+        $audioProduct = $this->product($store, $businessCategory, 'Audio Product', 'inventory-audio-product');
+        $audioProduct->update([
+            'subcategory_id' => $phonesSection->id,
+            'marketplace_subcategory_id' => $audioVideo->id,
+        ]);
+        $audioVariant = $this->variant($audioProduct, 'INV-TAX-AUDIO', 'Default', 8, 0, 2);
+
+        $unclassifiedProduct = $this->product($store, $businessCategory, 'Unclassified Product', 'inventory-unclassified-product');
+        $unclassifiedProduct->update(['subcategory_id' => $audioSection->id]);
+        $unclassifiedVariant = $this->variant($unclassifiedProduct, 'INV-TAX-UNCLASSIFIED', 'Default', 8, 0, 2);
+
+        $privateProduct = $this->product($otherStore, $businessCategory, 'Private Taxonomy Product', 'inventory-private-taxonomy-product');
+        $privateProduct->update([
+            'subcategory_id' => $privateSection->id,
+            'marketplace_subcategory_id' => $privateMarketplaceSubcategory->id,
+        ]);
+        $this->variant($privateProduct, 'INV-TAX-PRIVATE', 'Default', 8, 0, 2);
+
+        $service = app(SellerInventoryService::class);
+        $filteredInventory = $service->inventoryFor($seller, (string) $phonesSection->id, (string) $mobilePhones->id);
+
+        $this->assertSame([$phoneVariant->id], $filteredInventory['inventoryItems']->pluck('id')->all());
+        $this->assertSame(
+            [$phoneVariant->id, $audioVariant->id],
+            $service->inventoryFor($seller, (string) $phonesSection->id)['inventoryItems']->pluck('id')->all(),
+        );
+        $this->assertSame(
+            [$phoneVariant->id],
+            $service->inventoryFor($seller, null, (string) $mobilePhones->id)['inventoryItems']->pluck('id')->all(),
+        );
+        $this->assertSame(
+            [],
+            $service->inventoryFor($seller, null, (string) $privateMarketplaceSubcategory->id)['inventoryItems']->all(),
+        );
+        $this->assertEqualsCanonicalizing(
+            [$phonesSection->id, $audioSection->id],
+            collect($filteredInventory['inventorySubcategories'])->pluck('id')->all(),
+        );
+        $this->assertEqualsCanonicalizing(
+            [$mobilePhones->id, $audioVideo->id],
+            collect($filteredInventory['inventoryMarketplaceSubcategories'])->pluck('id')->all(),
+        );
+        $this->assertTrue($filteredInventory['inventoryHasUnclassifiedMarketplaceItems']);
+        $this->assertSame((string) $phonesSection->id, $filteredInventory['inventorySelectedStoreSection']);
+        $this->assertSame((string) $mobilePhones->id, $filteredInventory['inventorySelectedMarketplaceSubcategory']);
+
+        $unclassifiedInventory = $service->inventoryFor($seller, null, 'unclassified');
+        $this->assertSame([$unclassifiedVariant->id], $unclassifiedInventory['inventoryItems']->pluck('id')->all());
+
+        $this->actingAs($seller)
+            ->get(route('seller.inventory', [
+                'store_section' => $phonesSection->id,
+                'marketplace_subcategory' => $mobilePhones->id,
+            ]))
+            ->assertOk()
+            ->assertSee('Filter by Store section')
+            ->assertSee('Filter by Marketplace subcategory')
+            ->assertSee('All Store Sections')
+            ->assertSee('All Marketplace Subcategories')
+            ->assertSee('Electronics &amp; Gadgets', false)
+            ->assertSee('data-id="'.$phoneVariant->id.'"', false)
+            ->assertDontSee('data-id="'.$audioVariant->id.'"', false)
+            ->assertDontSee('INV-TAX-PRIVATE')
+            ->assertDontSee('Private Marketplace Category')
+            ->assertDontSee('Private Marketplace Subcategory')
+            ->assertSee('No Marketplace Subcategory');
+
+        $this->actingAs($seller)
+            ->get(route('seller.inventory', ['marketplace_subcategory' => 'not-a-valid-filter']))
+            ->assertSessionHasErrors('marketplace_subcategory');
+    }
+
+    public function test_compliance_blocked_inventory_is_not_presented_as_sellable_stock(): void
+    {
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'inventory-blocked');
+        $product = $this->product($store, $category, 'Blocked Product', 'blocked-product');
+        $product->update([
+            'product_status' => 'blocked',
+            'compliance_status' => 'blocked',
+        ]);
+        $variant = $this->variant($product, 'INV-BLOCKED-1', 'Default', 5, 0, 2);
+
+        $inventory = app(SellerInventoryService::class)->inventoryFor($seller);
+        $item = $inventory['inventoryItems']->firstWhere('id', $variant->id);
+
+        $this->assertSame('blocked', $item['status_key']);
+        $this->assertSame('Blocked', $item['status']);
+        $this->assertSame(0, $item['available']);
+        $this->assertTrue($item['is_compliance_held']);
+        $this->assertSame(0, $inventory['inventorySummary'][1]['value']);
+
+        $this->actingAs($seller)
+            ->get(route('seller.inventory'))
+            ->assertOk()
+            ->assertSee('Blocked')
+            ->assertSee('Compliance hold')
+            ->assertSee('data-compliance-held="true"', false)
+            ->assertSee('aria-label="Select INV-BLOCKED-1 for threshold updates; stock adjustment remains blocked during compliance review"', false)
+            ->assertSee('data-inventory-tab="blocked"', false)
+            ->assertDontSee('stock-in-stock');
+    }
+
+    public function test_compliance_held_skus_can_be_selected_for_threshold_updates_but_not_stock_adjustments(): void
+    {
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'inventory-compliance-selection');
+
+        $blockedProduct = $this->product($store, $category, 'Blocked Selection Item', 'blocked-selection-item');
+        $blockedProduct->update(['product_status' => 'blocked', 'compliance_status' => 'blocked']);
+        $blockedVariant = $this->variant($blockedProduct, 'INV-SELECT-BLOCKED', 'Default', 5, 0, 2);
+
+        $flaggedProduct = $this->product($store, $category, 'Flagged Selection Item', 'flagged-selection-item');
+        $flaggedProduct->update(['product_status' => 'flagged', 'compliance_status' => 'flagged']);
+        $flaggedVariant = $this->variant($flaggedProduct, 'INV-SELECT-FLAGGED', 'Default', 7, 1, 3);
+
+        $response = $this->actingAs($seller)
+            ->get(route('seller.inventory'))
+            ->assertOk()
+            ->assertSee('data-compliance-held="true"', false)
+            ->assertSee('aria-label="Select INV-SELECT-BLOCKED for threshold updates; stock adjustment remains blocked during compliance review"', false)
+            ->assertSee('aria-label="Select INV-SELECT-FLAGGED for threshold updates; stock adjustment remains blocked during compliance review"', false);
+
+        preg_match_all('/<input(?=[^>]*\bdata-inventory-check(?:\s|=|>))([^>]*)>/i', $response->getContent(), $checkboxMatches);
+        $this->assertCount(2, $checkboxMatches[0]);
+        foreach ($checkboxMatches[1] as $attributes) {
+            $this->assertDoesNotMatchRegularExpression('/\sdisabled(?:\s|=|$)/i', $attributes);
+        }
+
+        $this->actingAs($seller)
+            ->from(route('seller.inventory'))
+            ->post(route('seller.inventory.thresholds'), [
+                'inventory_action' => 'threshold',
+                'variant_ids' => [$blockedVariant->id, $flaggedVariant->id],
+                'threshold' => 9,
+            ])
+            ->assertRedirect(route('seller.inventory'))
+            ->assertSessionHas('success', 'Low-stock threshold saved for 2 SKU(s).');
+
+        $this->assertSame(9, (int) $blockedVariant->fresh()->low_stock_threshold);
+        $this->assertSame(9, (int) $flaggedVariant->fresh()->low_stock_threshold);
+
+        $this->actingAs($seller)
+            ->from(route('seller.inventory'))
+            ->post(route('seller.inventory.adjustments'), [
+                'inventory_action' => 'adjust',
+                'variant_ids' => [$blockedVariant->id, $flaggedVariant->id],
+                'mode' => 'add',
+                'quantity' => 2,
+                'reason' => 'new_stock_received',
+            ])
+            ->assertRedirect(route('seller.inventory'))
+            ->assertSessionHasErrors('variant_ids');
+
+        $this->assertSame(5, (int) $blockedVariant->fresh()->stock_on_hand);
+        $this->assertSame(7, (int) $flaggedVariant->fresh()->stock_on_hand);
+        $this->assertSame(0, InventoryMovement::query()->count());
+    }
+
+    public function test_stock_adjustment_persists_balance_and_auditable_movement(): void
+    {
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'inventory-adjust');
+        $product = $this->product($store, $category, 'Adjustment Item', 'adjustment-item');
+        $variant = $this->variant($product, 'INV-ADJUST-1', 'Default', 10, 2, 4);
+
+        $this->actingAs($seller)
+            ->from(route('seller.inventory'))
+            ->post(route('seller.inventory.adjustments'), [
+                'inventory_action' => 'adjust',
+                'variant_ids' => [$variant->id],
+                'mode' => 'add',
+                'quantity' => 3,
+                'reason' => 'new_stock_received',
+                'reason_note' => 'Invoice INV-44',
+            ])
+            ->assertRedirect(route('seller.inventory'))
+            ->assertSessionHas('success', 'Stock adjusted and recorded for 1 SKU(s).');
+
+        $this->assertSame(13, (int) $variant->fresh()->stock_on_hand);
+        $this->assertSame(11, $variant->fresh()->available_stock);
+        $this->assertDatabaseHas('inventory_movements', [
+            'variant_id' => $variant->id,
+            'type' => 'adjustment',
+            'quantity_delta' => 3,
+            'balance_after' => 13,
+            'reason' => 'New stock received — Invoice INV-44',
+            'created_by' => $seller->id,
+        ]);
+
+        $this->actingAs($seller)
+            ->get(route('seller.inventory'))
+            ->assertOk()
+            ->assertSee('13')
+            ->assertSee('New stock received — Invoice INV-44');
+    }
+
+    public function test_bulk_adjustment_is_atomic_and_cannot_reduce_stock_below_reservations(): void
+    {
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'inventory-bulk');
+        $product = $this->product($store, $category, 'Bulk Adjustment Item', 'bulk-adjustment-item');
+        $availableVariant = $this->variant($product, 'INV-BULK-1', 'First', 8, 0, 3);
+        $reservedVariant = $this->variant($product, 'INV-BULK-2', 'Second', 4, 3, 3);
+
+        $this->actingAs($seller)
+            ->from(route('seller.inventory'))
+            ->post(route('seller.inventory.adjustments'), [
+                'inventory_action' => 'adjust',
+                'variant_ids' => [$availableVariant->id, $reservedVariant->id],
+                'mode' => 'remove',
+                'quantity' => 2,
+                'reason' => 'damaged_item',
+            ])
+            ->assertRedirect(route('seller.inventory'))
+            ->assertSessionHasErrors('quantity');
+
+        $this->assertSame(8, (int) $availableVariant->fresh()->stock_on_hand);
+        $this->assertSame(4, (int) $reservedVariant->fresh()->stock_on_hand);
+        $this->assertSame(0, InventoryMovement::query()->count());
+    }
+
+    public function test_inventory_mutations_are_store_scoped_and_thresholds_persist(): void
+    {
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'inventory-threshold-owner');
+        [, $otherStore] = $this->sellerAndStore($category, 'inventory-threshold-other');
+        $ownProduct = $this->product($store, $category, 'Threshold Item', 'threshold-item');
+        $ownVariant = $this->variant($ownProduct, 'INV-THRESHOLD-1', 'Default', 15, 2, 5);
+        $ownVariantTwo = $this->variant($ownProduct, 'INV-THRESHOLD-3', 'Large', 7, 1, 5);
+        $foreignProduct = $this->product($otherStore, $category, 'Foreign Threshold Item', 'foreign-threshold-item');
+        $foreignVariant = $this->variant($foreignProduct, 'INV-THRESHOLD-2', 'Default', 15, 0, 5);
+
+        $this->actingAs($seller)
+            ->from(route('seller.inventory'))
+            ->post(route('seller.inventory.thresholds'), [
+                'inventory_action' => 'threshold',
+                'variant_ids' => [$ownVariant->id, $ownVariantTwo->id],
+                'threshold' => 12,
+            ])
+            ->assertRedirect(route('seller.inventory'))
+            ->assertSessionHas('success', 'Low-stock threshold saved for 2 SKU(s).');
+
+        $this->assertSame(12, (int) $ownVariant->fresh()->low_stock_threshold);
+        $this->assertSame(12, (int) $ownVariantTwo->fresh()->low_stock_threshold);
+        $this->assertSame(0, InventoryMovement::query()->count());
+
+        $this->actingAs($seller)
+            ->from(route('seller.inventory'))
+            ->post(route('seller.inventory.adjustments'), [
+                'inventory_action' => 'adjust',
+                'variant_ids' => [$ownVariant->id, $foreignVariant->id],
+                'mode' => 'add',
+                'quantity' => 2,
+                'reason' => 'new_stock_received',
+            ])
+            ->assertNotFound();
+
+        $this->assertSame(15, (int) $ownVariant->fresh()->stock_on_hand);
+        $this->assertSame(15, (int) $foreignVariant->fresh()->stock_on_hand);
+        $this->assertSame(0, InventoryMovement::query()->count());
+    }
+
+    public function test_inventory_thresholds_show_in_product_editor_and_mixed_thresholds_survive_edits(): void
+    {
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'inventory-editor-threshold');
+        $product = $this->product($store, $category, 'Threshold Editor Item', 'threshold-editor-item');
+        $small = $this->variant($product, 'INV-EDITOR-SMALL', 'Small', 13, 0, 5);
+        $large = $this->variant($product, 'INV-EDITOR-LARGE', 'Large', 13, 0, 5);
+
+        $this->actingAs($seller)
+            ->from(route('seller.inventory'))
+            ->post(route('seller.inventory.thresholds'), [
+                'inventory_action' => 'threshold',
+                'variant_ids' => [$small->id, $large->id],
+                'threshold' => 7,
+            ])
+            ->assertRedirect(route('seller.inventory'));
+
+        $uniformResponse = $this->actingAs($seller)
+            ->get(route('seller.products.edit', $product))
+            ->assertOk()
+            ->assertSee('Stock and alert per variation')
+            ->assertSee('"low_stock_threshold":7', false);
+        $this->assertSame(2, substr_count($uniformResponse->getContent(), '"low_stock_threshold":7'));
+
+        $this->actingAs($seller)
+            ->from(route('seller.inventory'))
+            ->post(route('seller.inventory.thresholds'), [
+                'inventory_action' => 'threshold',
+                'variant_ids' => [$small->id],
+                'threshold' => 9,
+            ])
+            ->assertRedirect(route('seller.inventory'));
+
+        $mixedResponse = $this->actingAs($seller)
+            ->get(route('seller.products.edit', $product))
+            ->assertOk()
+            ->assertSee('Stock and alert per variation')
+            ->assertSee('"low_stock_threshold":9', false)
+            ->assertSee('"low_stock_threshold":7', false)
+            ->assertDontSee('Varies by SKU')
+            ->assertDontSee('Saved low-stock threshold by SKU:');
+        preg_match('/<label\\b(?=[^>]*data-product-global-threshold)(?=[^>]*\\bhidden\\b)[^>]*>/', $mixedResponse->getContent(), $thresholdControl);
+        $this->assertNotEmpty($thresholdControl);
+
+        $this->actingAs($seller)
+            ->put(route('seller.products.update', $product), [
+                'product_mode' => 'with_variants',
+                'name' => 'Threshold Editor Item',
+                'category' => $category->name,
+                'description' => 'Preserve per-SKU thresholds on unrelated edits.',
+                'price' => '100.00',
+                'payment_methods' => ['cod'],
+                'payment_methods_present' => 1,
+                'stock' => 26,
+                'option_one_name' => 'Size',
+                'option_one_values' => 'Small, Large',
+                'option_two_name' => '',
+                'option_two_values' => '',
+                'variants' => [
+                    ['label' => 'Small', 'sku' => 'INV-EDITOR-SMALL', 'price' => '100.00', 'stock' => 13, 'low_stock_threshold' => 11, 'package_weight_kg' => '0.250', 'package_length_cm' => '24', 'package_width_cm' => '18', 'package_height_cm' => '8'],
+                    ['label' => 'Large', 'sku' => 'INV-EDITOR-LARGE', 'price' => '100.00', 'stock' => 13, 'low_stock_threshold' => 7, 'package_weight_kg' => '0.250', 'package_length_cm' => '24', 'package_width_cm' => '18', 'package_height_cm' => '8'],
+                ],
+                'intent' => 'draft',
+            ])
+            ->assertRedirect(route('seller.products'));
+
+        $this->assertSame(11, (int) $small->fresh()->low_stock_threshold);
+        $this->assertSame(7, (int) $large->fresh()->low_stock_threshold);
+    }
+
+    private function category(): Category
+    {
+        return Category::create([
+            'name' => 'Inventory Test Category',
+            'slug' => 'inventory-test-category',
+        ]);
+    }
+
+    private function subcategory(Store $store, Category $category, string $name): StoreSubcategory
+    {
+        return StoreSubcategory::create([
+            'store_id' => $store->id,
+            'parent_category_id' => $category->id,
+            'name' => $name,
+            'slug' => Str::slug($name),
+        ]);
+    }
+
+    private function marketplaceSubcategory(
+        MarketplaceCategory $category,
+        string $name,
+        string $slug,
+    ): MarketplaceSubcategory {
+        return MarketplaceSubcategory::create([
+            'marketplace_category_id' => $category->id,
+            'name' => $name,
+            'name_key' => Str::lower($name),
+            'slug' => $slug,
+            'is_active' => true,
+            'position' => 0,
+        ]);
+    }
+
+    /** @return array{0: User, 1: Store} */
+    private function sellerAndStore(Category $category, string $slug): array
+    {
+        $seller = User::create([
+            'name' => Str::headline($slug),
+            'first_name' => 'Inventory',
+            'last_name' => Str::headline($slug),
+            'email' => $slug.'@example.test',
+            'role' => 'seller',
+            'status' => 'active',
+            'password' => Hash::make('Password123'),
+        ]);
+        $profile = SellerProfile::create([
+            'user_id' => $seller->id,
+            'legal_business_name' => Str::headline($slug),
+            'approved_category_id' => $category->id,
+        ]);
+        $store = Store::create([
+            'seller_profile_id' => $profile->id,
+            'name' => Str::headline($slug).' Store',
+            'slug' => $slug.'-store',
+            'publication_status' => 'draft',
+        ]);
+
+        return [$seller->fresh('sellerProfile'), $store];
+    }
+
+    private function product(
+        Store $store,
+        Category $category,
+        string $name,
+        string $slug,
+        string $status = 'active',
+    ): Product {
+        return Product::create([
+            'store_id' => $store->id,
+            'category_id' => $category->id,
+            'name' => $name,
+            'slug' => $slug,
+            'product_status' => $status,
+            'compliance_status' => 'clear',
+        ]);
+    }
+
+    private function variant(
+        Product $product,
+        string $sku,
+        string $name,
+        int $onHand,
+        int $reserved,
+        int $threshold,
+    ): ProductVariant {
+        return ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => $sku,
+            'name' => $name,
+            'price_minor' => 10000,
+            'stock_on_hand' => $onHand,
+            'stock_reserved' => $reserved,
+            'low_stock_threshold' => $threshold,
+            'is_active' => true,
+        ]);
+    }
+}

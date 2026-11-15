@@ -1,17 +1,148 @@
 @extends('layouts.admin')
 
 @section('title', 'Dashboard Overview')
-@section('page-title', 'Dashboard Overview')
+
+@push('styles')
+    <style>
+        /* Keep the dashboard readable if a cached deployment serves old Admin CSS. */
+        :root[data-theme="dark"] body.admin-body :is(.dashboard-kpi-card .metric-icon, .platform-overview-metric .metric-icon) {
+            border-color: #806334 !important;
+            background: #45331d !important;
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-kpi-card > p {
+            color: #c0b2a5 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-kpi-card > strong {
+            color: #fff8ef !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-kpi-card > small {
+            color: #b4a79c !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-kpi-status.is-success {
+            border: 1px solid #386146 !important;
+            background: #1e3828 !important;
+            color: #a8d5b0 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-kpi-status.is-warning {
+            border: 1px solid #806334 !important;
+            background: #44331d !important;
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-kpi-status.is-danger {
+            border: 1px solid #79443d !important;
+            background: #452521 !important;
+            color: #ffaaa2 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-kpi-status.is-neutral {
+            border: 1px solid #72563e !important;
+            background: #3b3027 !important;
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .platform-overview-metric span:not(.metric-icon) {
+            color: #e4c39d !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .platform-overview-metric small {
+            color: #b4a79c !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .segmented-control {
+            border-color: #594737 !important;
+            background: #30241d !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .segmented-control button {
+            color: #c0b2a5 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .segmented-control button.is-active {
+            border-color: #806334 !important;
+            background: #45331d !important;
+            color: #efbd71 !important;
+            box-shadow: none;
+        }
+
+        :root[data-theme="dark"] body.admin-body .chart-y-labels,
+        :root[data-theme="dark"] body.admin-body .bar-column small {
+            color: #b4a79c !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .bar-chart {
+            border-color: #594737 !important;
+            background: repeating-linear-gradient(to bottom, transparent 0, transparent 61px, #3b3027 62px) !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-chart-empty {
+            color: #b4a79c !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-chart-empty > svg {
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .dashboard-chart-empty strong {
+            color: #fff8ef !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body :is(.notice-card, .quick-action-grid a) {
+            border-color: #594737 !important;
+            background: #30241d !important;
+            color: var(--theme-text) !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .notice-marker,
+        :root[data-theme="dark"] body.admin-body .quick-action-grid a > span {
+            border: 1px solid #806334 !important;
+            background: #45331d !important;
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .notice-card strong,
+        :root[data-theme="dark"] body.admin-body .quick-action-grid strong,
+        :root[data-theme="dark"] body.admin-body .activity-row strong {
+            color: #fff8ef !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .notice-card p,
+        :root[data-theme="dark"] body.admin-body .activity-row small,
+        :root[data-theme="dark"] body.admin-body .quick-action-grid small {
+            color: #b4a79c !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .notice-card a {
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .activity-row {
+            border-bottom-color: #594737 !important;
+        }
+
+        :root[data-theme="dark"] body.admin-body .quick-action-grid a:hover {
+            border-color: #806334 !important;
+            background: #45331d !important;
+        }
+    </style>
+@endpush
 
 @section('content')
 <section class="page-hero compact-hero">
     <div>
         <span class="eyebrow">Platform overview</span>
-        <h1>Good evening, {{ explode(' ', $admin['name'])[0] }}.</h1>
+        <h1 data-dashboard-greeting data-first-name="{{ explode(' ', $admin['name'])[0] }}">{{ $manilaGreeting }}, {{ explode(' ', $admin['name'])[0] }}.</h1>
         <p>Here is a clean snapshot of Bearly's marketplace activity and the items that need admin attention.</p>
+        @include('partials.dashboard-context', ['dashboardContextTime' => $manilaTime])
     </div>
     <div class="hero-actions">
-        <button class="button button-secondary" type="button" data-mock-action="Dashboard data refreshed.">
+        <button class="button button-secondary" type="button" data-dashboard-refresh>
             <i data-lucide="refresh-cw"></i> Refresh
         </button>
         <a class="button button-primary" href="{{ route('admin.reports') }}">
@@ -20,19 +151,85 @@
     </div>
 </section>
 
-<section class="kpi-grid">
-    @foreach ($kpis as $kpi)
-        <article class="kpi-card">
-            <div class="kpi-card-top">
-                <span class="metric-icon"><i data-lucide="{{ $kpi['icon'] }}"></i></span>
-                <span class="metric-trend trend-{{ $kpi['trend'] }}">{{ $kpi['change'] }}</span>
-            </div>
-            <p>{{ $kpi['label'] }}</p>
-            <strong>{{ $kpi['value'] }}</strong>
-            <small>Live preview from static mock records</small>
-        </article>
+@php
+    $kpisByLabel = collect($kpis)->keyBy('label');
+    $primaryKpiOrder = [
+        'Total Users',
+        'Buyers',
+        'Sellers',
+        'Logistics & Riders',
+        'Pending Applications',
+        'Restricted Accounts',
+        'Active Orders',
+        'Paid Collections',
+    ];
+    $adminRecordsKpi = $kpisByLabel->get('Admin Records');
+@endphp
+
+<section class="dashboard-kpi-grid" aria-label="Key platform metrics">
+    @foreach ($primaryKpiOrder as $label)
+        @php
+            $kpi = $kpisByLabel->get($label);
+        @endphp
+        @if ($kpi)
+            @php
+                $metricCount = (int) preg_replace('/\D+/', '', $kpi['value']);
+                $activeCount = (int) preg_replace('/\D+/', '', $kpi['change']);
+                $description = match ($label) {
+                    'Total Users' => 'All registered accounts across Bearly.',
+                    'Buyers' => 'Buyer accounts on the platform.',
+                    'Sellers' => 'Seller accounts on the platform.',
+                    'Logistics & Riders' => 'Logistics centers and rider accounts.',
+                    'Pending Applications' => 'Applications awaiting review.',
+                    'Restricted Accounts' => 'Suspended or deactivated accounts.',
+                    'Active Orders' => 'Orders still in progress.',
+                    'Paid Collections' => 'Payments marked paid this year, by payment date.',
+                    default => '',
+                };
+                $showStatus = ! in_array($label, ['Buyers', 'Sellers'], true);
+                $statusText = match ($label) {
+                    'Pending Applications' => $metricCount > 0 ? $kpi['change'] : 'No pending reviews',
+                    'Restricted Accounts' => $metricCount > 0 ? $kpi['change'] : 'None',
+                    default => $kpi['change'],
+                };
+                $statusClass = match ($label) {
+                    'Total Users' => $activeCount > 0 ? 'is-success' : 'is-neutral',
+                    'Pending Applications' => $metricCount > 0 ? 'is-warning' : 'is-neutral',
+                    'Restricted Accounts' => $metricCount > 0 ? 'is-danger' : 'is-neutral',
+                    default => 'is-neutral',
+                };
+            @endphp
+
+            <article class="dashboard-kpi-card">
+                <div class="dashboard-kpi-card-top">
+                    <span class="metric-icon" aria-hidden="true"><i data-lucide="{{ $kpi['icon'] }}"></i></span>
+                    @if ($showStatus)
+                        <span class="dashboard-kpi-status {{ $statusClass }}">{{ $statusText }}</span>
+                    @endif
+                </div>
+                <p>{{ $kpi['label'] }}</p>
+                <strong>{{ $kpi['value'] }}</strong>
+                <small>{{ $description }}</small>
+            </article>
+        @endif
     @endforeach
 </section>
+
+@if ($adminRecordsKpi)
+    <section class="platform-overview-panel panel" aria-labelledby="platform-overview-title">
+        <div class="panel-heading">
+            <h2 id="platform-overview-title">Platform overview</h2>
+        </div>
+        <div class="platform-overview-metric">
+            <span class="metric-icon" aria-hidden="true"><i data-lucide="{{ $adminRecordsKpi['icon'] }}"></i></span>
+            <div>
+                <strong>{{ $adminRecordsKpi['value'] }}</strong>
+                <span>Admin records</span>
+                <small>Announcements, policies, and system settings</small>
+            </div>
+        </div>
+    </section>
+@endif
 
 <section class="dashboard-grid dashboard-grid-main">
     <article class="panel panel-large">
@@ -40,27 +237,75 @@
             <div>
                 <span class="eyebrow">Marketplace performance</span>
                 <h2>Sales trend</h2>
-                <p>Monthly gross sales preview for the current year.</p>
+                <p>Net product sales from completed seller orders, grouped by completion date. Shipping is excluded; item discounts and completed refunds are deducted.</p>
             </div>
             <div class="segmented-control">
-                <button type="button" class="is-active">12M</button>
-                <button type="button" data-mock-action="Quarter view selected.">3M</button>
-                <button type="button" data-mock-action="Month view selected.">30D</button>
+                <button type="button" class="is-active" data-dashboard-period="12M" aria-pressed="true">12M</button>
+                <button type="button" data-dashboard-period="3M" aria-pressed="false">3M</button>
+                <button type="button" data-dashboard-period="30D" aria-pressed="false">30D</button>
             </div>
         </div>
 
-        <div class="chart-shell">
-            <div class="chart-y-labels"><span>₱1.5M</span><span>₱1.0M</span><span>₱500K</span><span>₱0</span></div>
-            <div class="bar-chart" aria-label="Sales bar chart">
-                @php $months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; @endphp
-                @foreach ($salesByMonth as $index => $height)
-                    <div class="bar-column">
-                        <div class="bar-track"><span style="height: {{ min(100, $height / 1.45) }}%"></span></div>
-                        <small>{{ $months[$index] }}</small>
-                    </div>
-                @endforeach
+        @if ($hasSalesData)
+            @foreach (['12M', '3M', '30D'] as $periodKey)
+                @php
+                    $trend = $salesTrend[$periodKey];
+                    $trendCaption = match ($periodKey) {
+                        '3M' => 'Net product sales for the last 3 calendar months, grouped by completion date',
+                        '30D' => 'Net product sales for the last 30 days, grouped by completion date',
+                        default => 'Net product sales for the last 12 calendar months, grouped by completion date',
+                    };
+                @endphp
+                <div class="chart-shell" data-dashboard-period-view="{{ $periodKey }}" @if ($periodKey !== '12M') hidden @endif>
+                    @if ($trend['has_data'])
+                        <div class="chart-y-labels" aria-hidden="true">
+                            @foreach ($trend['axis'] as $axisLabel)<span>{{ $axisLabel }}</span>@endforeach
+                        </div>
+                        <div
+                            class="bar-chart @if (count($trend['buckets']) > 14) is-dense @endif @if ($trend['has_negative']) has-negative @endif"
+                            data-chart
+                            role="group"
+                            aria-label="{{ $trendCaption }}"
+                            style="grid-template-columns:repeat({{ count($trend['buckets']) }}, minmax(0, 1fr))@if ($trend['has_negative']);--zero-position: {{ $trend['zero_percent'] }}%@endif"
+                        >
+                            @foreach ($trend['buckets'] as $bucket)
+                                <div
+                                    class="bar-column"
+                                    data-chart-point
+                                    tabindex="{{ $loop->first ? 0 : -1 }}"
+                                    role="img"
+                                    aria-label="{{ $bucket['label'] }}: {{ $bucket['value'] }}"
+                                    data-label="{{ $bucket['label'] }}"
+                                    data-value="{{ $bucket['value'] }}"
+                                >
+                                    <div class="bar-track">
+                                        @if ($bucket['value_minor'] !== 0)
+                                            <span
+                                                data-chart-bar
+                                                @if ($bucket['negative']) class="is-negative" @endif
+                                                style="height: {{ $bucket['height'] }}%; @if ($bucket['negative']) top: {{ 100 - $trend['zero_percent'] }}%; @else bottom: {{ $trend['zero_percent'] }}%; @endif"
+                                            ></span>
+                                        @endif
+                                    </div>
+                                    <small>{{ $bucket['short'] }}</small>
+                                </div>
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="dashboard-chart-empty chart-shell-empty" role="status">
+                            <i data-lucide="chart-column" aria-hidden="true"></i>
+                            <strong>{{ $trend['empty_note'] }}</strong>
+                        </div>
+                    @endif
+                </div>
+            @endforeach
+        @else
+            <div class="dashboard-chart-empty" role="status">
+                <i data-lucide="chart-column" aria-hidden="true"></i>
+                <strong>No net product sales recorded yet</strong>
+                <span>Net product sales appear here after seller orders complete.</span>
             </div>
-        </div>
+        @endif
     </article>
 
     <aside class="panel attention-panel">
@@ -93,19 +338,25 @@
                 <span class="eyebrow">Recent activity</span>
                 <h2>Platform timeline</h2>
             </div>
-            <button class="text-button" type="button" data-mock-action="All activity opened.">View all</button>
+            <a class="text-button" href="{{ route('admin.audit-logs') }}">View all</a>
         </div>
         <div class="activity-list">
-            @foreach ($activity as $item)
+            @forelse ($activity as $item)
                 <div class="activity-row">
                     <span class="activity-dot dot-{{ $item['type'] }}"></span>
                     <div>
                         <strong>{{ $item['title'] }}</strong>
                         <small>{{ $item['meta'] }}</small>
                     </div>
-                    <button class="icon-button subtle-icon" type="button" data-mock-action="Activity details opened."><i data-lucide="chevron-right"></i></button>
+                    <a class="icon-button subtle-icon" href="{{ route('admin.audit-logs') }}" aria-label="Open audit logs"><i data-lucide="chevron-right"></i></a>
                 </div>
-            @endforeach
+            @empty
+                <div class="table-empty">
+                    <i data-lucide="activity"></i>
+                    <strong>No administrative activity yet</strong>
+                    <span>New actions will appear here as they are recorded.</span>
+                </div>
+            @endforelse
         </div>
     </article>
 

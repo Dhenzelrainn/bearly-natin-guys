@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    @include('partials.favicon')
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>@yield('title', 'Logistics Center') | Bearly Marketplace</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    @include('partials.theme-preload')
+    @vite(['resources/css/logistics.css', 'resources/css/messages-standard.css', 'resources/css/maps.css', 'resources/css/waybill-scanner.css', 'resources/js/messages-standard.js', 'resources/js/realtime.js', 'resources/js/waybill-scanner.js', 'resources/js/destination-map.js', 'resources/js/logistics.js'])
+    @include('partials.session-safety')
+    @stack('styles')
+    <style>
+        /* Keep ops filters usable when an older Logistics CSS bundle is cached. */
+        :root[data-theme="dark"] body.ops-body :is(.search-field, .zone-search-field) input:focus-visible {
+            outline: none !important;
+            outline-offset: 0 !important;
+            box-shadow: none !important;
+        }
+
+        :root[data-theme="dark"] body.ops-body select:not([multiple]):not([size]) {
+            appearance: none !important;
+            -webkit-appearance: none !important;
+            padding-right: 34px;
+            border-color: #4a3d34 !important;
+            background-color: #1b1714 !important;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23efbd71' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
+            background-position: right 12px center !important;
+            background-repeat: no-repeat !important;
+            background-size: 12px !important;
+            color: #f1e9e1 !important;
+            color-scheme: dark;
+        }
+
+        :root[data-theme="dark"] body.ops-body select:not([multiple]):not([size]):focus-visible {
+            border-color: #efbd71 !important;
+            outline: none !important;
+            box-shadow: 0 0 0 2px rgba(239, 189, 113, .22) !important;
+        }
+    </style>
+</head>
+<body
+    class="ops-body"
+    data-module="logistics"
+    data-realtime-user-id="{{ auth()->id() }}"
+    data-logistics-location-status-endpoint="{{ route('logistics.location.show') }}"
+    data-logistics-location-endpoint="{{ route('logistics.location.update') }}"
+    data-logistics-location-clear-endpoint="{{ route('logistics.location.destroy') }}"
+>
+@include('partials.realtime-identity')
+<div class="ops-shell">
+    <aside class="ops-sidebar" aria-label="Logistics navigation">
+        <div class="ops-sidebar-header">
+            <button class="ops-menu-button ops-collapse" type="button" data-sidebar-collapse aria-label="Toggle sidebar"><i data-lucide="menu"></i></button>
+            <a href="{{ route('logistics.dashboard') }}" class="ops-brand"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly"><span class="ops-brand-subtitle">Logistics Center</span></a>
+        </div>
+        <nav class="ops-nav">
+            <p class="ops-nav-label">Overview</p>
+            <a href="{{ route('logistics.dashboard') }}" class="ops-nav-link {{ request()->routeIs('logistics.dashboard') ? 'is-active' : '' }}"><i data-lucide="house"></i><span>Dashboard</span></a>
+            <p class="ops-nav-label">Operations</p>
+            <a href="{{ route('logistics.riders.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.riders.*') && !request()->routeIs('logistics.riders.vehicle-changes*') ? 'is-active' : '' }}" @if (($pendingRiderCount ?? 0) > 0) aria-label="Rider Management, {{ $pendingRiderCount }} actionable {{ $pendingRiderCount === 1 ? 'task' : 'tasks' }}" title="Rider Management · {{ $pendingRiderCount }} actionable {{ $pendingRiderCount === 1 ? 'task' : 'tasks' }}" @endif><i data-lucide="users-round"></i><span>Rider Management</span>@include('partials.navigation-task-count', ['count' => $pendingRiderCount ?? 0, 'class' => 'nav-count'])</a>
+            <a href="{{ route('logistics.rider-attendance.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.rider-attendance.index') ? 'is-active' : '' }}"><i data-lucide="scan-line"></i><span>Rider Attendance</span></a>
+            @php($vehicleReviewCount = (int) (($navigationTaskCounts ?? [])['logistics.riders.vehicle-changes'] ?? 0))
+            <a href="{{ route('logistics.riders.vehicle-changes') }}" class="ops-nav-link {{ request()->routeIs('logistics.riders.vehicle-changes*') ? 'is-active' : '' }}" @if ($vehicleReviewCount > 0) aria-label="Vehicle / Courier reviews, {{ $vehicleReviewCount }} actionable {{ $vehicleReviewCount === 1 ? 'task' : 'tasks' }}" title="Vehicle / Courier reviews · {{ $vehicleReviewCount }} actionable {{ $vehicleReviewCount === 1 ? 'task' : 'tasks' }}" @endif><i data-lucide="file-check-2"></i><span>Vehicle / Courier reviews</span>@include('partials.navigation-task-count', ['count' => $vehicleReviewCount, 'class' => 'nav-count'])</a>
+            @php($pickupRequestCount = (int) (($navigationTaskCounts ?? [])['logistics.pickups.index'] ?? 0))
+            <a href="{{ route('logistics.pickups.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.pickups.*') ? 'is-active' : '' }}" @if ($pickupRequestCount > 0) aria-label="Pickup Requests, {{ $pickupRequestCount }} actionable {{ $pickupRequestCount === 1 ? 'task' : 'tasks' }}" title="Pickup Requests · {{ $pickupRequestCount }} actionable {{ $pickupRequestCount === 1 ? 'task' : 'tasks' }}" @endif><i data-lucide="package-check"></i><span>Pickup Requests</span>@include('partials.navigation-task-count', ['count' => $pickupRequestCount, 'class' => 'nav-count'])</a>
+            @php($cashCustodyCount = (int) (($navigationTaskCounts ?? [])['logistics.cash.index'] ?? 0))
+            <a href="{{ route('logistics.cash.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.cash.*') ? 'is-active' : '' }}" @if ($cashCustodyCount > 0) aria-label="Cash custody, {{ $cashCustodyCount }} actionable {{ $cashCustodyCount === 1 ? 'task' : 'tasks' }}" title="Cash custody · {{ $cashCustodyCount }} actionable {{ $cashCustodyCount === 1 ? 'task' : 'tasks' }}" @endif><i data-lucide="banknote"></i><span>Cash custody</span>@include('partials.navigation-task-count', ['count' => $cashCustodyCount, 'class' => 'nav-count'])</a>
+            <a href="{{ route('logistics.settlements.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.settlements.*') ? 'is-active' : '' }}"><i data-lucide="wallet"></i><span>Shipping settlement</span></a>
+            @php($incomingParcelCount = (int) (($navigationTaskCounts ?? [])['logistics.sorting.incoming'] ?? 0))
+            <a href="{{ route('logistics.sorting.incoming') }}" class="ops-nav-link {{ request()->routeIs('logistics.sorting.incoming') ? 'is-active' : '' }}" @if ($incomingParcelCount > 0) aria-label="Incoming Parcels, {{ $incomingParcelCount }} actionable {{ $incomingParcelCount === 1 ? 'task' : 'tasks' }}" title="Incoming Parcels · {{ $incomingParcelCount }} actionable {{ $incomingParcelCount === 1 ? 'task' : 'tasks' }}" @endif><i data-lucide="package-open"></i><span>Incoming Parcels</span>@include('partials.navigation-task-count', ['count' => $incomingParcelCount, 'class' => 'nav-count'])</a>
+            @php($cityHandoffCount = (int) (($navigationTaskCounts ?? [])['logistics.transfers.index'] ?? 0))
+            <a href="{{ route('logistics.transfers.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.transfers.*') ? 'is-active' : '' }}" @if ($cityHandoffCount > 0) aria-label="City Handoffs, {{ $cityHandoffCount }} actionable {{ $cityHandoffCount === 1 ? 'task' : 'tasks' }}" title="City Handoffs · {{ $cityHandoffCount }} actionable {{ $cityHandoffCount === 1 ? 'task' : 'tasks' }}" @endif><i data-lucide="arrow-left-right"></i><span>City Handoffs</span>@include('partials.navigation-task-count', ['count' => $cityHandoffCount, 'class' => 'nav-count'])</a>
+            <a href="{{ route('logistics.sorting.center') }}" class="ops-nav-link {{ request()->routeIs('logistics.sorting.center') ? 'is-active' : '' }}"><i data-lucide="warehouse"></i><span>Sorting Center</span></a>
+            <a href="{{ route('logistics.dispatch.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.dispatch.index') ? 'is-active' : '' }}"><i data-lucide="route"></i><span>Delivery Assignment</span></a>
+            <a href="{{ route('logistics.dispatch.monitoring') }}" class="ops-nav-link {{ request()->routeIs('logistics.dispatch.monitoring') ? 'is-active' : '' }}"><i data-lucide="map-pinned"></i><span>Delivery Monitoring</span></a>
+            <a href="{{ route('logistics.shipping-policies.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.shipping-policies.*') ? 'is-active' : '' }}"><i data-lucide="file-check-2"></i><span>Shipping Policies</span></a>
+            <p class="ops-nav-label">Insights & support</p>
+            <a href="{{ route('logistics.reports.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.reports.*') ? 'is-active' : '' }}"><i data-lucide="chart-column"></i><span>Reports</span></a>
+            <a href="{{ route('logistics.messages.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.messages.*') ? 'is-active' : '' }}"><i data-lucide="message-circle"></i><span>Messages</span></a>
+            <a href="{{ route('notifications.center') }}" class="ops-nav-link {{ request()->routeIs('notifications.center') ? 'is-active' : '' }}"><i data-lucide="bell"></i><span>Notifications</span></a>
+            <p class="ops-nav-label">Settings</p>
+            <a href="{{ route('logistics.profile.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.profile.*') ? 'is-active' : '' }}"><i data-lucide="user-round-cog"></i><span>Account</span></a>
+        </nav>
+        <div class="ops-sidebar-footer">
+            <div class="facility-chip"><i data-lucide="building-2"></i><span><small>Active facility</small><strong>{{ $operator['business_name'] ?? 'Logistics Center' }}</strong></span></div>
+            <form method="POST" action="{{ route('logout') }}" style="display: contents">@csrf<button type="submit" class="ops-nav-link ops-logout"><i data-lucide="log-out"></i><span>Logout</span></button></form>
+        </div>
+    </aside>
+    <button class="ops-overlay" type="button" data-overlay aria-label="Close navigation"></button>
+    <div class="ops-main">
+        <header class="ops-topbar">
+            <div class="ops-topbar-left"><button class="icon-button mobile-menu" type="button" data-mobile-menu aria-label="Open navigation"><i data-lucide="menu"></i></button><h1>@yield('page-title', 'Logistics Center')</h1></div>
+            <div class="ops-topbar-actions">
+                @include('partials.theme-toggle')
+                <div class="logistics-location-control" data-logistics-location-control>
+                    <span class="logistics-location-dot is-off" data-logistics-location-dot aria-hidden="true"></span>
+                    <span class="logistics-location-copy" role="status" aria-live="polite">
+                        <strong data-logistics-location-label>Location sharing is off</strong>
+                        <small data-logistics-location-help>Share your device location with your Logistics team only.</small>
+                    </span>
+                    <button class="button button-small" type="button" data-logistics-location-toggle>Share location</button>
+                </div>
+                <div class="popover-wrap" data-notification-center data-notification-skin="logistics">
+                    <button class="icon-button notification-trigger" type="button" data-popover-toggle="notifications" aria-label="Open notifications"><i data-lucide="bell"></i><span class="notification-dot" data-notification-badge="dot" hidden></span></button>
+                    <div class="topbar-popover notification-popover" data-popover="notifications" hidden>
+                        <div class="popover-heading"><div><strong>Notifications</strong><span data-notification-summary>Recent updates</span></div></div>
+                        <div data-notification-list></div>
+                        <p class="empty-copy" data-notification-empty hidden>No new notifications.</p>
+                        <div class="popover-footer">
+                            <button type="button" class="notification-mark-all" data-notification-mark-all hidden><i data-lucide="mail-check"></i>Mark all as read</button>
+                            <a class="notification-view-all" href="{{ route('notifications.center') }}">View all notifications<i data-lucide="arrow-right"></i></a>
+                        </div>
+                    </div>
+                </div>
+                <div class="popover-wrap">
+                    <button class="profile-button" type="button" data-popover-toggle="profile"><span class="avatar">{{ $operator['initials'] ?? 'BL' }}</span><span class="profile-copy"><strong>{{ $operator['name'] ?? 'Bearly Logistics' }}</strong><small>{{ $operator['role'] ?? 'Logistics Operator' }}</small></span><i data-lucide="chevron-down"></i></button>
+                    <div class="topbar-popover profile-popover" data-popover="profile" hidden><a href="{{ route('logistics.profile.index') }}"><i data-lucide="settings"></i>Account settings</a><form method="POST" action="{{ route('logout') }}" style="display: contents">@csrf<button type="submit"><i data-lucide="log-out"></i>Logout</button></form></div>
+                </div>
+            </div>
+        </header>
+        <main class="ops-content">
+            @if(session('success'))<div class="flash-banner is-success" data-auto-dismiss="5000" role="status" @if(request()->routeIs('logistics.shipping-policies.*')) data-shipping-policy-feedback="success" @endif><i data-lucide="circle-check"></i><span>{{ session('success') }}</span><button type="button" data-dismiss><i data-lucide="x"></i></button></div>@endif
+            @if(session('error'))<div class="flash-banner is-danger" role="alert"><i data-lucide="circle-alert" aria-hidden="true"></i><span>{{ session('error') }}</span><button type="button" data-dismiss aria-label="Dismiss message"><i data-lucide="x" aria-hidden="true"></i></button></div>@endif
+            @if($errors->any())<div class="flash-banner is-danger" role="alert" @if(request()->routeIs('logistics.shipping-policies.*')) data-shipping-policy-feedback="error" @endif><i data-lucide="circle-alert"></i><span>Please check the highlighted information and try again.</span><button type="button" data-dismiss><i data-lucide="x"></i></button></div>@endif
+            @yield('content')
+        </main>
+        <footer class="ops-footer"><span>© {{ date('Y') }} Bearly Marketplace</span><span>Logistics operations</span></footer>
+    </div>
+</div>
+<div class="modal-backdrop" data-modal-backdrop hidden></div>
+<div class="toast-stack" data-toast-stack aria-live="polite"></div>
+<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+@stack('scripts')
+</body>
+</html>

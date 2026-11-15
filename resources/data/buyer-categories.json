@@ -1,0 +1,170 @@
+[
+  {
+    "name": "Pet Supplies",
+    "slug": "pet-supplies",
+    "icon": "pets",
+    "image": "/images/categories/01_Pet.png",
+    "subcategories": [
+      "Food & Treats",
+      "Bowls & Feeding",
+      "Beds, Carriers & Travel",
+      "Walking & Apparel",
+      "Grooming & Health",
+      "Litter, Training & Toys"
+    ]
+  },
+  {
+    "name": "Electronics and Gadgets",
+    "slug": "electronics-and-gadgets",
+    "icon": "devices",
+    "image": "/images/categories/02_Electronics_and_Gadgets.jpg",
+    "subcategories": [
+      "Phones & Tablets",
+      "Computers & Accessories",
+      "Audio & Entertainment",
+      "Gaming",
+      "Cameras & Creator Gear",
+      "Smart Devices & Power"
+    ]
+  },
+  {
+    "name": "Women's Apparel",
+    "slug": "women-s-apparel",
+    "icon": "checkroom",
+    "image": "/images/categories/03_Womens_Apparel.jpg",
+    "subcategories": [
+      "Dresses & Skirts",
+      "Tops & Blouses",
+      "Activewear & Yoga Pants",
+      "Lingerie & Sleepwear",
+      "Jackets & Coats",
+      "Shoes & Accessories"
+    ]
+  },
+  {
+    "name": "Men's Apparel",
+    "slug": "men-s-apparel",
+    "icon": "apparel",
+    "image": "/images/categories/04_Mens_Apparel.jpg",
+    "subcategories": [
+      "Suits & Blazers",
+      "Casual Shirts & Pants",
+      "Outerwear & Jackets",
+      "Activewear & Fitness Gear",
+      "Shoes & Accessories",
+      "Grooming Products"
+    ]
+  },
+  {
+    "name": "Kids and Baby",
+    "slug": "kids-and-baby",
+    "icon": "child_care",
+    "image": "/images/categories/kids and baby.png",
+    "subcategories": [
+      "Baby Clothing & Care",
+      "Kids Clothing & Footwear",
+      "Feeding Essentials",
+      "Strollers, Nursery & Gear",
+      "Toys & Learning",
+      "Outdoor & Safety"
+    ]
+  },
+  {
+    "name": "Home and Garden",
+    "slug": "home-and-garden",
+    "icon": "home_and_garden",
+    "image": "/images/categories/06_Home_and_Garden.jpg",
+    "subcategories": [
+      "Garden & Plants",
+      "Furniture & Decor",
+      "Kitchen & Storage",
+      "Cleaning & Organization",
+      "Tools & Home Improvement",
+      "Outdoor Living"
+    ]
+  },
+  {
+    "name": "Sports and Outdoors",
+    "slug": "sports-and-outdoors",
+    "icon": "sports_basketball",
+    "image": "/images/categories/07_Sports_and_Outdoors.jpg",
+    "subcategories": [
+      "Team & Racquet Sports",
+      "Fitness Equipment",
+      "Camping & Hiking Gear",
+      "Cycling & Outdoor Gear",
+      "Sports Accessories",
+      "Recovery & Support"
+    ]
+  },
+  {
+    "name": "Health and Beauty",
+    "slug": "health-and-beauty",
+    "icon": "spa",
+    "image": "/images/categories/08_Health_and_Beauty.jpg",
+    "subcategories": [
+      "Skincare",
+      "Haircare",
+      "Makeup & Nail Care",
+      "Personal Care & Fragrance",
+      "Wellness & First Aid",
+      "Bath & Body"
+    ]
+  },
+  {
+    "name": "Books and Media",
+    "slug": "books-and-media",
+    "icon": "menu_book",
+    "image": "/images/categories/books and media.png",
+    "subcategories": [
+      "Fiction & Non-Fiction Books",
+      "Children, Comics & Reference",
+      "Magazines & Stationery",
+      "Movies & Music",
+      "Educational Media",
+      "Games, Puzzles & Media Accessories"
+    ]
+  },
+  {
+    "name": "Food and Gourmet",
+    "slug": "food-and-gourmet",
+    "icon": "grocery",
+    "image": "/images/categories/foud and gourmet.png",
+    "subcategories": [
+      "Pantry & Cooking Essentials",
+      "Coffee, Tea & Beverages",
+      "Breakfast & Dairy",
+      "Snacks & Sweets",
+      "Baking, Spices & Condiments",
+      "Specialty & Gourmet"
+    ]
+  },
+  {
+    "name": "Furniture and Office Equipment",
+    "slug": "furniture-and-office-equipment",
+    "icon": "chair",
+    "image": "/images/categories/11_Furniture_and_Office_Equipment.jpg",
+    "subcategories": [
+      "Home Furniture",
+      "Office Desks & Chairs",
+      "Storage & Shelving",
+      "Office Equipment",
+      "Lighting & Accessories",
+      "Meeting & Workspace Furniture"
+    ]
+  },
+  {
+    "name": "Jewelry and Watches",
+    "slug": "jewelry-and-watches",
+    "icon": "watch",
+    "image": "/images/categories/12_Jewelry_and_Watches.jpg",
+    "subcategories": [
+      "Necklaces & Pendants",
+      "Rings & Earrings",
+      "Bracelets & Bangles",
+      "Watches for Men & Women",
+      "Fashion Jewelry",
+      "Jewelry Storage & Care"
+    ]
+  }
+]

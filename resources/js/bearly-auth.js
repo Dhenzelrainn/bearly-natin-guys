@@ -1,3 +1,8 @@
+import { setupEmail } from './registration-email';
+import { setupPhone } from './registration-phone';
+import { setupPostal } from './registration-postal';
+import { restoreRegistrationDraft, setupRegistrationDraft } from './registration-draft';
+
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('[data-toggle-password]').forEach((button) => {
         button.addEventListener('click', () => {
@@ -9,34 +14,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 'aria-label',
                 input.type === 'password' ? 'Show password' : 'Hide password'
             );
+            button.setAttribute('aria-pressed', String(input.type === 'text'));
         });
     });
 
-    const demoLogin = document.querySelector('[data-demo-login]');
-    demoLogin?.addEventListener('submit', (event) => {
-        event.preventDefault();
+    const rememberAccount = document.querySelector('[data-remember-account]');
+    const googleRemember = document.querySelector('[data-google-remember]');
 
-        if (!demoLogin.checkValidity()) {
-            demoLogin.reportValidity();
-            return;
-        }
+    if (rememberAccount && googleRemember) {
+        const syncGoogleRememberChoice = () => {
+            googleRemember.value = rememberAccount.checked ? '1' : '0';
+        };
 
-        const message = demoLogin.querySelector('[data-login-message]');
-        if (message) message.hidden = false;
-    });
+        syncGoogleRememberChoice();
+        rememberAccount.addEventListener('change', syncGoogleRememberChoice);
+    }
 
     const registration = document.querySelector('[data-registration]');
     if (!registration) return;
 
     const form = registration.querySelector('form');
-    const next = form.querySelector('[data-next]');
-    const back = form.querySelector('[data-back]');
-    const submit = form.querySelector('[data-submit]');
+    const next = form?.querySelector('[data-next]');
+    const back = form?.querySelector('[data-back]');
+    const submit = form?.querySelector('[data-submit]');
+
+    if (!form || !next || !back || !submit) return;
+
+    restoreRegistrationDraft(form);
+    setupRegistrationDraft(form);
 
     const PSGC_API = '/api/psgc';
+    const regionSelect = registration.querySelector('[data-region-select]');
     const provinceSelect = registration.querySelector('[data-province-select]');
     const citySelect = registration.querySelector('[data-city-select]');
     const barangaySelect = registration.querySelector('[data-barangay-select]');
+    const regionCodeField = form.elements.region_code;
     const addressMessage = registration.querySelector('[data-address-message]');
     const addressRetry = registration.querySelector('[data-address-retry]');
     const addressManual = registration.querySelector('[data-address-manual]');
@@ -207,13 +219,16 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             empty.hidden = matches.length !== 0;
-            count.textContent = `${matches.length} ${matches.length === 1 ? 'location' : 'locations'} found`;
+            count.textContent =
+                `${matches.length} ${matches.length === 1 ? 'location' : 'locations'} found`;
         };
 
         searchableSelects.set(select, widget);
 
         trigger.addEventListener('click', () => {
-            panel.hidden ? openSearchableSelect(select) : closeSearchableSelect(select);
+            panel.hidden
+                ? openSearchableSelect(select)
+                : closeSearchableSelect(select);
         });
 
         trigger.addEventListener('keydown', (event) => {
@@ -251,6 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
             optionButtons.forEach((button, index) => {
                 button.classList.toggle('is-active', index === widget.activeIndex);
             });
+
             optionButtons[widget.activeIndex]?.scrollIntoView({ block: 'nearest' });
         });
 
@@ -263,12 +279,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.addEventListener('pointerdown', (event) => {
         searchableSelects.forEach((widget, select) => {
-            if (!widget.wrapper.contains(event.target)) closeSearchableSelect(select);
+            if (!widget.wrapper.contains(event.target)) {
+                closeSearchableSelect(select);
+            }
         });
     });
 
     const selectedRole = () =>
-        form.querySelector('input[name="role"]:checked')?.value || 'seller';
+        form.querySelector('input[name="role"]:checked')?.value || 'buyer';
+
+    const phone = setupPhone(form, selectedRole);
+    const emailVerification = setupEmail(form, selectedRole);
+    const postal = setupPostal(form);
 
     const activeSteps = () =>
         selectedRole() === 'buyer' ? [1, 2, 4] : [1, 2, 3, 4];
@@ -276,49 +298,85 @@ document.addEventListener('DOMContentLoaded', () => {
     const roleRequired = {
         seller: [
             'business_name',
-            'business_category',
+            'business_category_id',
             'business_permit',
-        ],
-        courier: [
-            'vehicle_type',
-            'vehicle_model',
-            'plate_number',
-            'drivers_license_number',
-            'or_cr',
         ],
     };
 
     function updateRoleUI() {
         const role = selectedRole();
+        registration.dataset.role = role;
+        phone.updateRole();
+        emailVerification.updateRole();
         const stepLabel = registration.querySelector('[data-role-step-label]');
-        const idLabel = registration.querySelector('[data-valid-id-label]');
-        const idHelp = registration.querySelector('[data-valid-id-help]');
+        const finalStepLabel = registration.querySelector('[data-final-step-label]');
+        const documentsTitle = registration.querySelector('[data-documents-title]');
+        const documentsDescription = registration.querySelector('[data-documents-description]');
+        const summaryTitle = registration.querySelector('[data-summary-title]');
+        const nextHeading = registration.querySelector('[data-next-heading]');
+        const submitLabel = registration.querySelector('[data-submit-label]');
+        const validIdInput = form.elements['valid_id'];
+        const validIdRequired = registration.querySelector('[data-valid-id-required]');
+        const validIdHelp = registration.querySelector('[data-valid-id-help]');
+
+        if (validIdInput) {
+            validIdInput.required = role === 'seller';
+        }
+
+        if (validIdRequired) {
+            validIdRequired.textContent = role === 'seller' ? 'Required' : 'Optional';
+        }
+
+        if (validIdHelp) {
+            validIdHelp.textContent = role === 'seller'
+                ? 'Passport, driver’s license, national ID, or another government-issued ID.'
+                : 'Admins can view your ID. It does not affect email-based Buyer activation.';
+        }
 
         if (stepLabel) {
             stepLabel.textContent =
-                role === 'seller'
-                    ? 'Business Details'
-                    : role === 'courier'
-                        ? 'Vehicle Details'
-                        : 'Buyer Details';
+                role === 'seller' ? 'Business Details' : 'Buyer Details';
         }
 
-        if (idLabel) {
-            idLabel.textContent =
-                role === 'courier'
-                    ? 'Valid ID or driver’s license'
-                    : 'Valid government ID';
+        if (finalStepLabel) {
+            finalStepLabel.textContent = role === 'seller'
+                ? 'Documents & Review'
+                : 'Review & finish';
         }
 
-        if (idHelp) {
-            idHelp.textContent =
-                role === 'courier'
-                    ? 'Upload a government ID or a valid driver’s license.'
-                    : 'Passport, driver’s license, national ID, or another government-issued ID.';
+        if (documentsTitle) {
+            documentsTitle.textContent = role === 'seller'
+                ? 'Documents & review'
+                : 'Review your Buyer details';
+        }
+
+        if (documentsDescription) {
+            documentsDescription.textContent = role === 'seller'
+                ? 'Upload your required Seller documents and confirm your application.'
+                : 'Check your information before creating your Buyer account. A Valid ID is optional and does not affect email-based activation.';
+        }
+
+        if (summaryTitle) {
+            summaryTitle.textContent = role === 'seller'
+                ? 'Application summary'
+                : 'Registration summary';
+        }
+
+        if (nextHeading) {
+            nextHeading.textContent = role === 'seller'
+                ? 'What happens next?'
+                : 'Account activation';
+        }
+
+        if (submitLabel) {
+            submitLabel.textContent = role === 'seller'
+                ? 'Submit application'
+                : 'Create Buyer account';
         }
 
         registration.querySelectorAll('.role-card').forEach((card) => {
-            card.classList.toggle('selected', card.querySelector('input').checked);
+            const input = card.querySelector('input[name="role"]');
+            card.classList.toggle('selected', Boolean(input?.checked));
         });
 
         registration.querySelectorAll('[data-role-fields]').forEach((group) => {
@@ -328,14 +386,7 @@ document.addEventListener('DOMContentLoaded', () => {
         registration.querySelectorAll('[data-seller-document]').forEach((element) => {
             const inactive = role !== 'seller';
             element.hidden = inactive;
-            element.querySelectorAll('input').forEach((input) => {
-                input.disabled = inactive;
-            });
-        });
 
-        registration.querySelectorAll('[data-courier-document]').forEach((element) => {
-            const inactive = role !== 'courier';
-            element.hidden = inactive;
             element.querySelectorAll('input').forEach((input) => {
                 input.disabled = inactive;
             });
@@ -357,14 +408,17 @@ document.addEventListener('DOMContentLoaded', () => {
         summary.innerHTML = '';
         const role = selectedRole();
         const valueOf = (name) => form.elements[name]?.value?.trim() || '';
+
         const fullName = [
             valueOf('first_name'),
             valueOf('middle_initial'),
             valueOf('last_name'),
         ].filter(Boolean).join(' ');
-        const streetLine = [valueOf('house_number'), valueOf('street_name')]
-            .filter(Boolean)
-            .join(' ');
+
+        const streetLine = [
+            valueOf('house_number'),
+            valueOf('street_name'),
+        ].filter(Boolean).join(' ');
 
         const groups = [
             {
@@ -381,6 +435,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 title: 'Address',
                 editStep: 2,
                 fields: [
+                    ['Region', valueOf('region')],
                     ['Province', valueOf('province')],
                     ['City / Municipality', valueOf('city')],
                     ['Barangay', valueOf('barangay')],
@@ -391,25 +446,14 @@ document.addEventListener('DOMContentLoaded', () => {
         ];
 
         if (role === 'seller') {
+            const categorySelect = form.elements['business_category_id'];
+            const categoryLabel = categorySelect?.selectedOptions?.[0]?.textContent?.trim() || '';
             groups.push({
                 title: 'Business',
                 editStep: 3,
                 fields: [
                     ['Business name', valueOf('business_name')],
-                    ['Line of business', valueOf('business_category')],
-                ],
-            });
-        }
-
-        if (role === 'courier') {
-            groups.push({
-                title: 'Vehicle',
-                editStep: 3,
-                fields: [
-                    ['Vehicle type', valueOf('vehicle_type')],
-                    ['Vehicle model', valueOf('vehicle_model')],
-                    ['Plate number', valueOf('plate_number')],
-                    ['License number', valueOf('drivers_license_number')],
+                    ['Line of business', categoryLabel],
                 ],
             });
         }
@@ -420,41 +464,54 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const header = document.createElement('header');
             header.className = 'review-group__header';
+
             const heading = document.createElement('h4');
-            const edit = document.createElement('button');
             heading.textContent = title;
+
+            const edit = document.createElement('button');
             edit.type = 'button';
             edit.textContent = 'Edit';
             edit.dataset.editStep = String(editStep);
-            edit.setAttribute('aria-label', `Edit ${title.toLowerCase()} details`);
+            edit.setAttribute(
+                'aria-label',
+                `Edit ${title.toLowerCase()} details`
+            );
+
             header.append(heading, edit);
 
             const list = document.createElement('dl');
-            fields.filter(([, value]) => value).forEach(([label, value]) => {
-                const row = document.createElement('div');
-                const term = document.createElement('dt');
-                const description = document.createElement('dd');
-                term.textContent = label;
-                description.textContent = value;
-                row.append(term, description);
-                list.appendChild(row);
-            });
+
+            fields
+                .filter(([, value]) => value)
+                .forEach(([label, value]) => {
+                    const row = document.createElement('div');
+                    const term = document.createElement('dt');
+                    const description = document.createElement('dd');
+
+                    term.textContent = label;
+                    description.textContent = value;
+
+                    row.append(term, description);
+                    list.appendChild(row);
+                });
 
             group.append(header, list);
             summary.appendChild(group);
         });
 
-        const approvalNotice = registration.querySelector('[data-approval-notice]');
+        const approvalNotice =
+            registration.querySelector('[data-approval-notice]');
 
         if (approvalNotice) {
-            approvalNotice.textContent =
-                `An administrator will review your ${role} application. ` +
-                'We’ll email the decision to your registered email address.';
+            approvalNotice.textContent = role === 'buyer'
+                ? 'After your email is verified, your Buyer account activates immediately. You can sign in right after registration.'
+                : 'A Bearly administrator will review your Seller application. Access stays pending until the application is approved.';
         }
     }
 
     function showStep(step) {
         const steps = activeSteps();
+
         currentStep = steps.includes(step)
             ? step
             : step === 3 && selectedRole() === 'buyer'
@@ -472,6 +529,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const markerStep = Number(marker.dataset.stepMarker);
             const markerIndex = steps.indexOf(markerStep);
             const currentIndex = steps.indexOf(currentStep);
+
             marker.hidden = markerIndex === -1;
             marker.classList.toggle('active', markerStep === currentStep);
             marker.classList.toggle(
@@ -486,23 +544,43 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         const currentIndex = steps.indexOf(currentStep);
-        registration.querySelector('[data-mobile-step]').textContent =
-            `Step ${currentIndex + 1} of ${steps.length}`;
-        registration.querySelector('[data-progress-bar]').style.width =
-            `${((currentIndex + 1) / steps.length) * 100}%`;
+        const mobileStep = registration.querySelector('[data-mobile-step]');
+        const progressBar = registration.querySelector('[data-progress-bar]');
+
+        if (mobileStep) {
+            mobileStep.textContent =
+                `Step ${currentIndex + 1} of ${steps.length}`;
+        }
+
+        if (progressBar) {
+            progressBar.style.width =
+                `${((currentIndex + 1) / steps.length) * 100}%`;
+        }
 
         back.disabled = currentStep === 1;
         next.hidden = currentStep === 4;
         submit.hidden = currentStep !== 4;
+        form.dataset.currentStep = String(currentStep);
 
         if (currentStep === 4) buildReview();
         updateRoleUI();
+        form.dispatchEvent(new Event('registration:step'));
     }
 
     function validateStep() {
-        const panel = registration.querySelector(`[data-step="${currentStep}"]`);
-        const controls = [...panel.querySelectorAll('input, select, textarea')]
-            .filter((element) => !element.hidden && element.offsetParent !== null);
+        const panel =
+            registration.querySelector(`[data-step="${currentStep}"]`);
+
+        if (!panel) return false;
+
+        const controls = [
+            ...panel.querySelectorAll('input, select, textarea'),
+        ].filter(
+            (element) =>
+                !element.hidden &&
+                !element.disabled &&
+                element.offsetParent !== null
+        );
 
         for (const input of controls) {
             input.setCustomValidity('');
@@ -515,15 +593,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (
-                input.name === 'contact_number' &&
-                !/^(?:\+639|09)\d{9}$/.test(input.value)
-            ) {
-                input.setCustomValidity('Use 09XXXXXXXXX or +639XXXXXXXXX.');
-            }
-
-            if (
                 input.name === 'password_confirmation' &&
-                input.value !== form.elements.password.value
+                input.value !== form.elements.password?.value
             ) {
                 input.setCustomValidity('Passwords do not match.');
             }
@@ -537,18 +608,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 ];
 
                 if (!allowedTypes.includes(file.type)) {
-                    input.setCustomValidity('Upload a PNG, JPG, JPEG, or PDF file.');
+                    input.setCustomValidity(
+                        'Upload a PNG, JPG, JPEG, or PDF file.'
+                    );
                 } else if (file.size > 5 * 1024 * 1024) {
-                    input.setCustomValidity('The file must not exceed 5 MB.');
+                    input.setCustomValidity(
+                        'The file must not exceed 5 MB.'
+                    );
                 }
             }
 
             if (!input.checkValidity()) {
                 const searchableWidget = searchableSelects.get(input);
+
                 if (searchableWidget) {
                     searchableWidget.wrapper.classList.add('is-invalid');
                     setAddressMessage(
-                        `Please select your ${input.name === 'city' ? 'city or municipality' : input.name}.`,
+                        `Please select your ${
+                            input.name === 'city'
+                                ? 'city or municipality'
+                                : input.name
+                        }.`,
                         'error'
                     );
                     searchableWidget.trigger.focus();
@@ -562,23 +642,37 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        if (currentStep === 1 && (!phone.validate() || !emailVerification.validate())) return false;
+        if (currentStep === 2) {
+            for (const name of ['region', 'province', 'city', 'barangay', 'postal_code']) {
+                const field = form.elements[name];
+                if (!field || field.disabled || !field.value.trim()) {
+                    setAddressMessage('Complete your address, or choose manual entry if the address service is unavailable.', 'error');
+                    return false;
+                }
+            }
+        }
         return true;
     }
 
     function setAddressMessage(message, type = 'info') {
         if (!addressMessage) return;
+
         addressMessage.textContent = message;
         addressMessage.dataset.status = type;
     }
 
     function setSelectState(select, message, disabled = true) {
         if (!select) return;
+
         select.disabled = disabled;
         select.replaceChildren(new Option(message, ''));
         syncSearchableSelect(select);
     }
 
     function populateSelect(select, items, placeholder, oldValue = '') {
+        if (!select) return;
+
         select.replaceChildren(new Option(placeholder, ''));
 
         [...items]
@@ -593,10 +687,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (oldValue) {
             const match = [...select.options].find(
-                (option) => option.value.toLowerCase() === oldValue.toLowerCase()
+                (option) =>
+                    option.value.toLowerCase() === oldValue.toLowerCase()
             );
+
             if (match) select.value = match.value;
         }
+
+        // A restored value is one-time input for the initial PSGC load. Do
+        // not reuse it if the user later changes its parent address select.
+        select.dataset.oldValue = '';
 
         syncSearchableSelect(select);
     }
@@ -605,7 +705,10 @@ document.addEventListener('DOMContentLoaded', () => {
         addressRequest?.abort();
         addressRequest = new AbortController();
 
-        const timeout = window.setTimeout(() => addressRequest.abort(), 12000);
+        const timeout = window.setTimeout(
+            () => addressRequest.abort(),
+            12000
+        );
 
         try {
             const response = await fetch(`${PSGC_API}${endpoint}`, {
@@ -614,59 +717,117 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (!response.ok) {
-                throw new Error(`Address API returned HTTP ${response.status}`);
+                throw new Error(
+                    `Address API returned HTTP ${response.status}`
+                );
             }
 
             const payload = await response.json();
-
-            const result = Array.isArray(payload)
-                  ? payload
-                  : payload.data;
+            const result = Array.isArray(payload) ? payload : payload.data;
 
             if (!Array.isArray(result)) {
                 throw new Error('Unexpected address API response.');
-          }
+            }
 
-return result;
+            return result;
         } finally {
             window.clearTimeout(timeout);
         }
     }
 
+    async function loadRegions() {
+        if (!regionSelect || !provinceSelect || !citySelect || !barangaySelect) return;
+
+        setSelectState(regionSelect, 'Loading regions...');
+        setSelectState(provinceSelect, 'Select region first');
+        setSelectState(citySelect, 'Select province first');
+        setSelectState(barangaySelect, 'Select city first');
+
+        if (regionCodeField) regionCodeField.value = '';
+        if (addressRetry) addressRetry.hidden = true;
+
+        setAddressMessage('Loading Philippine address data...');
+
+        try {
+            const regions = await fetchAddressData('/regions');
+
+            populateSelect(
+                regionSelect,
+                regions,
+                'Select region',
+                regionSelect.dataset.oldValue
+            );
+
+            setAddressMessage('Choose your region to load its provinces.', 'success');
+
+            if (regionSelect.value) {
+                await loadProvinces();
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') return;
+
+            console.error('Unable to load regions:', error);
+            setSelectState(regionSelect, 'Address service unavailable');
+            setAddressMessage(
+                'Address service is unavailable. Retry or enter your address manually.',
+                'error'
+            );
+
+            if (addressRetry) addressRetry.hidden = false;
+        }
+    }
+
     async function loadProvinces() {
-        if (!provinceSelect || !citySelect || !barangaySelect) return;
+        if (!regionSelect || !provinceSelect || !citySelect || !barangaySelect) return;
+
+        const regionCode = regionSelect.selectedOptions[0]?.dataset.code;
+        if (regionCodeField) regionCodeField.value = regionCode || '';
 
         setSelectState(provinceSelect, 'Loading provinces...');
         setSelectState(citySelect, 'Select province first');
         setSelectState(barangaySelect, 'Select city first');
-        addressRetry.hidden = true;
-        setAddressMessage('Loading Philippine address data...');
+
+        if (!regionCode) {
+            setSelectState(provinceSelect, 'Select region first');
+            setAddressMessage('Select a region, then select its province.', 'info');
+            return;
+        }
 
         try {
-            const provinces = await fetchAddressData('/provinces');
+            const provinces = await fetchAddressData(
+                `/regions/${encodeURIComponent(regionCode)}/provinces`
+            );
+
             populateSelect(
                 provinceSelect,
                 provinces,
                 'Select province',
                 provinceSelect.dataset.oldValue
             );
-            setAddressMessage('Address service is ready.', 'success');
 
-            if (provinceSelect.value) await loadCities();
+            setAddressMessage('Provinces loaded. Choose one to continue.', 'success');
+
+            if (provinceSelect.value) {
+                await loadCities();
+            }
         } catch (error) {
             if (error.name === 'AbortError') return;
+
             console.error('Unable to load provinces:', error);
-            setSelectState(provinceSelect, 'Address service unavailable');
-            setAddressMessage(
-                'Address service is unavailable. Retry or enter your address manually.',
-                'error'
-            );
-            addressRetry.hidden = false;
+            setSelectState(provinceSelect, 'Unable to load provinces');
+            setAddressMessage('Unable to load provinces. Please retry.', 'error');
+
+            if (addressRetry) addressRetry.hidden = false;
         }
     }
 
     async function loadCities() {
-        const provinceCode = provinceSelect.selectedOptions[0]?.dataset.code;
+        if (!provinceSelect || !citySelect || !barangaySelect) return;
+
+        const provinceCode =
+            provinceSelect.selectedOptions[0]?.dataset.code;
+
+        postal.clear();
         setSelectState(citySelect, 'Loading cities...');
         setSelectState(barangaySelect, 'Select city first');
 
@@ -679,26 +840,42 @@ return result;
             const cities = await fetchAddressData(
                 `/provinces/${encodeURIComponent(provinceCode)}/cities`
             );
+
             populateSelect(
                 citySelect,
                 cities,
                 'Select city or municipality',
                 citySelect.dataset.oldValue
             );
-            setAddressMessage('Cities and municipalities loaded.', 'success');
 
-            if (citySelect.value) await loadBarangays();
+            setAddressMessage(
+                'Cities and municipalities loaded.',
+                'success'
+            );
+
+            if (citySelect.value) {
+                await loadBarangays();
+            }
         } catch (error) {
             if (error.name === 'AbortError') return;
+
             console.error('Unable to load cities:', error);
             setSelectState(citySelect, 'Unable to load cities');
-            setAddressMessage('Unable to load cities. Please retry.', 'error');
-            addressRetry.hidden = false;
+            setAddressMessage(
+                'Unable to load cities. Please retry.',
+                'error'
+            );
+
+            if (addressRetry) addressRetry.hidden = false;
         }
     }
 
     async function loadBarangays() {
+        if (!citySelect || !barangaySelect) return;
+
+        void postal.lookup();
         const cityCode = citySelect.selectedOptions[0]?.dataset.code;
+
         setSelectState(barangaySelect, 'Loading barangays...');
 
         if (!cityCode) {
@@ -710,24 +887,38 @@ return result;
             const barangays = await fetchAddressData(
                 `/cities/${encodeURIComponent(cityCode)}/barangays`
             );
+
             populateSelect(
                 barangaySelect,
                 barangays,
                 'Select barangay',
                 barangaySelect.dataset.oldValue
             );
+
             setAddressMessage('Barangays loaded.', 'success');
         } catch (error) {
             if (error.name === 'AbortError') return;
+
             console.error('Unable to load barangays:', error);
-            setSelectState(barangaySelect, 'Unable to load barangays');
-            setAddressMessage('Unable to load barangays. Please retry.', 'error');
-            addressRetry.hidden = false;
+            setSelectState(
+                barangaySelect,
+                'Unable to load barangays'
+            );
+            setAddressMessage(
+                'Unable to load barangays. Please retry.',
+                'error'
+            );
+
+            if (addressRetry) addressRetry.hidden = false;
         }
     }
 
     function enableManualAddress() {
+        postal.clear();
+        postal.manual();
+        if (regionCodeField) regionCodeField.value = '';
         [
+            [regionSelect, 'Enter region'],
             [provinceSelect, 'Enter province'],
             [citySelect, 'Enter city or municipality'],
             [barangaySelect, 'Enter barangay'],
@@ -739,10 +930,13 @@ return result;
             input.name = select.name;
             input.required = true;
             input.placeholder = placeholder;
-            input.value = select.value || select.dataset.oldValue || '';
+            input.value =
+                select.value || select.dataset.oldValue || '';
             input.dataset.manualAddress = '';
+            if (input.name !== 'barangay') input.addEventListener('change', () => postal.lookup());
 
             const widget = searchableSelects.get(select);
+
             if (widget) {
                 widget.wrapper.replaceWith(input);
                 searchableSelects.delete(select);
@@ -752,53 +946,71 @@ return result;
         });
 
         addressRequest?.abort();
-        addressRetry.hidden = true;
-        addressManual.hidden = true;
+
+        if (addressRetry) addressRetry.hidden = true;
+        if (addressManual) addressManual.hidden = true;
+
         setAddressMessage(
             'Manual address entry enabled. Check the spelling before continuing.'
         );
     }
 
     form.querySelectorAll('input[name="role"]').forEach((input) => {
-        input.addEventListener('change', () => showStep(currentStep));
+        input.addEventListener('change', () => {
+            showStep(currentStep);
+        });
     });
 
     next.addEventListener('click', () => {
         if (!validateStep()) return;
+
         const steps = activeSteps();
         const nextStep = steps[steps.indexOf(currentStep) + 1];
+
         if (nextStep) showStep(nextStep);
     });
+
     back.addEventListener('click', () => {
         const steps = activeSteps();
         const previousStep = steps[steps.indexOf(currentStep) - 1];
+
         if (previousStep) showStep(previousStep);
     });
 
     registration.addEventListener('click', (event) => {
         const edit = event.target.closest('[data-edit-step]');
         if (!edit) return;
+
         showStep(Number(edit.dataset.editStep));
     });
 
+    regionSelect?.addEventListener('change', async () => {
+        if (regionCodeField) regionCodeField.value = regionSelect.selectedOptions[0]?.dataset.code || '';
+        if (provinceSelect) provinceSelect.dataset.oldValue = '';
+        if (citySelect) citySelect.dataset.oldValue = '';
+        if (barangaySelect) barangaySelect.dataset.oldValue = '';
+        await loadProvinces();
+    });
+
     provinceSelect?.addEventListener('change', async () => {
-        citySelect.dataset.oldValue = '';
-        barangaySelect.dataset.oldValue = '';
+        if (regionCodeField) regionCodeField.value = regionSelect?.selectedOptions[0]?.dataset.code || '';
         await loadCities();
     });
 
     citySelect?.addEventListener('change', async () => {
-        barangaySelect.dataset.oldValue = '';
+        if (barangaySelect) barangaySelect.dataset.oldValue = '';
         await loadBarangays();
     });
 
-    addressRetry?.addEventListener('click', loadProvinces);
+    addressRetry?.addEventListener('click', loadRegions);
     addressManual?.addEventListener('click', enableManualAddress);
 
     const birthday = form.elements.birthday;
     const age = form.elements.age;
 
     function calculateAge() {
+        if (!birthday || !age) return;
+
         if (!birthday.value) {
             age.value = '--';
             return;
@@ -806,23 +1018,29 @@ return result;
 
         const born = new Date(`${birthday.value}T00:00:00`);
         const today = new Date();
+
         let years = today.getFullYear() - born.getFullYear();
 
-        if (today < new Date(today.getFullYear(), born.getMonth(), born.getDate())) {
+        if (
+            today <
+            new Date(
+                today.getFullYear(),
+                born.getMonth(),
+                born.getDate()
+            )
+        ) {
             years--;
         }
 
         age.value = Math.max(0, years);
     }
 
-    birthday.addEventListener('change', calculateAge);
+    birthday?.addEventListener('change', calculateAge);
     calculateAge();
 
-    form.elements.contact_number.addEventListener('input', (event) => {
-        event.target.value = event.target.value
-            .replace(/(?!^\+)[^\d]/g, '')
-            .slice(0, 13);
-    });
+    const middle = form.elements.middle_initial;
+    middle.addEventListener('input', () => { middle.value = middle.value.replace(/[^a-z]/gi, '').slice(0, 1).toUpperCase(); });
+    middle.addEventListener('blur', () => { if (middle.value) middle.value = middle.value[0].toUpperCase() + '.'; });
 
     form.querySelectorAll('[data-uppercase]').forEach((input) => {
         input.addEventListener('input', () => {
@@ -831,7 +1049,8 @@ return result;
     });
 
     const password = form.elements.password;
-    password.addEventListener('input', () => {
+
+    password?.addEventListener('input', () => {
         const score = [
             password.value.length >= 8,
             /[A-Z]/.test(password.value),
@@ -840,15 +1059,139 @@ return result;
         ].filter(Boolean).length;
 
         form.querySelector('.password-meter')
-            .style.setProperty('--strength', `${score * 25}%`);
+            ?.style.setProperty('--strength', `${score * 25}%`);
     });
+
+    // ---------------------------------------------------------
+    // Registration password guidance and validation
+    // ---------------------------------------------------------
+    const passwordConfirmation = form.elements.password_confirmation;
+    const passwordRules = {
+        length: registration.querySelector('[data-password-rule="length"]'),
+        uppercase: registration.querySelector('[data-password-rule="uppercase"]'),
+        lowercase: registration.querySelector('[data-password-rule="lowercase"]'),
+        number: registration.querySelector('[data-password-rule="number"]'),
+    };
+    const passwordStatus = registration.querySelector('[data-password-status]');
+    const passwordMatch = registration.querySelector('[data-password-match]');
+    const passwordStrengthLabel = registration.querySelector(
+        '[data-password-strength-label]'
+    );
+
+    function evaluatePassword(value) {
+        return {
+            length: value.length >= 8,
+            uppercase: /[A-Z]/.test(value),
+            lowercase: /[a-z]/.test(value),
+            number: /\d/.test(value),
+        };
+    }
+
+    function passwordValidationMessage(value) {
+        const rules = evaluatePassword(value);
+
+        if (!rules.length) {
+            return 'Password must be at least 8 characters long.';
+        }
+        if (!rules.uppercase) {
+            return 'Password must contain at least one uppercase letter.';
+        }
+        if (!rules.lowercase) {
+            return 'Password must contain at least one lowercase letter.';
+        }
+        if (!rules.number) {
+            return 'Password must contain at least one number.';
+        }
+
+        return '';
+    }
+
+    function updatePasswordGuidance() {
+        if (!password) return;
+
+        const rules = evaluatePassword(password.value);
+        const score = Object.values(rules).filter(Boolean).length;
+
+        Object.entries(rules).forEach(([rule, met]) => {
+            const item = passwordRules[rule];
+            if (!item) return;
+
+            item.classList.toggle('is-met', met);
+            item.classList.toggle('is-missing', !met);
+        });
+
+        if (passwordStrengthLabel) {
+            const labels = ['Not set', 'Weak', 'Fair', 'Good', 'Strong'];
+            passwordStrengthLabel.textContent =
+                password.value ? labels[score] : labels[0];
+            passwordStrengthLabel.dataset.strength = String(score);
+        }
+
+        if (passwordStatus) {
+            if (!password.value) {
+                passwordStatus.textContent =
+                    'Meet all four requirements to continue.';
+                passwordStatus.dataset.state = 'neutral';
+            } else if (score === 4) {
+                passwordStatus.textContent =
+                    'Password meets all requirements.';
+                passwordStatus.dataset.state = 'success';
+            } else {
+                const missing = Object.entries(rules)
+                    .filter(([, met]) => !met)
+                    .map(([rule]) => ({
+                        length: '8 or more characters',
+                        uppercase: 'an uppercase letter',
+                        lowercase: 'a lowercase letter',
+                        number: 'a number',
+                    })[rule]);
+
+                passwordStatus.textContent =
+                    `Still needed: ${missing.join(', ')}.`;
+                passwordStatus.dataset.state = 'error';
+            }
+        }
+
+        if (passwordMatch) {
+            if (!passwordConfirmation?.value) {
+                passwordMatch.textContent = '';
+                passwordMatch.dataset.state = 'neutral';
+            } else if (passwordConfirmation.value === password.value) {
+                passwordMatch.textContent = 'Passwords match.';
+                passwordMatch.dataset.state = 'success';
+            } else {
+                passwordMatch.textContent = 'Passwords do not match.';
+                passwordMatch.dataset.state = 'error';
+            }
+        }
+    }
+
+    password?.addEventListener('input', () => {
+        password.setCustomValidity('');
+        passwordConfirmation?.setCustomValidity('');
+        updatePasswordGuidance();
+    });
+
+    passwordConfirmation?.addEventListener('input', () => {
+        passwordConfirmation.setCustomValidity('');
+        updatePasswordGuidance();
+    });
+
+    updatePasswordGuidance();
 
     const allowedDocumentTypes = [
         'image/png',
         'image/jpeg',
         'application/pdf',
     ];
+
     const maxDocumentSize = 5 * 1024 * 1024;
+    const allowedProfilePhotoTypes = [
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+    ];
+    const maxProfilePhotoSize = 10 * 1024 * 1024;
 
     const formatFileSize = (bytes) =>
         bytes < 1048576
@@ -863,30 +1206,58 @@ return result;
 
         card?.classList.toggle('has-file', Boolean(file) && !error);
         card?.classList.toggle('has-error', Boolean(error));
+
         if (!status) return;
 
         status.hidden = !file && !error;
-        if (name) name.textContent = error || file?.name || '';
+
+        if (name) {
+            name.textContent = error || file?.name || '';
+        }
+
         if (meta) {
-            meta.textContent = file && !error
-                ? `${file.type === 'application/pdf' ? 'PDF' : 'Image'} · ${formatFileSize(file.size)}`
-                : error
-                    ? 'Choose another file to continue.'
-                    : '';
+            meta.textContent =
+                file && !error
+                    ? `${
+                        file.type === 'application/pdf'
+                            ? 'PDF'
+                            : 'Image'
+                    } · ${formatFileSize(file.size)}`
+                    : error
+                        ? 'Choose another file to continue.'
+                        : '';
         }
     }
 
-    function validateDocument(input, file) {
+    function validateUpload(input, file) {
         let error = '';
-        if (!allowedDocumentTypes.includes(file.type)) {
-            error = 'Upload a PNG, JPG, JPEG, or PDF file.';
-        } else if (file.size > maxDocumentSize) {
-            error = 'The file must not exceed 5 MB.';
+        const isProfilePhoto = input.name === 'profile_photo';
+        const allowedTypes = isProfilePhoto
+            ? allowedProfilePhotoTypes
+            : allowedDocumentTypes;
+        const allowedExtensions = isProfilePhoto
+            ? ['jpg', 'jpeg', 'png', 'webp']
+            : ['jpg', 'jpeg', 'png', 'pdf'];
+        const maxSize = isProfilePhoto
+            ? maxProfilePhotoSize
+            : maxDocumentSize;
+        const extension = file.name.split('.').pop()?.toLowerCase() || '';
+
+        if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(extension)) {
+            error = isProfilePhoto
+                ? 'Upload a JPG, JPEG, PNG, or WebP image.'
+                : 'Upload a PNG, JPG, JPEG, or PDF file.';
+        } else if (file.size > maxSize) {
+            error = isProfilePhoto
+                ? 'The profile photo must not exceed 10 MB.'
+                : 'The file must not exceed 5 MB.';
         }
 
         input.setCustomValidity(error);
         renderFileState(input, file, error);
+
         if (error) input.reportValidity();
+
         return !error;
     }
 
@@ -894,7 +1265,7 @@ return result;
         const transfer = new DataTransfer();
         transfer.items.add(file);
         input.files = transfer.files;
-        validateDocument(input, file);
+        validateUpload(input, file);
     }
 
     form.querySelectorAll('[data-file-preview]').forEach((input) => {
@@ -903,14 +1274,21 @@ return result;
 
         input.addEventListener('change', () => {
             input.setCustomValidity('');
+
             const file = input.files[0];
-            file ? validateDocument(input, file) : renderFileState(input);
+
+            file
+                ? validateUpload(input, file)
+                : renderFileState(input);
         });
 
         ['dragenter', 'dragover'].forEach((type) => {
             dropzone?.addEventListener(type, (event) => {
                 event.preventDefault();
-                if (!input.disabled) dropzone.classList.add('is-dragging');
+
+                if (!input.disabled) {
+                    dropzone.classList.add('is-dragging');
+                }
             });
         });
 
@@ -923,35 +1301,55 @@ return result;
 
         dropzone?.addEventListener('drop', (event) => {
             if (input.disabled) return;
+
             const file = event.dataTransfer?.files?.[0];
+
             if (file) assignDroppedFile(input, file);
         });
 
-        card?.querySelector('[data-file-action="preview"]')?.addEventListener('click', () => {
-            const file = input.files[0];
-            if (!file || !validateDocument(input, file)) return;
-            const url = URL.createObjectURL(file);
-            window.open(url, '_blank', 'noopener,noreferrer');
-            window.setTimeout(() => URL.revokeObjectURL(url), 60000);
-        });
+        card?.querySelector('[data-file-action="preview"]')
+            ?.addEventListener('click', () => {
+                const file = input.files[0];
 
-        card?.querySelector('[data-file-action="replace"]')?.addEventListener('click', () => {
-            input.click();
-        });
+                if (!file || !validateUpload(input, file)) {
+                    return;
+                }
 
-        card?.querySelector('[data-file-action="remove"]')?.addEventListener('click', () => {
-            input.value = '';
-            input.setCustomValidity('');
-            renderFileState(input);
-        });
+                const url = URL.createObjectURL(file);
+                window.open(url, '_blank', 'noopener,noreferrer');
+
+                window.setTimeout(
+                    () => URL.revokeObjectURL(url),
+                    60000
+                );
+            });
+
+        card?.querySelector('[data-file-action="replace"]')
+            ?.addEventListener('click', () => {
+                input.click();
+            });
+
+        card?.querySelector('[data-file-action="remove"]')
+            ?.addEventListener('click', () => {
+                input.value = '';
+                input.setCustomValidity('');
+                renderFileState(input);
+            });
     });
 
-    submit.addEventListener('click', () => {
-        if (!validateStep()) return;
-        const message = form.querySelector('[data-register-message]');
-        if (message) message.hidden = false;
+    let submitting = false;
+    form.addEventListener('submit', (event) => {
+        if (submitting) { event.preventDefault(); return; }
+        for (const step of activeSteps()) {
+            showStep(step);
+            if (!validateStep()) { event.preventDefault(); return; }
+        }
+        submitting = true;
+        submit.disabled = true;
+        submit.textContent = 'Submitting…';
     });
+    submit.addEventListener('click', () => form.requestSubmit());
 
-    showStep(1);
-    loadProvinces();
+    showStep(Number(form.dataset.draftStep || 1));
+    loadRegions();
 });

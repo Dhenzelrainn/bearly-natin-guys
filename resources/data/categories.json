@@ -1,0 +1,158 @@
+[
+  {
+    "name": "Pet Supplies",
+    "slug": "pet-supplies",
+    "icon": "pets",
+    "subcategories": [
+      "Dog Food & Treats",
+      "Cat Litter & Accessories",
+      "Aquariums & Fish Supplies",
+      "Bird Feeders & Food",
+      "Pet Grooming Products",
+      "Pet Health & Wellness"
+    ]
+  },
+  {
+    "name": "Electronics and Gadgets",
+    "slug": "electronics-and-gadgets",
+    "icon": "devices",
+    "subcategories": [
+      "Mobile Phones & Accessories",
+      "Laptops, Desktops & Monitors",
+      "Audio & Video Equipment",
+      "Smart Home Devices",
+      "Cameras & Photography",
+      "Wearable Technology"
+    ]
+  },
+  {
+    "name": "Women's Apparel",
+    "slug": "women-s-apparel",
+    "icon": "checkroom",
+    "subcategories": [
+      "Dresses & Skirts",
+      "Tops & Blouses",
+      "Activewear & Yoga Pants",
+      "Lingerie & Sleepwear",
+      "Jackets & Coats",
+      "Shoes & Accessories"
+    ]
+  },
+  {
+    "name": "Men's Apparel",
+    "slug": "men-s-apparel",
+    "icon": "apparel",
+    "subcategories": [
+      "Suits & Blazers",
+      "Casual Shirts & Pants",
+      "Outerwear & Jackets",
+      "Activewear & Fitness Gear",
+      "Shoes & Accessories",
+      "Grooming Products"
+    ]
+  },
+  {
+    "name": "Kids and Baby",
+    "slug": "kids-and-baby",
+    "icon": "child_care",
+    "subcategories": [
+      "Baby Clothes & Accessories",
+      "Toys & Games",
+      "Educational Materials",
+      "Strollers & Gear",
+      "Nursery Furniture",
+      "Safety and Health"
+    ]
+  },
+  {
+    "name": "Home and Garden",
+    "slug": "home-and-garden",
+    "icon": "home_and_garden",
+    "subcategories": [
+      "Kitchen Appliances",
+      "Furniture & Decor",
+      "Gardening Tools",
+      "Outdoor Living",
+      "Home Improvement Tools",
+      "Bedding & Bath"
+    ]
+  },
+  {
+    "name": "Sports and Outdoors",
+    "slug": "sports-and-outdoors",
+    "icon": "sports_basketball",
+    "subcategories": [
+      "Fitness Equipment",
+      "Camping & Hiking Gear",
+      "Sports Apparel",
+      "Cycling & Bikes",
+      "Water Sports",
+      "Team Sports Equipment"
+    ]
+  },
+  {
+    "name": "Health and Beauty",
+    "slug": "health-and-beauty",
+    "icon": "spa",
+    "subcategories": [
+      "Skincare Products",
+      "Haircare Solutions",
+      "Makeup & Cosmetics",
+      "Personal Care Appliances",
+      "Men's Grooming",
+      "Health Supplements"
+    ]
+  },
+  {
+    "name": "Books and Media",
+    "slug": "books-and-media",
+    "icon": "menu_book",
+    "subcategories": [
+      "Fiction & Non-Fiction Books",
+      "Magazines & Periodicals",
+      "Music CDs & Vinyl Records",
+      "Movie DVDs & Blu-ray",
+      "Video Games & Consoles",
+      "Educational DVDs"
+    ]
+  },
+  {
+    "name": "Food and Gourmet",
+    "slug": "food-and-gourmet",
+    "icon": "grocery",
+    "subcategories": [
+      "Baking Supplies & Ingredients",
+      "Coffee, Tea & Beverages",
+      "Snacks & Candy",
+      "Specialty Foods & International Cuisine",
+      "Organic and Health Foods",
+      "Meal Kits & Prepped Foods"
+    ]
+  },
+  {
+    "name": "Furniture and Office Equipment",
+    "slug": "furniture-and-office-equipment",
+    "icon": "chair",
+    "subcategories": [
+      "Office Desks & Chairs",
+      "Storage Cabinets & Shelving",
+      "Conference & Meeting Furniture",
+      "Computer Tables & Workstations",
+      "Ergonomic Accessories",
+      "Office Lighting & Fixtures"
+    ]
+  },
+  {
+    "name": "Jewelry and Watches",
+    "slug": "jewelry-and-watches",
+    "icon": "watch",
+    "subcategories": [
+      "Necklaces & Pendants",
+      "Rings & Earrings",
+      "Bracelets & Bangles",
+      "Watches for Men & Women",
+      "Fashion Jewelry",
+      "Jewelry Storage & Care"
+    ]
+  }
+]

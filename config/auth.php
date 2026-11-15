@@ -114,4 +114,16 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Google registration hand-off lifetime
+    |--------------------------------------------------------------------------
+    |
+    | A Google account that is not yet linked to Bearly is temporarily held
+    | in the session while the user completes the registration form.
+    |
+    */
+
+    'google_registration_ttl' => (int) env('GOOGLE_REGISTRATION_TTL', 600),
+
 ];

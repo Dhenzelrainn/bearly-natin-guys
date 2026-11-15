@@ -1,0 +1,3160 @@
+import { isValidPhilippineMobile } from './registration-phone.js';
+import { restoreRegistrationDraft, setupRegistrationDraft } from './registration-draft.js';
+import { emailVerificationFailure } from './email-verification-error.js';
+import './notification-center.js';
+import './dashboard-context.js';
+import './rider-attendance-qr.js';
+import './rider-delivery-scanner.js';
+import './rider-delivery-map.js';
+import {
+    acknowledgeConversation,
+    acknowledgeIncoming,
+    applyReceiptUpdates,
+    attachmentPreviewHtml,
+    receiptMarkup,
+    updateReceiptElements,
+} from './chat-receipts.js';
+
+const RIDER_STATE_KEY = 'bearlyRiderStateV1';
+const COURIER_RUN_SCROLL_KEY = 'bearly:rider-courier-run:scroll-position';
+const readState = () => { try { return JSON.parse(localStorage.getItem(RIDER_STATE_KEY)) || {}; } catch { return {}; } };
+const writeState = (state) => localStorage.setItem(RIDER_STATE_KEY, JSON.stringify(state));
+const saveValue = (section, key, value) => { const state = readState(); state[section] ||= {}; state[section][key] = value; writeState(state); };
+const normalize = (value) => String(value || '').trim().toLowerCase().replaceAll('_',' ');
+const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'})[character]);
+const refreshIcons = () => window.lucide?.createIcons();
+const unseenMessages = (existing = [], incoming = []) => {
+    const seen = new Set(
+        (Array.isArray(existing) ? existing : [])
+            .map((message) => Number(message?.id || 0))
+            .filter((id) => id > 0),
+    );
+
+    return (Array.isArray(incoming) ? incoming : []).filter((message) => {
+        const id = Number(message?.id || 0);
+
+        if (id <= 0) return true;
+        if (seen.has(id)) return false;
+
+        seen.add(id);
+
+        return true;
+    });
+};
+
+function toast(message) {
+    const stack = document.querySelector('[data-toast-stack]'); if (!stack) return;
+    const item = document.createElement('div'); item.className = 'toast'; item.innerHTML = `<i data-lucide="circle-check"></i><span>${escapeHtml(message)}</span>`; stack.append(item); refreshIcons(); setTimeout(() => item.remove(), 3200);
+}
+
+const riderAvailabilityLabels = {
+    available: 'Available',
+    offline: 'Off duty',
+};
+
+function setupRiderOperationalStatusRealtime() {
+    const body = document.body;
+    const accountAlert = document.querySelector('[data-rider-account-alert]');
+    const accountAlertMessage = accountAlert?.querySelector('[data-rider-account-alert-message]');
+
+    const accountStatusKey = (value) => String(value || '').trim().toLowerCase();
+    const availabilityStatusKey = (value) => {
+        const status = String(value || '').trim().toLowerCase();
+
+        return ['available', 'offline'].includes(status) ? status : 'offline';
+    };
+
+    const lockedMessage = (accountStatus) => accountStatus === 'deactivated'
+        ? 'Your Rider account is deactivated. You are Off duty and cannot become Available. Contact your Logistics provider for assistance.'
+        : 'Your Rider account is suspended. You are Off duty and cannot become Available while suspended. Contact your Logistics provider for next steps.';
+
+    const applyStatus = (accountStatusValue, availabilityStatusValue, announce = false) => {
+        const accountStatus = accountStatusKey(accountStatusValue) || 'active';
+        const availabilityStatus = availabilityStatusKey(availabilityStatusValue);
+        const isLocked = ['suspended', 'deactivated'].includes(accountStatus);
+        const effectiveAvailability = isLocked ? 'offline' : availabilityStatus;
+
+        body.dataset.riderAccountStatus = accountStatus;
+        body.dataset.riderAvailabilityStatus = effectiveAvailability;
+
+        if (accountAlert) {
+            accountAlert.hidden = !isLocked;
+
+            if (isLocked && accountAlertMessage) {
+                accountAlertMessage.textContent = lockedMessage(accountStatus);
+            }
+        }
+
+        document.querySelectorAll('[data-rider-availability-control]').forEach((control) => {
+            if (control.dataset.riderVerificationStatus
+                && control.dataset.riderVerificationStatus !== 'approved') {
+                return;
+            }
+
+            const dot = control.querySelector('[data-rider-availability-dot]');
+            const label = control.querySelector('[data-rider-availability-label]');
+            const help = control.querySelector('[data-rider-availability-help]');
+            const input = control.querySelector('[data-rider-availability-input]');
+            const submit = control.querySelector('[data-rider-availability-submit]');
+
+            control.dataset.accountStatus = accountStatus;
+            control.dataset.availabilityStatus = effectiveAvailability;
+            control.classList.toggle('is-locked', isLocked);
+
+            dot?.classList.toggle('is-available', effectiveAvailability === 'available');
+            dot?.classList.toggle('is-offline', effectiveAvailability === 'offline');
+            dot?.classList.remove('is-pending');
+
+            if (label) {
+                label.textContent = riderAvailabilityLabels[effectiveAvailability];
+            }
+
+            if (help) {
+                help.textContent = isLocked
+                    ? 'Availability is locked until Logistics changes your account status.'
+                    : effectiveAvailability === 'available'
+                        ? 'Logistics can send you new local pickup and delivery assignments.'
+                        : 'Paused: Logistics will not send new local assignments.';
+            }
+
+            if (input) {
+                input.value = isLocked
+                    ? 'offline'
+                    : effectiveAvailability === 'available'
+                        ? 'offline'
+                        : 'available';
+            }
+
+            if (submit) {
+                submit.disabled = isLocked;
+                submit.textContent = isLocked
+                    ? 'Availability locked'
+                    : effectiveAvailability === 'available'
+                        ? 'Pause new assignments'
+                        : 'Accept new assignments';
+
+                if (isLocked) {
+                    submit.setAttribute('aria-disabled', 'true');
+                    submit.title = 'Availability is locked while this account is not active.';
+                } else {
+                    submit.removeAttribute('aria-disabled');
+                    submit.removeAttribute('title');
+                }
+            }
+        });
+
+        document.querySelectorAll('[data-rider-availability-badge]').forEach((badge) => {
+            badge.dataset.accountStatus = accountStatus;
+            badge.dataset.status = effectiveAvailability;
+            badge.textContent = riderAvailabilityLabels[effectiveAvailability];
+            badge.classList.toggle('is-success', effectiveAvailability === 'available' && !isLocked);
+        });
+
+        if (announce) {
+            toast(isLocked
+                ? `Account status changed. You are now ${riderAvailabilityLabels[effectiveAvailability]}.`
+                : `Availability updated to ${riderAvailabilityLabels[effectiveAvailability]}.`);
+        }
+    };
+
+    applyStatus(
+        body.dataset.riderAccountStatus || 'active',
+        body.dataset.riderAvailabilityStatus || 'offline',
+    );
+
+    window.addEventListener('bearly:rider-operational-status-updated', (event) => {
+        const payload = event.detail || {};
+        const currentUserId = Number(body.dataset.realtimeUserId || 0);
+        const eventRiderUserId = Number(payload.rider_user_id || 0);
+
+        if (eventRiderUserId > 0 && currentUserId > 0 && eventRiderUserId !== currentUserId) {
+            return;
+        }
+
+        if (!payload.account_status || !payload.availability_status) return;
+
+        applyStatus(payload.account_status, payload.availability_status, true);
+    });
+}
+
+const RIDER_LOCATION_PREFERENCE_KEY = 'bearlyRiderLocationSharingV1';
+const RIDER_LOCATION_SEND_INTERVAL_MS = 5_000;
+const RIDER_LOCATION_HEARTBEAT_INTERVAL_MS = 15_000;
+const RIDER_FIRST_FIX_TIMEOUT_MS = 15_000;
+const RIDER_LOCATION_MAX_USABLE_ACCURACY_METERS = 100;
+const RIDER_GEOLOCATION_OPTIONS = Object.freeze({
+    enableHighAccuracy: true,
+    maximumAge: 0,
+    timeout: 30_000,
+});
+
+function setupRiderLocationSharing() {
+    const body = document.body;
+    const isLocalRider = String(body.dataset.riderWorkType || 'local').toLowerCase() !== 'courier';
+
+    if (!isLocalRider) {
+        const clearEndpoint = body.dataset.riderLocationClearEndpoint || '';
+
+        if (clearEndpoint) {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            void fetch(clearEndpoint, {
+                method: 'DELETE',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            }).catch(() => {
+                // The server freshness window remains the safety fallback.
+            });
+        }
+
+        return;
+    }
+
+    const control = document.querySelector('[data-rider-location-status]');
+    const toggle = control?.querySelector('[data-rider-location-toggle]');
+    const dot = control?.querySelector('[data-rider-location-dot]');
+    const label = control?.querySelector('[data-rider-location-label]');
+    const help = control?.querySelector('[data-rider-location-help]');
+
+    if (!control || !toggle) return;
+
+    const endpoint = body.dataset.riderLocationEndpoint || '';
+    const clearEndpoint = body.dataset.riderLocationClearEndpoint || '';
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    let watchId = null;
+    let heartbeatId = null;
+    let firstFixTimeoutId = null;
+    let sharingSession = 0;
+    let requestInFlight = false;
+    let clearInFlight = false;
+    let locationRequestSettled = Promise.resolve();
+    let clearRequestSettled = Promise.resolve();
+    let lastSentAt = 0;
+    let hasSharedLocation = false;
+    const sharingPreference = () => {
+        try {
+            return localStorage.getItem(RIDER_LOCATION_PREFERENCE_KEY) === 'enabled';
+        } catch {
+            return false;
+        }
+    };
+
+    const setSharingPreference = (enabled) => {
+        try {
+            localStorage.setItem(
+                RIDER_LOCATION_PREFERENCE_KEY,
+                enabled ? 'enabled' : 'disabled',
+            );
+        } catch {
+            // Location sharing still works for this page when storage is blocked.
+        }
+    };
+
+    const isAvailable = () => body.dataset.riderAvailabilityStatus === 'available'
+        && !['suspended', 'deactivated'].includes(
+            String(body.dataset.riderAccountStatus || 'active').toLowerCase(),
+        );
+
+    const setUi = (state, title, description, buttonText = 'Share live location', showButton = true, accuracyUsable = false) => {
+        control.classList.toggle('is-sharing', state === 'sharing');
+        control.classList.toggle('is-error', state === 'error');
+        dot?.classList.toggle('is-sharing', state === 'sharing');
+        dot?.classList.toggle('is-pending', state === 'pending');
+        dot?.classList.toggle('is-error', state === 'error');
+        dot?.classList.toggle('is-off', !['sharing', 'pending', 'error'].includes(state));
+        if (label) label.textContent = title;
+        if (help) help.textContent = description;
+        toggle.hidden = !showButton;
+        toggle.disabled = state === 'pending';
+        toggle.textContent = buttonText;
+
+        const sharing = state === 'sharing'
+            || (['pending', 'error'].includes(state) && sharingPreference());
+        const usableLocation = state === 'sharing' && accuracyUsable;
+        body.dataset.riderLocationSharing = sharing ? 'true' : 'false';
+        body.dataset.riderLocationUsable = usableLocation ? 'true' : 'false';
+        body.dataset.riderLocationState = state;
+        window.dispatchEvent(new CustomEvent('bearly:rider-location-sharing-updated', {
+            detail: { sharing, accuracyUsable: usableLocation, state },
+        }));
+    };
+
+    const formatUpdatedAt = () => new Intl.DateTimeFormat(undefined, {
+        hour: 'numeric',
+        minute: '2-digit',
+    }).format(new Date());
+
+    const clearRemoteLocation = async () => {
+        if (!clearEndpoint || clearInFlight) return;
+
+        clearInFlight = true;
+        let resolveClearRequest;
+        clearRequestSettled = new Promise((resolve) => {
+            resolveClearRequest = resolve;
+        });
+
+        try {
+            if (requestInFlight) await locationRequestSettled;
+
+            await fetch(clearEndpoint, {
+                method: 'DELETE',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+        } catch {
+            // The server freshness window remains the safety fallback.
+        } finally {
+            clearInFlight = false;
+            resolveClearRequest?.();
+        }
+    };
+
+    const stopWatcher = () => {
+        sharingSession += 1;
+        if (watchId !== null && navigator.geolocation) {
+            navigator.geolocation.clearWatch(watchId);
+        }
+        if (heartbeatId !== null) window.clearInterval(heartbeatId);
+        if (firstFixTimeoutId !== null) window.clearTimeout(firstFixTimeoutId);
+        watchId = null;
+        heartbeatId = null;
+        firstFixTimeoutId = null;
+    };
+
+    const sendPosition = async (position, session) => {
+        if (session !== sharingSession
+            || !endpoint
+            || !isAvailable()
+            || watchId === null
+            || !sharingPreference()) return;
+
+        if (clearInFlight) await clearRequestSettled;
+
+        if (session !== sharingSession
+            || !endpoint
+            || requestInFlight
+            || !isAvailable()
+            || watchId === null
+            || !sharingPreference()) return;
+
+        const now = Date.now();
+        if (now - lastSentAt < RIDER_LOCATION_SEND_INTERVAL_MS) return;
+
+        const latitude = Number(position?.coords?.latitude);
+        const longitude = Number(position?.coords?.longitude);
+        const rawAccuracy = position?.coords?.accuracy;
+        const accuracy = typeof rawAccuracy === 'number'
+            ? rawAccuracy
+            : Number.NaN;
+
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+
+        requestInFlight = true;
+        let resolveLocationRequest;
+        locationRequestSettled = new Promise((resolve) => {
+            resolveLocationRequest = resolve;
+        });
+
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    latitude,
+                    longitude,
+                    accuracy_meters: Number.isFinite(accuracy) ? accuracy : null,
+                }),
+            });
+
+            if (session !== sharingSession || watchId === null || !sharingPreference()) return;
+
+            if (response.status === 409) {
+                stopWatcher();
+                setSharingPreference(false);
+                hasSharedLocation = false;
+                void clearRemoteLocation();
+                setUi('error', 'Location sharing stopped', 'Set your Rider status to Available before sharing again.');
+                return;
+            }
+
+            if (!response.ok) {
+                throw new Error('Location update failed.');
+            }
+
+            lastSentAt = Date.now();
+            hasSharedLocation = true;
+            const hasReportedAccuracy = Number.isFinite(accuracy) && accuracy >= 0;
+            const accuracyLabel = hasReportedAccuracy
+                ? ` · ±${Math.round(accuracy)} m accuracy`
+                : ' · accuracy unavailable';
+            const accuracyGuidance = !hasReportedAccuracy
+                ? 'This device did not report accuracy, so Logistics will use the service-area/workload fallback.'
+                : accuracy <= RIDER_LOCATION_MAX_USABLE_ACCURACY_METERS
+                    ? 'This fix is precise enough for nearby pickup recommendations.'
+                    : 'This fix is too approximate for map distance; Logistics will use the service-area/workload fallback. On PC, check Windows Location and browser site permissions.';
+            const locationTitle = !hasReportedAccuracy
+                ? 'Location shared · accuracy unavailable'
+                : accuracy <= RIDER_LOCATION_MAX_USABLE_ACCURACY_METERS
+                    ? 'Location sharing is active'
+                    : 'Location shared · approximate';
+            setUi(
+                'sharing',
+                locationTitle,
+                `Last update ${formatUpdatedAt()}${accuracyLabel}. ${accuracyGuidance}`,
+                'Stop sharing',
+                true,
+                hasReportedAccuracy && accuracy <= RIDER_LOCATION_MAX_USABLE_ACCURACY_METERS,
+            );
+            window.dispatchEvent(new CustomEvent('bearly:rider-location-shared', {
+                detail: {
+                    latitude,
+                    longitude,
+                    accuracyMeters: hasReportedAccuracy ? accuracy : null,
+                },
+            }));
+        } catch {
+            if (session !== sharingSession || watchId === null || !sharingPreference()) return;
+
+            setUi(
+                'error',
+                hasSharedLocation ? 'Location update delayed' : 'Could not share location',
+                'The last position could not be saved. We will retry on the next GPS fix; keep this page open and check your connection.',
+                'Stop sharing',
+                true,
+            );
+        } finally {
+            requestInFlight = false;
+            resolveLocationRequest?.();
+        }
+    };
+
+    const handlePositionError = (error, session = sharingSession) => {
+        if (session !== sharingSession) return;
+
+        if (error?.code === 1) {
+            stopWatcher();
+            setSharingPreference(false);
+            hasSharedLocation = false;
+            void clearRemoteLocation();
+            setUi(
+                'error',
+                'Location permission denied',
+                'Allow this site to use location in your browser and device settings, then try again.',
+                'Try again',
+                true,
+            );
+            return;
+        }
+
+        setUi(
+            'error',
+            error?.code === 3 ? 'Still waiting for GPS' : 'GPS temporarily unavailable',
+            error?.code === 3
+                ? 'The device location request timed out. Keep this page open, check device location and browser permission, and we will keep trying while Available.'
+                : 'The device has not returned a fresh position yet. Check device location and browser permission; we will keep trying while Available.',
+            'Stop sharing',
+            true,
+        );
+    };
+
+    const handlePosition = (position, session = sharingSession) => {
+        if (session !== sharingSession) return;
+
+        const latitude = Number(position?.coords?.latitude);
+        const longitude = Number(position?.coords?.longitude);
+
+        if (Number.isFinite(latitude) && Number.isFinite(longitude) && firstFixTimeoutId !== null) {
+            window.clearTimeout(firstFixTimeoutId);
+            firstFixTimeoutId = null;
+        }
+
+        void sendPosition(position, session);
+    };
+
+    const requestCurrentPosition = (session) => {
+        if (session !== sharingSession
+            || watchId === null
+            || !isAvailable()
+            || !navigator.geolocation) return;
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => handlePosition(position, session),
+            (error) => handlePositionError(error, session),
+            RIDER_GEOLOCATION_OPTIONS,
+        );
+    };
+
+    const startWatcher = () => {
+        if (!isAvailable()) {
+            setUi('off', 'Location sharing is off', 'Set your Rider status to Available before sharing location.');
+            return;
+        }
+
+        if (!navigator.geolocation) {
+            setUi('error', 'Location is unavailable', 'This browser does not provide geolocation. GPS-aware recommendations will fall back to area and workload.', 'Try again', true);
+            return;
+        }
+
+        if (watchId !== null) return;
+
+        const session = ++sharingSession;
+        lastSentAt = 0;
+        hasSharedLocation = false;
+        setSharingPreference(true);
+        setUi('pending', 'Requesting precise location', 'Allow this site and your device to use location. PC accuracy depends on available location hardware.', 'Starting…', true);
+        firstFixTimeoutId = window.setTimeout(() => {
+            if (session !== sharingSession) return;
+            firstFixTimeoutId = null;
+            if (watchId === null || hasSharedLocation) return;
+
+            setUi(
+                'error',
+                'Still waiting for GPS',
+                'No location fix has arrived yet. Check browser permission and device location settings; on a phone, enable Location Services and GPS. Keep this page open while sharing.',
+                'Stop sharing',
+                true,
+            );
+        }, RIDER_FIRST_FIX_TIMEOUT_MS);
+        watchId = navigator.geolocation.watchPosition(
+            (position) => handlePosition(position, session),
+            (error) => handlePositionError(error, session),
+            RIDER_GEOLOCATION_OPTIONS,
+        );
+        heartbeatId = window.setInterval(() => {
+            requestCurrentPosition(session);
+        }, RIDER_LOCATION_HEARTBEAT_INTERVAL_MS);
+    };
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden || watchId === null || !isAvailable() || !navigator.geolocation) return;
+
+        requestCurrentPosition(sharingSession);
+    });
+
+    const stopSharing = (clearRemote = true) => {
+        stopWatcher();
+        setSharingPreference(false);
+        hasSharedLocation = false;
+        if (clearRemote) void clearRemoteLocation();
+        setUi('off', 'Location sharing is off', isAvailable()
+            ? 'Share while Available so Logistics can recommend nearby pickups.'
+            : 'Set your Rider status to Available before sharing location.', 'Share live location', isAvailable());
+    };
+
+    const reconcileAvailability = () => {
+        if (!isAvailable()) {
+            stopWatcher();
+            void clearRemoteLocation();
+            setUi('off', 'Location sharing is off', 'Set your Rider status to Available before sharing location.', 'Share live location', false);
+            return;
+        }
+
+        if (watchId === null && sharingPreference()) startWatcher();
+        if (watchId === null && !sharingPreference()) {
+            setUi('off', 'Location sharing is off', 'Share while Available so Logistics can recommend nearby pickups.', 'Share live location', true);
+        }
+    };
+
+    toggle.addEventListener('click', () => {
+        if (watchId !== null) {
+            stopSharing();
+            return;
+        }
+
+        startWatcher();
+    });
+
+    window.addEventListener('bearly:rider-operational-status-updated', reconcileAvailability);
+    reconcileAvailability();
+}
+
+function setupShell() {
+    const body = document.body;
+    if (localStorage.getItem('bearlyRiderSidebar') === 'collapsed') body.classList.add('sidebar-collapsed');
+    document.querySelector('[data-sidebar-collapse]')?.addEventListener('click', () => { body.classList.toggle('sidebar-collapsed'); localStorage.setItem('bearlyRiderSidebar', body.classList.contains('sidebar-collapsed') ? 'collapsed' : 'open'); });
+    document.querySelector('[data-mobile-menu]')?.addEventListener('click', () => body.classList.add('sidebar-open'));
+    document.querySelector('[data-overlay]')?.addEventListener('click', () => body.classList.remove('sidebar-open'));
+    document.querySelectorAll('[data-dismiss]').forEach((button) => button.addEventListener('click', () => button.closest('.flash-banner')?.remove()));
+    document.querySelectorAll('.flash-banner.is-success[data-auto-dismiss]').forEach((banner) => {
+        const delay = Number.parseInt(banner.dataset.autoDismiss || '', 10);
+
+        if (Number.isFinite(delay) && delay > 0) {
+            window.setTimeout(() => banner.remove(), delay);
+        }
+    });
+    document.querySelectorAll('[data-popover-toggle]').forEach((button) => button.addEventListener('click', (event) => { event.stopPropagation(); const name = button.dataset.popoverToggle; document.querySelectorAll('[data-popover]').forEach((popover) => { popover.hidden = popover.dataset.popover !== name || !popover.hidden; }); }));
+    document.addEventListener('click', (event) => { if (!event.target.closest('.popover-wrap')) document.querySelectorAll('[data-popover]').forEach((popover) => { popover.hidden = true; }); });
+}
+
+function setupRiderEarningsRealtime() {
+    const earnings = document.querySelector('[data-rider-earnings-live]');
+    if (!earnings) return;
+
+    let statusVersion = earnings.dataset.statusVersion || '';
+    let statusCheckInFlight = false;
+    let pageRefreshInFlight = false;
+    let refreshQueued = false;
+    const statusUrl = earnings.dataset.statusUrl || '';
+
+    const refreshEarnings = async () => {
+        if (document.hidden) {
+            refreshQueued = true;
+            return;
+        }
+        if (pageRefreshInFlight) {
+            refreshQueued = true;
+            return;
+        }
+
+        pageRefreshInFlight = true;
+        try {
+            const url = new URL(window.location.href);
+            url.hash = '';
+            const response = await fetch(url, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'text/html',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            if (!response.ok) return;
+
+            const html = await response.text();
+            const refreshedPage = new DOMParser().parseFromString(html, 'text/html');
+            const refreshedEarnings = refreshedPage.querySelector('[data-rider-earnings-live]');
+            if (!refreshedEarnings) return;
+
+            const nextVersion = refreshedEarnings.dataset.statusVersion || '';
+            if (!nextVersion || nextVersion === statusVersion) return;
+
+            const replacements = [
+                [
+                    earnings.querySelector('[data-rider-earnings-summary]'),
+                    refreshedEarnings.querySelector('[data-rider-earnings-summary]'),
+                ],
+                [
+                    earnings.querySelector('[data-rider-earnings-rows]'),
+                    refreshedEarnings.querySelector('[data-rider-earnings-rows]'),
+                ],
+                [
+                    earnings.querySelector('[data-rider-earnings-pagination]'),
+                    refreshedEarnings.querySelector('[data-rider-earnings-pagination]'),
+                ],
+            ];
+            if (replacements.some(([current, next]) => !current || !next)) return;
+
+            replacements.forEach(([current, next]) => current.replaceWith(next));
+            statusVersion = nextVersion;
+            earnings.dataset.statusVersion = nextVersion;
+            refreshIcons();
+            toast('Your Rider earnings were updated.');
+        } catch {
+            // The next event, reconnect check, or disconnected fallback retries.
+        } finally {
+            pageRefreshInFlight = false;
+            if (refreshQueued && !document.hidden) {
+                refreshQueued = false;
+                refreshEarnings();
+            }
+        }
+    };
+
+    const checkStatusVersion = async (force = false) => {
+        if (!statusUrl || document.hidden || statusCheckInFlight
+            || (!force && window.BearlyRealtime?.connected)) return;
+
+        statusCheckInFlight = true;
+        try {
+            const response = await fetch(statusUrl, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            const payload = await response.json().catch(() => ({}));
+            const nextVersion = String(payload?.data?.version || '');
+            if (!response.ok || !nextVersion) return;
+
+            if (statusVersion && nextVersion !== statusVersion) {
+                await refreshEarnings();
+                return;
+            }
+
+            statusVersion = nextVersion;
+            earnings.dataset.statusVersion = nextVersion;
+        } catch {
+            // A later visibility change or disconnected poll retries.
+        } finally {
+            statusCheckInFlight = false;
+        }
+    };
+
+    window.addEventListener('bearly:rider-shipping-earning-updated', refreshEarnings);
+    window.addEventListener('bearly:realtime-status', (event) => {
+        if (event.detail?.connected) checkStatusVersion(true);
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) checkStatusVersion(true);
+    });
+
+    checkStatusVersion(true);
+    window.setInterval(() => checkStatusVersion(), 10000);
+}
+
+function setupModals() {
+    const backdrop = document.querySelector('[data-modal-backdrop]');
+    const close = () => { document.querySelectorAll('.modal').forEach((modal) => { modal.hidden = true; }); if (backdrop) backdrop.hidden = true; document.body.style.overflow = ''; };
+    const open = (name) => { const modal = document.querySelector(`[data-modal="${name}"]`); if (!modal) return; modal.hidden = false; if (backdrop) backdrop.hidden = false; document.body.style.overflow = 'hidden'; modal.querySelector('input,select,textarea')?.focus(); };
+    document.querySelectorAll('[data-modal-open]').forEach((button) => button.addEventListener('click', () => open(button.dataset.modalOpen)));
+    document.querySelectorAll('[data-modal-close]').forEach((button) => button.addEventListener('click', close)); backdrop?.addEventListener('click', close); document.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
+    window.openRiderModal = open; window.closeRiderModals = close;
+}
+
+function setupTabs() {
+    document.querySelectorAll('[data-tabs]').forEach((tabs) => tabs.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => { tabs.querySelectorAll('[data-tab]').forEach((item) => item.classList.toggle('is-active', item === button)); const scope = tabs.closest('[data-tab-scope]') || document; scope.querySelectorAll('[data-tab-panel]').forEach((panel) => { panel.hidden = panel.dataset.tabPanel !== button.dataset.tab; }); })));
+}
+
+function setupTables() {
+    document.querySelectorAll('[data-table-scope]').forEach((scope) => {
+        const rows = [...scope.querySelectorAll('[data-row]')]; const empty = scope.querySelector('[data-empty-row], [data-empty-cards]');
+        const apply = () => { const query = normalize(scope.querySelector('[data-table-search]')?.value); const status = normalize(scope.querySelector('[data-filter-status]')?.value); let shown = 0; rows.forEach((row) => { const match = (!query || normalize(row.textContent).includes(query)) && (!status || normalize(row.dataset.status) === status); row.classList.toggle('is-filtered-out', !match); if (match) shown++; }); if (empty) empty.hidden = shown > 0; };
+        scope.querySelectorAll('[data-table-search],[data-filter-status]').forEach((field) => field.addEventListener(field.tagName === 'INPUT' ? 'input' : 'change', apply));
+        scope.querySelectorAll('th[data-sort]').forEach((header) => header.addEventListener('click', () => { const tbody = header.closest('table')?.tBodies[0]; if (!tbody) return; const index = [...header.parentElement.children].indexOf(header); const direction = header.dataset.direction === 'asc' ? 'desc' : 'asc'; header.dataset.direction = direction; rows.filter((row) => row.tagName === 'TR').sort((a,b) => a.children[index].innerText.localeCompare(b.children[index].innerText,undefined,{numeric:true}) * (direction === 'asc' ? 1 : -1)).forEach((row) => tbody.append(row)); }));
+    });
+}
+
+function setupWorkflow() {
+    document.querySelector('[data-confirm-delivery]')?.addEventListener('click', () => { const checks = [...document.querySelectorAll('[data-delivery-check]')]; if (checks.some((item) => !item.checked)) { toast('Verify the package and payment before adding proof of delivery.'); return; } window.openRiderModal?.('proof-delivery'); });
+    document.querySelectorAll('[data-call-contact]').forEach((button) => button.addEventListener('click', () => toast(`Call preview opened for ${button.dataset.callContact}.`)));
+    document.querySelectorAll('[data-navigation-preview]').forEach((button) => button.addEventListener('click', () => toast('Route navigation preview opened.')));
+    const proof = document.querySelector('[data-proof-file]'); proof?.addEventListener('change', () => { const name = document.querySelector('[data-proof-name]'); if (name) name.textContent = proof.files?.[0]?.name || 'JPG or PNG preview file'; });
+}
+
+function renderHistoryProducts(container, products) {
+    container.replaceChildren();
+
+    if (!Array.isArray(products) || products.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'empty-copy';
+        empty.textContent = 'No product details recorded.';
+        container.append(empty);
+        return;
+    }
+
+    products.forEach((product) => {
+        const row = document.createElement('div');
+        row.className = 'order-item-preview';
+        row.setAttribute('role', 'listitem');
+
+        const thumbnail = document.createElement('span');
+        thumbnail.className = 'order-item-preview-image';
+
+        let imageUrl = '';
+
+        try {
+            const candidate = new URL(String(product.image_url || ''), window.location.origin);
+            if (candidate.protocol === 'http:' || candidate.protocol === 'https:') {
+                imageUrl = candidate.href;
+            }
+        } catch {
+            imageUrl = '';
+        }
+
+        if (imageUrl) {
+            const image = document.createElement('img');
+            image.src = imageUrl;
+            image.alt = '';
+            image.loading = 'lazy';
+            image.decoding = 'async';
+            thumbnail.append(image);
+        } else {
+            const placeholder = document.createElement('span');
+            placeholder.className = 'order-item-preview-placeholder';
+            placeholder.setAttribute('role', 'img');
+            placeholder.setAttribute('aria-label', 'No product image available');
+
+            const label = document.createElement('small');
+            label.textContent = 'No image';
+            placeholder.append(label);
+            thumbnail.append(placeholder);
+        }
+
+        const copy = document.createElement('span');
+        copy.className = 'order-item-preview-copy';
+
+        const name = document.createElement('strong');
+        name.textContent = String(product.name || 'Unnamed product');
+
+        const details = document.createElement('small');
+        details.textContent = `${String(product.variant || 'Variant not specified')} · Qty ${Number(product.quantity) || 0}`;
+
+        copy.append(name, details);
+        row.append(thumbnail, copy);
+        container.append(row);
+    });
+}
+
+function setupHistoryDetails() {
+    document.querySelectorAll('[data-history-detail]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const modal = document.querySelector('[data-modal="history-detail"]');
+
+            if (!modal) return;
+
+            const shipment = button.dataset.historyId || 'Delivery';
+            const parcel = button.dataset.historyParcel || '';
+            const title = modal.querySelector('[data-history-title]');
+            const subtitle = modal.querySelector('[data-history-subtitle]');
+
+            if (title) title.textContent = `${shipment} details`;
+            if (subtitle) subtitle.textContent = parcel ? `Parcel ${parcel}` : 'Recorded shipment activity.';
+
+            const fields = {
+                customer: button.dataset.historyCustomer,
+                area: button.dataset.historyArea,
+                status: button.dataset.historyStatus,
+                earning: button.dataset.historyEarning,
+                parcel,
+                batch: button.dataset.historyBatch,
+                attempt: button.dataset.historyAttempt,
+                'proof-recipient': button.dataset.historyProofRecipient,
+                'failure-reason': button.dataset.historyFailureReason,
+            };
+
+            Object.entries(fields).forEach(([name, value]) => {
+                const field = modal.querySelector(`[data-history-field="${name}"]`);
+                if (field) field.textContent = value || '—';
+            });
+
+            let products = [];
+
+            try {
+                products = JSON.parse(button.dataset.historyProducts || '[]');
+            } catch {
+                products = [];
+            }
+
+            const productList = modal.querySelector('[data-history-products-list]');
+
+            if (productList) {
+                renderHistoryProducts(productList, products);
+            }
+
+            let events = [];
+
+            try {
+                events = JSON.parse(button.dataset.historyEvents || '[]');
+            } catch {
+                events = [];
+            }
+
+            const timeline = modal.querySelector('[data-history-timeline]');
+
+            if (timeline) {
+                timeline.innerHTML = events.length
+                    ? events.map((event) => `<div class="activity-item"><span class="activity-time">${escapeHtml(event.time)}</span><span class="activity-dot"></span><span class="activity-copy"><strong>${escapeHtml(event.title)}</strong><small>${escapeHtml(event.detail || event.source || '')}</small></span></div>`).join('')
+                    : '<p class="empty-copy">No parcel activity was recorded for this history item.</p>';
+            }
+
+            window.openRiderModal?.('history-detail');
+            refreshIcons();
+            modal.querySelector('[data-modal-close]')?.focus();
+        });
+    });
+}
+
+function setupChat() {
+    const conversationButtons = [...document.querySelectorAll('[data-conversation]')];
+    const nameTarget = document.querySelector('[data-chat-name]');
+    const roleTarget = document.querySelector('[data-chat-role]');
+    const messagesTarget = document.querySelector('[data-chat-messages]');
+    const input = document.querySelector('[data-chat-input]');
+    const sendButton = document.querySelector('[data-chat-send]');
+    const attachmentButton = document.querySelector('[data-chat-attachment-button]');
+    const attachmentInput = document.querySelector('[data-chat-attachment]');
+    const attachmentName = document.querySelector('[data-chat-attachment-name]');
+
+    if (!messagesTarget) return;
+
+    const conversationData = window.bearlyRiderConversations || {};
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const requestedId = String(window.bearlyRiderSelectedConversation ?? new URLSearchParams(window.location.search).get('conversation') ?? '');
+
+    let active = conversationData[requestedId] ? requestedId : (conversationButtons[0]?.dataset.conversation || '');
+    let sending = false;
+
+    const activeConversation = () => conversationData[active] || null;
+
+    const renderMessages = () => {
+        const conversation = activeConversation();
+
+        if (!conversation) return;
+
+        const thread = conversation.messages || [];
+
+        messagesTarget.innerHTML = thread.length
+            ? thread.map((message) => `
+                <div class="message-bubble ${message.mine ? 'is-mine' : ''}" data-message-id="${Number(message.id || 0)}">
+                    ${message.text ? `<div class="message-text">${escapeHtml(message.text)}</div>` : ''}
+                    ${(Array.isArray(message.attachments) ? message.attachments : []).map((attachment) => attachmentPreviewHtml(attachment, {
+                        linkClass: 'message-attachment',
+                        mediaClass: 'message-attachment-preview',
+                    })).join('')}
+                    <small class="message-meta" data-chat-meta>
+                        ${escapeHtml(message.time)}
+                        ${message.mine && message.receipt ? receiptMarkup(message.receipt) : ''}
+                    </small>
+                </div>
+            `).join('')
+            : '<div class="table-empty">No messages yet.</div>';
+
+        messagesTarget.scrollTop = messagesTarget.scrollHeight;
+    };
+
+    const updateButtons = () => {
+        conversationButtons.forEach((button) => {
+            const conversation = conversationData[button.dataset.conversation] || {};
+
+            button.classList.toggle('is-active', button.dataset.conversation === active);
+            button.dataset.unread = String(conversation.unread || 0);
+        });
+    };
+
+    const markActiveRead = () => {
+        const conversation = activeConversation();
+
+        if (document.hidden || !conversation?.read_url) {
+            return;
+        }
+
+        conversation.unread = 0;
+        updateButtons();
+
+        fetch(conversation.read_url, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
+        }).catch(() => {});
+    };
+
+    const activate = (id) => {
+        active = String(id);
+        const conversation = activeConversation();
+
+        if (nameTarget) nameTarget.textContent = conversation?.name || 'Conversation';
+        if (roleTarget) roleTarget.textContent = conversation?.role || '';
+
+        const presence = document.querySelector('[data-chat-presence]');
+        if (presence) {
+            presence.dataset.presenceConversation = String(conversation?.id || '');
+            presence.dataset.presenceUsers = (Array.isArray(conversation?.presence_user_ids) ? conversation.presence_user_ids : []).join(',');
+        }
+
+        updateButtons();
+        renderMessages();
+        window.BearlyPresence?.refresh?.();
+        acknowledgeConversation(conversation, csrfToken).catch(() => {});
+        markActiveRead();
+    };
+
+    conversationButtons.forEach((button) => button.addEventListener('click', () => activate(button.dataset.conversation)));
+
+    document.querySelector('[data-chat-search]')?.addEventListener('input', (event) => {
+        const query = normalize(event.target.value);
+
+        conversationButtons.forEach((button) => {
+            button.hidden = query !== '' && !normalize(button.textContent).includes(query);
+        });
+    });
+
+    attachmentButton?.addEventListener('click', () => attachmentInput?.click());
+
+    attachmentInput?.addEventListener('change', () => {
+        const file = attachmentInput.files?.[0];
+
+        if (!attachmentName) return;
+
+        attachmentName.textContent = file ? file.name : '';
+        attachmentName.hidden = !file;
+    });
+
+    const send = async () => {
+        const conversation = activeConversation();
+        const text = input?.value.trim() || '';
+        const file = attachmentInput?.files?.[0] || null;
+
+        if (!conversation || sending || (!text && !file)) return;
+
+        sending = true;
+        if (sendButton) sendButton.disabled = true;
+
+        try {
+            const body = new FormData();
+
+            if (text) body.append('message', text);
+            if (file) body.append('attachment', file);
+
+            const response = await fetch(conversation.send_url, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
+                body,
+            });
+
+            const payload = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                const errors = payload?.errors ? Object.values(payload.errors).flat() : [];
+                throw new Error(errors[0] || payload?.message || 'The message could not be sent.');
+            }
+
+            conversation.messages = [
+                ...(conversation.messages || []),
+                ...unseenMessages(conversation.messages, [payload.data]),
+            ];
+            conversation.preview = payload.data?.preview || conversation.preview;
+
+            input.value = '';
+            if (attachmentInput) attachmentInput.value = '';
+            if (attachmentName) {
+                attachmentName.textContent = '';
+                attachmentName.hidden = true;
+            }
+
+            renderMessages();
+        } catch (error) {
+            toast(error.message || 'The message could not be sent.');
+        } finally {
+            sending = false;
+            if (sendButton) sendButton.disabled = false;
+        }
+    };
+
+    sendButton?.addEventListener('click', send);
+    input?.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            send();
+        }
+    });
+
+    const pollActiveThread = async () => {
+        const conversation = activeConversation();
+
+        if (!conversation?.thread_url || document.hidden || sending) return;
+
+        const lastId = (conversation.messages || []).slice(-1)[0]?.id || 0;
+
+        try {
+            const response = await fetch(`${conversation.thread_url}?after=${lastId}`, {
+                headers: { Accept: 'application/json' },
+            });
+
+            if (!response.ok) return;
+
+            const payload = await response.json();
+
+            const receiptUpdates = Array.isArray(payload?.data?.receipt_updates)
+                ? payload.data.receipt_updates
+                : [];
+
+            if (receiptUpdates.length) {
+                applyReceiptUpdates(conversation.messages || [], receiptUpdates);
+                updateReceiptElements(receiptUpdates, messagesTarget);
+            }
+
+            const incoming = unseenMessages(conversation.messages, payload?.data?.messages || []);
+
+            if (!incoming.length) return;
+
+            conversation.messages = [...(conversation.messages || []), ...incoming];
+            renderMessages();
+
+            acknowledgeIncoming(conversation, incoming, csrfToken).catch(() => {});
+
+            const unreadIncoming = incoming.filter((message) => !message.mine).length;
+
+            if (unreadIncoming > 0) {
+                conversation.unread = Number(conversation.unread || 0) + unreadIncoming;
+                markActiveRead();
+            }
+        } catch {
+            /* keep the last rendered thread on polling failures */
+        }
+    };
+
+    window.setInterval(pollActiveThread, 15000);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            pollActiveThread();
+            markActiveRead();
+        }
+    });
+
+    if (active) {
+        activate(active);
+    } else {
+        renderMessages();
+    }
+
+    window.addEventListener('bearly:message-created', (event) => {
+        const conversationId = String(event.detail?.conversation_id || '');
+        if (conversationId !== active) return;
+        pollActiveThread().catch(() => {});
+    });
+
+    window.addEventListener('bearly:message-receipt', (event) => {
+        const receipts = Array.isArray(event.detail?.receipts) ? event.detail.receipts : [];
+
+        if (!receipts.length) return;
+
+        const conversation = activeConversation();
+
+        if (conversation?.messages) {
+            applyReceiptUpdates(conversation.messages, receipts);
+        }
+
+        updateReceiptElements(receipts, messagesTarget);
+    });
+}
+
+function setupForms() {
+    document
+        .querySelectorAll('[data-preview-form]')
+        .forEach((form) =>
+            form.addEventListener(
+                'submit',
+                (event) => {
+                    event.preventDefault();
+
+                    if (!form.reportValidity()) {
+                        return;
+                    }
+
+                    saveValue(
+                        'forms',
+                        form.dataset.previewForm,
+                        Object.fromEntries(
+                            new FormData(form)
+                        )
+                    );
+
+                    window.closeRiderModals?.();
+
+                    toast(
+                        'Changes saved in this browser preview.'
+                    );
+                }
+            )
+        );
+}
+
+function setupDeliveryConfirmation() {
+    document.querySelectorAll('form.delivery-form:not(.delivery-failure-form)').forEach((form) => {
+        const submitButton = form.querySelector('button[type="submit"]');
+        const submitLabel = submitButton?.querySelector('[data-delivery-submit-label]');
+
+        if (!submitButton || !submitLabel) return;
+
+        form.addEventListener('submit', (event) => {
+            if (form.dataset.submitting === 'true') {
+                event.preventDefault();
+                return;
+            }
+
+            form.dataset.submitting = 'true';
+            submitButton.disabled = true;
+            submitButton.setAttribute('aria-busy', 'true');
+            submitLabel.textContent = 'Saving delivery…';
+        });
+    });
+}
+
+function setupSingleSubmitForms() {
+    document.querySelectorAll('form[data-single-submit]').forEach((form) => {
+        form.addEventListener('submit', (event) => {
+            if (form.dataset.submitting === 'true') {
+                event.preventDefault();
+                return;
+            }
+
+            form.dataset.submitting = 'true';
+
+            const submitButton = form.querySelector(
+                'button[type="submit"]'
+            );
+
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.setAttribute('aria-busy', 'true');
+            }
+        });
+    });
+
+    window.addEventListener('pageshow', () => {
+        document
+            .querySelectorAll('form[data-single-submit]')
+            .forEach((form) => {
+                form.dataset.submitting = 'false';
+
+                const submitButton = form.querySelector(
+                    'button[type="submit"]'
+                );
+
+                if (submitButton) {
+                    submitButton.disabled = false;
+                    submitButton.removeAttribute('aria-busy');
+                }
+            });
+    });
+}
+
+function setupCourierRunScrollRestoration() {
+    const dashboard = document.querySelector('[data-courier-run-dashboard]');
+
+    if (!dashboard) return;
+
+    let savedPosition = null;
+
+    try {
+        const storedPosition = window.sessionStorage.getItem(COURIER_RUN_SCROLL_KEY);
+
+        if (storedPosition) {
+            savedPosition = JSON.parse(storedPosition);
+        }
+
+        window.sessionStorage.removeItem(COURIER_RUN_SCROLL_KEY);
+    } catch {
+        // Scroll restoration is an enhancement; Courier actions still work without storage.
+    }
+
+    const savedScrollY = Number(savedPosition?.scrollY);
+
+    if (
+        dashboard.dataset.courierRunFeedback === 'success'
+        && Number.isFinite(savedScrollY)
+        && savedScrollY >= 0
+    ) {
+        const sidebarCollapsed = savedPosition.sidebarCollapsed;
+
+        if (typeof sidebarCollapsed === 'boolean') {
+            const body = document.body;
+            const sidebar = document.querySelector('.ops-sidebar');
+
+            if (body.classList.contains('sidebar-collapsed') !== sidebarCollapsed) {
+                const previousTransition = sidebar?.style.transition ?? '';
+
+                if (sidebar) sidebar.style.transition = 'none';
+                body.classList.toggle('sidebar-collapsed', sidebarCollapsed);
+
+                if (sidebar) {
+                    void sidebar.offsetWidth;
+                    window.requestAnimationFrame(() => {
+                        sidebar.style.transition = previousTransition;
+                    });
+                }
+            }
+
+            try {
+                window.localStorage.setItem(
+                    'bearlyRiderSidebar',
+                    sidebarCollapsed ? 'collapsed' : 'open',
+                );
+            } catch {
+                // Keep the in-page state even if the browser blocks preference storage.
+            }
+        }
+
+        const runCard = [...document.querySelectorAll('[data-courier-run-card]')]
+            .find((card) => card.dataset.courierRunCard === String(savedPosition.runId));
+        const cardOffset = Number(savedPosition.cardOffset);
+        const scrollX = Number(savedPosition.scrollX);
+        const root = document.documentElement;
+        const previousScrollBehavior = root.style.scrollBehavior;
+
+        root.style.scrollBehavior = 'auto';
+
+        window.requestAnimationFrame(() => {
+            const targetScrollY = runCard && Number.isFinite(cardOffset)
+                ? window.scrollY + runCard.getBoundingClientRect().top - cardOffset
+                : savedScrollY;
+
+            window.scrollTo(
+                Number.isFinite(scrollX) ? scrollX : 0,
+                Math.max(0, targetScrollY),
+            );
+
+            window.requestAnimationFrame(() => {
+                root.style.scrollBehavior = previousScrollBehavior;
+            });
+        });
+    }
+
+    dashboard.querySelectorAll('form[data-courier-run-action]').forEach((form) => {
+        form.addEventListener('submit', () => {
+            const runCard = form.closest('[data-courier-run-card]');
+
+            try {
+                window.sessionStorage.setItem(COURIER_RUN_SCROLL_KEY, JSON.stringify({
+                    scrollX: window.scrollX,
+                    scrollY: window.scrollY,
+                    sidebarCollapsed: document.body.classList.contains('sidebar-collapsed'),
+                    runId: runCard?.dataset.courierRunCard ?? '',
+                    cardOffset: runCard?.getBoundingClientRect().top ?? 0,
+                }));
+            } catch {
+                // The normal POST/redirect flow remains the fallback.
+            }
+        });
+    });
+}
+
+function setupRegistrationEmail(form) {
+    const email = form.elements.email;
+    const send = form.querySelector('[data-email-send]');
+    const check = form.querySelector('[data-email-check]');
+    const code = form.querySelector('[data-email-code]');
+    const entry = form.querySelector('[data-email-code-entry]');
+    const status = form.querySelector('[data-email-status]');
+
+    if (!email || !send || !check || !code || !entry || !status) {
+        return { validate: () => true };
+    }
+
+    let verifiedEmail = '';
+    let verifiedUntil = 0;
+    let sentEmail = '';
+    let busy = false;
+    let restoring = false;
+    let cooldownUntil = 0;
+    let generation = 0;
+
+    const normalizedEmail = () =>
+        String(email.value || '').trim().toLowerCase();
+
+    const setStatus = (message, state = 'info') => {
+        status.textContent = message;
+        status.dataset.state = state;
+    };
+
+    const resetVerification = () => {
+        generation++;
+        restoring = false;
+        verifiedEmail = '';
+        verifiedUntil = 0;
+        sentEmail = '';
+        entry.hidden = true;
+        code.value = '';
+        setStatus('Verify your email address to continue.');
+    };
+
+    const validEmail = () => {
+        email.value = normalizedEmail();
+        email.setCustomValidity('');
+
+        if (!email.value || !email.checkValidity()) {
+            email.reportValidity();
+            email.focus();
+            return false;
+        }
+
+        return true;
+    };
+
+    async function post(url, extra = {}) {
+        const response = await fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'X-CSRF-TOKEN': form.elements._token.value,
+            },
+            body: JSON.stringify({
+                email: normalizedEmail(),
+                ...extra,
+            }),
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            const failure = emailVerificationFailure(
+                response,
+                data,
+                'Email verification is unavailable. Please try again.',
+            );
+            const error = new Error(failure.message);
+            error.retryAfter = failure.retryAfter;
+
+            throw error;
+        }
+
+        return data;
+    }
+
+    async function restoreVerifiedProof() {
+        const requestedEmail = normalizedEmail();
+
+        if (
+            !form.dataset.emailStatus ||
+            !requestedEmail ||
+            !email.checkValidity()
+        ) {
+            return;
+        }
+
+        email.value = requestedEmail;
+        const requestGeneration = generation;
+        restoring = true;
+        setStatus('Checking saved email verification…');
+        refresh();
+
+        try {
+            const data = await post(form.dataset.emailStatus);
+
+            if (
+                requestGeneration !== generation ||
+                normalizedEmail() !== requestedEmail
+            ) {
+                return;
+            }
+
+            if (data.verified && Number(data.expires_in) > 0) {
+                verifiedEmail = requestedEmail;
+                sentEmail = requestedEmail;
+                verifiedUntil = Date.now() + Number(data.expires_in) * 1000;
+                entry.hidden = true;
+                code.value = '';
+                setStatus('Email address verified. You may continue.', 'verified');
+            } else {
+                setStatus('Verify your email address to continue.');
+            }
+        } catch (_) {
+            if (requestGeneration === generation) {
+                setStatus(
+                    'Could not check the saved verification. Please retry or request a new code.',
+                    'error',
+                );
+            }
+        } finally {
+            if (requestGeneration === generation) {
+                restoring = false;
+            }
+
+            refresh();
+        }
+    }
+
+    const refresh = () => {
+        const secondsLeft = Math.max(
+            0,
+            Math.ceil((cooldownUntil - Date.now()) / 1000)
+        );
+
+        const isVerified =
+            verifiedEmail === normalizedEmail() &&
+            Date.now() < verifiedUntil;
+
+        send.disabled = busy || restoring || secondsLeft > 0 || isVerified;
+        check.disabled = busy || restoring;
+
+        send.textContent = busy
+            ? 'Please wait…'
+            : restoring
+                ? 'Checking…'
+            : isVerified
+                ? 'Verified'
+                : secondsLeft
+                    ? `Resend in ${secondsLeft}s`
+                    : sentEmail === normalizedEmail()
+                        ? 'Resend code'
+                        : 'Send code';
+
+        if (verifiedEmail && Date.now() >= verifiedUntil) {
+            resetVerification();
+            setStatus(
+                'Verification expired. Please verify your email again.',
+                'error'
+            );
+        }
+    };
+
+    email.addEventListener('input', () => {
+        resetVerification();
+        refresh();
+    });
+
+    code.addEventListener('input', () => {
+        code.value = code.value
+            .replace(/[^0-9]/g, '')
+            .slice(0, 6);
+    });
+
+    send.addEventListener('click', async () => {
+        if (busy || restoring || Date.now() < cooldownUntil || !validEmail()) return;
+
+        busy = true;
+        resetVerification();
+
+        const requestGeneration = generation;
+        const requestedEmail = normalizedEmail();
+
+        refresh();
+        setStatus('Sending verification code…');
+
+        try {
+            const data = await post(form.dataset.emailSend);
+
+            cooldownUntil =
+                Date.now() + Number(data.retry_after || 60) * 1000;
+
+            if (requestGeneration !== generation) return;
+
+            sentEmail = requestedEmail;
+            entry.hidden = false;
+            setStatus(
+                data.message ||
+                'Verification code sent. Check your inbox.'
+            );
+            code.focus();
+        } catch (error) {
+            if (requestGeneration === generation) {
+                if (error.retryAfter) {
+                    cooldownUntil = Date.now() + error.retryAfter * 1000;
+                }
+
+                setStatus(error.message, 'error');
+            }
+        } finally {
+            busy = false;
+            refresh();
+        }
+    });
+
+    check.addEventListener('click', async () => {
+        if (busy || restoring || !validEmail()) return;
+
+        if (normalizedEmail() !== sentEmail) {
+            resetVerification();
+            setStatus(
+                'The email address changed. Request a new code.',
+                'error'
+            );
+            return;
+        }
+
+        if (!/^[0-9]{6}$/.test(code.value)) {
+            setStatus(
+                'Enter the 6-digit code from your email.',
+                'error'
+            );
+            code.focus();
+            return;
+        }
+
+        busy = true;
+
+        const requestGeneration = generation;
+        const requestedEmail = normalizedEmail();
+
+        refresh();
+
+        try {
+            const data = await post(
+                form.dataset.emailCheck,
+                { code: code.value }
+            );
+
+            if (requestGeneration !== generation) return;
+
+            verifiedEmail = requestedEmail;
+            verifiedUntil =
+                Date.now() + Number(data.expires_in || 900) * 1000;
+
+            entry.hidden = true;
+            code.value = '';
+            setStatus(
+                data.message || 'Email address verified.',
+                'verified'
+            );
+        } catch (error) {
+            if (requestGeneration === generation) {
+                setStatus(error.message, 'error');
+            }
+        } finally {
+            busy = false;
+            refresh();
+        }
+    });
+
+    resetVerification();
+    void restoreVerifiedProof();
+    refresh();
+    window.setInterval(refresh, 1000);
+
+    return {
+        validate: () => {
+            if (!validEmail()) return false;
+
+            if (restoring) {
+                setStatus('Checking whether this email is already verified. Please wait.');
+                return false;
+            }
+
+            if (
+                verifiedEmail !== normalizedEmail() ||
+                Date.now() >= verifiedUntil
+            ) {
+                setStatus(
+                    'Verify your email address before continuing.',
+                    'error'
+                );
+                send.focus();
+                return false;
+            }
+
+            return true;
+        },
+    };
+}
+
+function setupRegistrationPassword(form) {
+    const password = form.querySelector('[data-registration-password]');
+    const confirmation = form.querySelector(
+        '[data-registration-password-confirmation]'
+    );
+
+    if (!password || !confirmation) {
+        return {
+            prepareField: () => {},
+            validate: () => true,
+        };
+    }
+
+    const meter = form.querySelector('.registration-password-meter');
+    const strengthLabel = form.querySelector(
+        '[data-password-strength-label]'
+    );
+    const status = form.querySelector('[data-password-status]');
+    const matchStatus = form.querySelector('[data-password-match]');
+
+    const ruleElements = {
+        length: form.querySelector('[data-password-rule="length"]'),
+        uppercase: form.querySelector('[data-password-rule="uppercase"]'),
+        lowercase: form.querySelector('[data-password-rule="lowercase"]'),
+        number: form.querySelector('[data-password-rule="number"]'),
+    };
+
+    const evaluate = (value) => ({
+        length: value.length >= 8,
+        uppercase: /[A-Z]/.test(value),
+        lowercase: /[a-z]/.test(value),
+        number: /[0-9]/.test(value),
+    });
+
+    const passwordMessage = (value) => {
+        const rules = evaluate(value);
+
+        if (!rules.length) {
+            return 'Password must be at least 8 characters long.';
+        }
+        if (!rules.uppercase) {
+            return 'Password must contain at least one uppercase letter.';
+        }
+        if (!rules.lowercase) {
+            return 'Password must contain at least one lowercase letter.';
+        }
+        if (!rules.number) {
+            return 'Password must contain at least one number.';
+        }
+
+        return '';
+    };
+
+    const update = () => {
+        const rules = evaluate(password.value);
+        const score = Object.values(rules).filter(Boolean).length;
+
+        Object.entries(rules).forEach(([name, met]) => {
+            ruleElements[name]?.classList.toggle('is-met', met);
+        });
+
+        meter?.style.setProperty('--strength', `${score * 25}%`);
+
+        if (strengthLabel) {
+            const labels = ['Not set', 'Weak', 'Fair', 'Good', 'Strong'];
+            strengthLabel.textContent =
+                password.value ? labels[score] : labels[0];
+            strengthLabel.dataset.strength = String(score);
+        }
+
+        if (status) {
+            if (!password.value) {
+                status.textContent =
+                    'Meet all four requirements to continue.';
+                status.dataset.state = 'neutral';
+            } else if (score === 4) {
+                status.textContent =
+                    'Password meets all requirements.';
+                status.dataset.state = 'success';
+            } else {
+                status.textContent = passwordMessage(password.value);
+                status.dataset.state = 'error';
+            }
+        }
+
+        if (matchStatus) {
+            if (!confirmation.value) {
+                matchStatus.textContent = '';
+                matchStatus.dataset.state = 'neutral';
+            } else if (confirmation.value === password.value) {
+                matchStatus.textContent = 'Passwords match.';
+                matchStatus.dataset.state = 'success';
+            } else {
+                matchStatus.textContent = 'Passwords do not match.';
+                matchStatus.dataset.state = 'error';
+            }
+        }
+    };
+
+    const prepareField = (field) => {
+        if (field === password) {
+            field.setCustomValidity(passwordMessage(field.value));
+        }
+
+        if (field === confirmation) {
+            field.setCustomValidity(
+                field.value === password.value
+                    ? ''
+                    : 'Passwords do not match.'
+            );
+        }
+    };
+
+    form
+        .querySelectorAll('[data-toggle-password]')
+        .forEach((button) => {
+            button.addEventListener('click', () => {
+                const input = document.getElementById(
+                    button.dataset.togglePassword
+                );
+
+                if (!input) return;
+
+                input.type =
+                    input.type === 'password'
+                        ? 'text'
+                        : 'password';
+
+                const isVisible = input.type === 'text';
+
+                button.setAttribute(
+                    'aria-label',
+                    isVisible ? 'Hide password' : 'Show password'
+                );
+                button.setAttribute(
+                    'aria-pressed',
+                    String(isVisible)
+                );
+            });
+        });
+
+    password.addEventListener('input', () => {
+        password.setCustomValidity('');
+        confirmation.setCustomValidity('');
+        update();
+    });
+
+    confirmation.addEventListener('input', () => {
+        confirmation.setCustomValidity('');
+        update();
+    });
+
+    update();
+
+    return {
+        prepareField,
+        validate: () => {
+            prepareField(password);
+
+            if (!password.checkValidity()) {
+                password.reportValidity();
+                password.focus();
+                return false;
+            }
+
+            prepareField(confirmation);
+
+            if (!confirmation.checkValidity()) {
+                confirmation.reportValidity();
+                confirmation.focus();
+                return false;
+            }
+
+            return true;
+        },
+    };
+}
+
+function setupMiddleInitial(form) {
+    const middle = form.querySelector('[data-middle-initial]');
+    if (!middle) return;
+
+    const getLetter = () =>
+        middle.value
+            .replace(/[^A-Za-z]/g, '')
+            .slice(0, 1)
+            .toUpperCase();
+
+    middle.addEventListener('focus', () => {
+        middle.value = getLetter();
+    });
+
+    middle.addEventListener('input', () => {
+        middle.value = getLetter();
+    });
+
+    middle.addEventListener('blur', () => {
+        const letter = getLetter();
+        middle.value = letter ? `${letter}.` : '';
+    });
+}
+
+function setupRegistration() {
+    const form = document.querySelector('[data-registration-form]');
+    if (!form) return;
+
+    restoreRegistrationDraft(form);
+    setupRegistrationDraft(form);
+    let step = Math.max(1, Math.min(3, Number(form.dataset.draftStep || 1)));
+
+    const emailVerification = setupRegistrationEmail(form);
+    const passwordUx = setupRegistrationPassword(form);
+
+    setupMiddleInitial(form);
+
+    const region = form.querySelector('[data-region]');
+    const province = form.querySelector('[data-province]');
+    const city = form.querySelector('[data-city]');
+    const barangay = form.querySelector('[data-barangay]');
+
+    const postalCode = form.querySelector('[data-postal-code]');
+    const postalChoices = form.querySelector('[data-postal-choices]');
+    const postalHelp = form.querySelector('[data-postal-help]');
+    const cityCodeField = form.elements.city_code;
+    const regionCodeField = form.elements.region_code;
+    const postalManualField = form.elements.postal_manual;
+    const savedPostalCode = postalCode?.value || '';
+    const savedPostalManual = postalManualField?.value === '1';
+    const savedCityCode = cityCodeField?.value || '';
+    let restoringAddress = Boolean(savedPostalCode && savedCityCode);
+    const logisticsPartner = form.elements.logistics_partner;
+    const logisticsPartnerHelp = form.querySelector('[data-logistics-partner-help]');
+
+    const syncLogisticsPartner = () => {
+        if (!logisticsPartner) return;
+
+        const cityCode = cityCodeField?.value || '';
+        let eligibleCount = 0;
+
+        [...logisticsPartner.options].forEach((option) => {
+            if (!option.value) return;
+
+            const eligible = Boolean(cityCode)
+                && option.dataset.cityCode === cityCode;
+            option.disabled = !eligible;
+            option.hidden = !eligible;
+
+            if (eligible) eligibleCount += 1;
+        });
+
+        const selectedPartner = logisticsPartner.selectedOptions[0];
+
+        // Keep the selection while the address change temporarily clears the
+        // city code; once a new city is resolved, discard only a mismatching partner.
+        if (
+            cityCode
+            && selectedPartner?.value
+            && selectedPartner.dataset.cityCode !== cityCode
+        ) {
+            logisticsPartner.value = '';
+        }
+
+        logisticsPartner.disabled = !cityCode || eligibleCount === 0;
+
+        if (logisticsPartnerHelp) {
+            logisticsPartnerHelp.textContent = !cityCode
+                ? 'Select your home municipality to find an approved Logistics partner.'
+                : !eligibleCount
+                    ? 'No active Logistics partner serves this municipality. Choose another municipality to continue.'
+                    : logisticsPartner.value
+                        ? 'Selected Logistics partner serves your selected municipality.'
+                        : 'Choose an approved Logistics partner serving your selected municipality.';
+        }
+    };
+
+    /*
+     * Searchable address dropdowns
+     * Same interaction pattern as Buyer/Seller:
+     * click the select-looking trigger -> search field appears inside panel.
+     */
+    const searchableSelects = new Map();
+
+    const normalizeSearchText = (value) =>
+        String(value || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLocaleLowerCase('en-PH')
+            .trim();
+
+    const closeSearchableSelect = (
+        select,
+        returnFocus = false
+    ) => {
+        const widget = searchableSelects.get(select);
+
+        if (!widget || widget.panel.hidden) return;
+
+        widget.panel.hidden = true;
+        widget.trigger.setAttribute('aria-expanded', 'false');
+        widget.wrapper.classList.remove('is-open');
+        widget.search.value = '';
+        widget.renderOptions();
+
+        if (returnFocus) {
+            widget.trigger.focus();
+        }
+    };
+
+    const closeOtherSearchableSelects = (currentSelect) => {
+        searchableSelects.forEach((widget, select) => {
+            if (select !== currentSelect) {
+                closeSearchableSelect(select);
+            }
+        });
+    };
+
+    const openSearchableSelect = (select) => {
+        const widget = searchableSelects.get(select);
+
+        if (!widget || select.disabled) return;
+
+        closeOtherSearchableSelects(select);
+
+        widget.panel.hidden = false;
+        widget.trigger.setAttribute('aria-expanded', 'true');
+        widget.wrapper.classList.add('is-open');
+        widget.search.value = '';
+        widget.renderOptions();
+
+        window.requestAnimationFrame(() => {
+            widget.search.focus();
+        });
+    };
+
+    const syncSearchableSelect = (select) => {
+        const widget = searchableSelects.get(select);
+        if (!widget) return;
+
+        const selected = select.selectedOptions?.[0];
+
+        widget.value.textContent =
+            selected?.textContent || 'Select an option';
+
+        widget.value.classList.toggle(
+            'is-placeholder',
+            !select.value
+        );
+
+        widget.trigger.disabled = select.disabled;
+        widget.trigger.setAttribute(
+            'aria-disabled',
+            String(select.disabled)
+        );
+
+        widget.wrapper.classList.toggle(
+            'is-disabled',
+            select.disabled
+        );
+
+        widget.wrapper.classList.remove('is-invalid');
+
+        if (select.disabled) {
+            closeSearchableSelect(select);
+        }
+
+        widget.renderOptions();
+    };
+
+    const createSearchableSelect = (select) => {
+        if (!select || searchableSelects.has(select)) return;
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'searchable-select';
+
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'searchable-select__trigger';
+        trigger.setAttribute('aria-haspopup', 'listbox');
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.innerHTML = `
+            <span class="searchable-select__value"></span>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="m5 7.5 5 5 5-5"></path>
+            </svg>
+        `;
+
+        const panel = document.createElement('div');
+        panel.className = 'searchable-select__panel';
+        panel.hidden = true;
+        panel.innerHTML = `
+            <div class="searchable-select__search-wrap">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="11" cy="11" r="7"></circle>
+                    <path d="m20 20-4-4"></path>
+                </svg>
+
+                <input
+                    type="search"
+                    class="searchable-select__search"
+                    autocomplete="off"
+                    spellcheck="false"
+                >
+            </div>
+
+            <ul
+                class="searchable-select__options"
+                role="listbox"
+            ></ul>
+
+            <p
+                class="searchable-select__empty"
+                hidden
+            >
+                No locations found
+            </p>
+
+            <p
+                class="searchable-select__count"
+                aria-live="polite"
+            ></p>
+        `;
+
+        select.parentNode.insertBefore(wrapper, select);
+        wrapper.append(select, trigger, panel);
+
+        select.classList.add('searchable-select__native');
+
+        const value =
+            trigger.querySelector('.searchable-select__value');
+
+        const search =
+            panel.querySelector('.searchable-select__search');
+
+        const options =
+            panel.querySelector('.searchable-select__options');
+
+        const empty =
+            panel.querySelector('.searchable-select__empty');
+
+        const count =
+            panel.querySelector('.searchable-select__count');
+
+        search.placeholder =
+            select.dataset.searchPlaceholder ||
+            'Search location';
+
+        search.setAttribute(
+            'aria-label',
+            search.placeholder
+        );
+
+        const widget = {
+            wrapper,
+            trigger,
+            panel,
+            value,
+            search,
+            options,
+            empty,
+            count,
+            activeIndex: -1,
+            visibleOptions: [],
+            renderOptions: () => {},
+        };
+
+        widget.renderOptions = () => {
+            const query =
+                normalizeSearchText(search.value);
+
+            const availableOptions =
+                [...select.options].filter(
+                    (option) =>
+                        option.value &&
+                        !option.disabled
+                );
+
+            const matches =
+                availableOptions.filter((option) =>
+                    normalizeSearchText(
+                        option.textContent
+                    ).includes(query)
+                );
+
+            options.replaceChildren();
+
+            widget.visibleOptions = matches;
+            widget.activeIndex = -1;
+
+            matches.forEach((option) => {
+                const item =
+                    document.createElement('li');
+
+                const button =
+                    document.createElement('button');
+
+                const isSelected =
+                    option.value === select.value;
+
+                button.type = 'button';
+                button.className =
+                    'searchable-select__option';
+
+                button.setAttribute(
+                    'role',
+                    'option'
+                );
+
+                button.setAttribute(
+                    'aria-selected',
+                    String(isSelected)
+                );
+
+                button.dataset.value = option.value;
+
+                button.innerHTML = `
+                    <span></span>
+                    <span
+                        class="searchable-select__check"
+                        aria-hidden="true"
+                    >
+                        ${isSelected ? '✓' : ''}
+                    </span>
+                `;
+
+                button.firstElementChild.textContent =
+                    option.textContent;
+
+                button.addEventListener('click', () => {
+                    select.value = option.value;
+                    select.setCustomValidity('');
+
+                    select.dispatchEvent(
+                        new Event(
+                            'change',
+                            { bubbles: true }
+                        )
+                    );
+
+                    syncSearchableSelect(select);
+                    closeSearchableSelect(
+                        select,
+                        true
+                    );
+                });
+
+                item.append(button);
+                options.append(item);
+            });
+
+            empty.hidden = matches.length !== 0;
+
+            count.textContent =
+                `${matches.length} ${
+                    matches.length === 1
+                        ? 'location'
+                        : 'locations'
+                } found`;
+        };
+
+        searchableSelects.set(select, widget);
+
+        trigger.addEventListener('click', () => {
+            if (panel.hidden) {
+                openSearchableSelect(select);
+            } else {
+                closeSearchableSelect(select);
+            }
+        });
+
+        trigger.addEventListener(
+            'keydown',
+            (event) => {
+                if (
+                    [
+                        'ArrowDown',
+                        'Enter',
+                        ' ',
+                    ].includes(event.key)
+                ) {
+                    event.preventDefault();
+                    openSearchableSelect(select);
+                }
+            }
+        );
+
+        search.addEventListener(
+            'input',
+            widget.renderOptions
+        );
+
+        search.addEventListener(
+            'keydown',
+            (event) => {
+                const optionButtons = [
+                    ...options.querySelectorAll(
+                        'button'
+                    ),
+                ];
+
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+
+                    closeSearchableSelect(
+                        select,
+                        true
+                    );
+
+                    return;
+                }
+
+                if (
+                    ![
+                        'ArrowDown',
+                        'ArrowUp',
+                        'Enter',
+                    ].includes(event.key)
+                ) {
+                    return;
+                }
+
+                event.preventDefault();
+
+                if (event.key === 'Enter') {
+                    optionButtons[
+                        widget.activeIndex
+                    ]?.click();
+
+                    return;
+                }
+
+                const direction =
+                    event.key === 'ArrowDown'
+                        ? 1
+                        : -1;
+
+                widget.activeIndex = Math.max(
+                    0,
+                    Math.min(
+                        optionButtons.length - 1,
+                        widget.activeIndex +
+                            direction
+                    )
+                );
+
+                optionButtons.forEach(
+                    (button, index) => {
+                        button.classList.toggle(
+                            'is-active',
+                            index ===
+                                widget.activeIndex
+                        );
+                    }
+                );
+
+                optionButtons[
+                    widget.activeIndex
+                ]?.scrollIntoView({
+                    block: 'nearest',
+                });
+            }
+        );
+
+        syncSearchableSelect(select);
+    };
+
+    form
+        .querySelectorAll('[data-searchable-location]')
+        .forEach(createSearchableSelect);
+
+    document.addEventListener(
+        'pointerdown',
+        (event) => {
+            searchableSelects.forEach(
+                (widget, select) => {
+                    if (
+                        !widget.wrapper.contains(
+                            event.target
+                        )
+                    ) {
+                        closeSearchableSelect(
+                            select
+                        );
+                    }
+                }
+            );
+        }
+    );
+
+    const show = (next) => {
+        step = next;
+        form.dataset.currentStep = String(step);
+
+        document
+            .querySelectorAll('[data-form-step]')
+            .forEach((panel) => {
+                panel.hidden =
+                    Number(panel.dataset.formStep) !== step;
+            });
+
+        document
+            .querySelectorAll('[data-step-marker]')
+            .forEach((marker) => {
+                const markerStep =
+                    Number(marker.dataset.stepMarker);
+
+                marker.classList.toggle(
+                    'is-active',
+                    markerStep === step
+                );
+
+                marker.classList.toggle(
+                    'is-complete',
+                    markerStep < step
+                );
+            });
+
+        window.scrollTo({
+            top: 0,
+            behavior: 'smooth',
+        });
+        form.dispatchEvent(new Event('registration:step'));
+    };
+
+    const validateStep = () => {
+        const panel = form.querySelector(
+            `[data-form-step="${step}"]`
+        );
+
+        if (!panel) return false;
+
+        const fields = [
+            ...panel.querySelectorAll(
+                'input, select, textarea'
+            ),
+        ].filter(
+            (field) =>
+                !field.disabled &&
+                field.type !== 'button' &&
+                field.type !== 'submit' &&
+                !field.classList.contains(
+                    'searchable-select__search'
+                )
+        );
+
+        for (const field of fields) {
+            field.setCustomValidity('');
+            passwordUx.prepareField(field);
+
+            if (['first_name', 'last_name'].includes(field.name) && field.value.trim()) {
+                const name = field.value.trim();
+
+                if (name.length < 2 || name.length > 50 || !/^[\p{L}\s'-]+$/u.test(name)) {
+                    field.setCustomValidity('Use 2 to 50 letters. Spaces, apostrophes, and hyphens are allowed.');
+                }
+            }
+
+            if (field.name === 'contact_number' && field.value.trim() && !isValidPhilippineMobile(field.value)) {
+                field.setCustomValidity('Enter a valid Philippine mobile number.');
+            }
+
+            if (!field.checkValidity()) {
+                const widget =
+                    searchableSelects.get(field);
+
+                if (widget) {
+                    widget.wrapper.classList.add(
+                        'is-invalid'
+                    );
+
+                    openSearchableSelect(field);
+                    widget.trigger.focus();
+                } else {
+                    field.reportValidity();
+                    field.focus();
+                }
+
+                return false;
+            }
+        }
+
+        if (step === 2) {
+            const cityCode = cityCodeField?.value || '';
+            const selectedPartner = logisticsPartner?.selectedOptions[0];
+            const selectedPartnerIsEligible = Boolean(
+                cityCode
+                && selectedPartner?.value
+                && selectedPartner.dataset.cityCode === cityCode
+                && !selectedPartner.disabled
+                && !logisticsPartner.disabled
+            );
+
+            if (!selectedPartnerIsEligible) {
+                const hasEligiblePartners = Boolean(
+                    cityCode
+                    && logisticsPartner
+                    && [...logisticsPartner.options].some((option) =>
+                        option.value
+                        && option.dataset.cityCode === cityCode
+                        && !option.disabled
+                        && !option.hidden
+                    )
+                );
+
+                if (logisticsPartnerHelp) {
+                    logisticsPartnerHelp.textContent = !cityCode
+                        ? city?.value
+                            ? 'We could not verify the selected municipality. Select it again to find an approved Logistics partner.'
+                            : 'Select your home municipality to find an approved Logistics partner.'
+                        : hasEligiblePartners
+                            ? 'Choose an approved Logistics partner serving your selected municipality.'
+                            : 'No active Logistics partner serves this municipality. Choose another municipality to continue.';
+                }
+
+                if (city) openSearchableSelect(city);
+
+                return false;
+            }
+        }
+
+        if (step === 1) {
+            if (!passwordUx.validate()) return false;
+            if (!emailVerification.validate()) return false;
+        }
+
+        return true;
+    };
+
+    document
+        .querySelectorAll('[data-step-next]')
+        .forEach((button) => {
+            button.addEventListener('click', () => {
+                if (validateStep()) {
+                    show(
+                        Math.min(
+                            3,
+                            step + 1
+                        )
+                    );
+                }
+            });
+        });
+
+    document
+        .querySelectorAll('[data-step-back]')
+        .forEach((button) => {
+            button.addEventListener('click', () => {
+                show(
+                    Math.max(
+                        1,
+                        step - 1
+                    )
+                );
+            });
+        });
+
+    const birthday =
+        form.querySelector('[name="birthday"]');
+
+    const ageField =
+        form.querySelector('[data-age]');
+
+    const updateAge = () => {
+        if (!birthday || !ageField) return;
+
+        if (!birthday.value) {
+            ageField.value = '';
+            return;
+        }
+
+        const birth =
+            new Date(
+                `${birthday.value}T00:00:00`
+            );
+
+        const now = new Date();
+
+        let age =
+            now.getFullYear() -
+            birth.getFullYear();
+
+        if (
+            now <
+            new Date(
+                now.getFullYear(),
+                birth.getMonth(),
+                birth.getDate()
+            )
+        ) {
+            age--;
+        }
+
+        ageField.value =
+            Number.isFinite(age) &&
+            age >= 0
+                ? String(age)
+                : '';
+    };
+
+    birthday?.addEventListener(
+        'change',
+        updateAge
+    );
+
+    updateAge();
+
+    form
+        .querySelectorAll('input[type="file"]')
+        .forEach((input) => {
+            input.addEventListener(
+                'change',
+                () => {
+                    const label =
+                        input
+                            .closest(
+                                '.upload-field'
+                            )
+                            ?.querySelector(
+                                '[data-file-name]'
+                            );
+
+                    if (label) {
+                        label.textContent =
+                            input.files?.[0]
+                                ?.name ||
+                            input.dataset.fileHelp ||
+                            'Choose a JPG, PNG, or PDF file';
+                    }
+                }
+            );
+        });
+
+    const fallbackLocations = (url) => {
+        if (url.endsWith('/regions')) {
+            return [
+                {
+                    name: 'Region IV-A (CALABARZON)',
+                    code: '0400000000',
+                },
+            ];
+        }
+
+        if (url.endsWith('/provinces')) {
+            return [
+                {
+                    name: 'Laguna',
+                    code: '0403400000',
+                },
+                {
+                    name: 'Batangas',
+                    code: '0401000000',
+                },
+                {
+                    name: 'Cavite',
+                    code: '0402100000',
+                },
+                {
+                    name: 'Quezon',
+                    code: '0405600000',
+                },
+            ];
+        }
+
+        if (
+            url.includes(
+                '/provinces/0403400000/'
+            )
+        ) {
+            return [
+                {
+                    name: 'San Pablo City',
+                    code: '0403424000',
+                },
+                {
+                    name: 'Santa Cruz',
+                    code: '0403426000',
+                },
+                {
+                    name: 'Calauan',
+                    code: '0403406000',
+                },
+                {
+                    name: 'Pila',
+                    code: '0403422000',
+                },
+                {
+                    name: 'Bay',
+                    code: '0403402000',
+                },
+            ];
+        }
+
+        if (url.includes('/provinces/')) {
+            return [
+                {
+                    name: 'Provincial Capital',
+                    code: '000000001',
+                },
+                {
+                    name: 'Service Municipality',
+                    code: '000000002',
+                },
+            ];
+        }
+
+        return [
+            {
+                name: 'Poblacion',
+                code: '000000101',
+            },
+            {
+                name: 'San Antonio',
+                code: '000000102',
+            },
+            {
+                name: 'San Rafael',
+                code: '000000103',
+            },
+            {
+                name: 'Del Remedio',
+                code: '000000104',
+            },
+        ];
+    };
+
+    const fill = (
+        select,
+        items,
+        placeholder
+    ) => {
+        select.innerHTML =
+            `<option value="">${placeholder}</option>` +
+            items
+                .map(
+                    (item) =>
+                        `<option value="${escapeHtml(item.name)}" data-code="${escapeHtml(item.code)}">${escapeHtml(item.name)}</option>`
+                )
+                .join('');
+
+        select.disabled = false;
+        const oldValue = select.dataset.oldValue || '';
+        select.dataset.oldValue = '';
+        if (oldValue) {
+            const match = [...select.options].find((option) =>
+                option.value.toLocaleLowerCase() === oldValue.toLocaleLowerCase());
+            if (match) select.value = match.value;
+        }
+        syncSearchableSelect(select);
+    };
+
+    const load = async (
+        url,
+        select,
+        placeholder
+    ) => {
+        select.disabled = true;
+        select.innerHTML =
+            '<option value="">Loading…</option>';
+
+        syncSearchableSelect(select);
+
+        try {
+            const response = await fetch(url);
+
+            if (!response.ok) throw new Error();
+
+            const payload =
+                await response.json();
+
+            const items =
+                Array.isArray(payload)
+                    ? payload
+                    : payload.data;
+
+            if (!Array.isArray(items)) {
+                throw new Error();
+            }
+
+            fill(
+                select,
+                items,
+                placeholder
+            );
+        } catch {
+            fill(
+                select,
+                fallbackLocations(url),
+                `${placeholder} (preview list)`
+            );
+
+            toast(
+                'Using the offline preview location list.'
+            );
+        }
+    };
+
+    const resetPostal = (
+        message =
+            'Select a municipality to fill this automatically.'
+    ) => {
+        if (!postalCode) return;
+
+        postalCode.value = '';
+        postalCode.readOnly = true;
+        postalCode.placeholder =
+            'Auto-generated';
+
+        if (postalChoices) {
+            postalChoices.hidden = true;
+            postalChoices.innerHTML = '';
+        }
+
+        if (postalHelp) {
+            postalHelp.textContent = message;
+            postalHelp.dataset.state = 'info';
+        }
+
+        if (cityCodeField) {
+            cityCodeField.value = '';
+        }
+
+        syncLogisticsPartner();
+
+        if (postalManualField) {
+            postalManualField.value = '0';
+        }
+    };
+
+    const postalLabel = (option) => {
+        const area =
+            option.area ||
+            option.label ||
+            option.name ||
+            option.location ||
+            '';
+
+        return area
+            ? `${option.code} — ${area}`
+            : String(option.code || '');
+    };
+
+    const applyPostal = (option) => {
+        if (!postalCode || !option?.code) return;
+
+        postalCode.value =
+            String(option.code)
+                .replace(/\D/g, '')
+                .slice(0, 4);
+
+        postalCode.readOnly = true;
+
+        if (postalManualField) {
+            postalManualField.value = '0';
+        }
+    };
+
+    const loadPostalCode = async () => {
+        if (
+            !postalCode ||
+            !city ||
+            !province
+        ) {
+            return;
+        }
+
+        const cityOption =
+            city.selectedOptions[0];
+
+        const cityCode =
+            cityOption?.dataset.code || '';
+
+        resetPostal('Looking up postal code…');
+
+        if (
+            !city.value ||
+            !province.value
+        ) {
+            resetPostal();
+            return;
+        }
+
+        if (cityCodeField) {
+            cityCodeField.value = cityCode;
+        }
+
+        syncLogisticsPartner();
+
+        try {
+            const params =
+                new URLSearchParams({
+                    city_code: cityCode,
+                    province: province.value,
+                    city: city.value,
+                });
+
+            const response =
+                await fetch(
+                    `${form.dataset.postalUrl}?${params.toString()}`,
+                    {
+                        headers: {
+                            Accept:
+                                'application/json',
+                        },
+                    }
+                );
+
+            if (!response.ok) {
+                throw new Error();
+            }
+
+            const payload =
+                await response.json();
+
+            const options =
+                Array.isArray(payload.options)
+                    ? payload.options.filter(
+                        (item) =>
+                            item &&
+                            /^\d{4}$/.test(
+                                String(
+                                    item.code ||
+                                        ''
+                                )
+                            )
+                    )
+                    : [];
+
+            if (options.length === 1) {
+                applyPostal(options[0]);
+
+                if (postalHelp) {
+                    postalHelp.textContent =
+                        `Postal code ${options[0].code} was filled from the selected municipality.`;
+
+                    postalHelp.dataset.state =
+                        'success';
+                }
+
+                return;
+            }
+
+            if (
+                options.length > 1 &&
+                postalChoices
+            ) {
+                postalChoices.innerHTML =
+                    options
+                        .map(
+                            (
+                                option,
+                                index
+                            ) =>
+                                `<option value="${escapeHtml(option.code)}" data-index="${index}">${escapeHtml(postalLabel(option))}</option>`
+                        )
+                        .join('');
+
+                postalChoices.hidden = false;
+
+                applyPostal(options[0]);
+
+                postalChoices.onchange = () => {
+                    const selected =
+                        options[
+                            Number(
+                                postalChoices
+                                    .selectedOptions[0]
+                                    ?.dataset
+                                    .index || 0
+                            )
+                        ];
+
+                    applyPostal(selected);
+                };
+
+                if (postalHelp) {
+                    postalHelp.textContent =
+                        'This municipality has more than one postal code. Choose the correct postal area.';
+
+                    postalHelp.dataset.state =
+                        'info';
+                }
+
+                return;
+            }
+
+            postalCode.readOnly = false;
+            postalCode.placeholder =
+                'Enter 4-digit postal code';
+
+            if (postalManualField) {
+                postalManualField.value =
+                    '1';
+            }
+
+            if (postalHelp) {
+                postalHelp.textContent =
+                    'No postal code was found for this municipality. Enter the correct 4-digit postal code.';
+
+                postalHelp.dataset.state =
+                    'warning';
+            }
+        } catch {
+            postalCode.readOnly = false;
+            postalCode.placeholder =
+                'Enter 4-digit postal code';
+
+            if (postalManualField) {
+                postalManualField.value =
+                    '1';
+            }
+
+            if (postalHelp) {
+                postalHelp.textContent =
+                    'Postal lookup is temporarily unavailable. Enter the correct 4-digit postal code.';
+
+                postalHelp.dataset.state =
+                    'warning';
+            }
+        }
+    };
+
+    postalCode?.addEventListener(
+        'input',
+        () => {
+            if (!postalCode.readOnly) {
+                postalCode.value =
+                    postalCode.value
+                        .replace(/\D/g, '')
+                        .slice(0, 4);
+            }
+        }
+    );
+
+    if (region && province && city && barangay) {
+        const restoreAddressCascade = async () => {
+            await load(
+                '/api/psgc/regions',
+                region,
+                'Select region'
+            );
+
+            const regionCode = region.selectedOptions[0]?.dataset.code || '';
+            if (regionCodeField) regionCodeField.value = regionCode;
+            if (!regionCode) return;
+
+            await load(
+                `/api/psgc/regions/${regionCode}/provinces`,
+                province,
+                'Select province'
+            );
+
+            const provinceCode = province.selectedOptions[0]?.dataset.code || '';
+            if (!provinceCode) return;
+
+            await load(
+                `/api/psgc/provinces/${provinceCode}/cities`,
+                city,
+                'Select municipality / city'
+            );
+
+            const cityCode = city.selectedOptions[0]?.dataset.code || '';
+            if (!cityCode) return;
+
+            await load(
+                `/api/psgc/cities/${cityCode}/barangays`,
+                barangay,
+                'Select barangay'
+            );
+
+            await loadPostalCode();
+
+            if (restoringAddress) {
+                const selectedCityCode = city.selectedOptions[0]?.dataset.code || '';
+                if (selectedCityCode && selectedCityCode === savedCityCode) {
+                    postalCode.value = savedPostalCode;
+                    postalCode.readOnly = !savedPostalManual;
+                    postalManualField.value = savedPostalManual ? '1' : '0';
+                    cityCodeField.value = selectedCityCode;
+                }
+
+                restoringAddress = false;
+            }
+        };
+
+        void restoreAddressCascade();
+
+        region.addEventListener(
+            'change',
+            () => {
+                const code = region.selectedOptions[0]?.dataset.code || '';
+                if (regionCodeField) regionCodeField.value = code;
+
+                province.dataset.oldValue = '';
+                province.innerHTML =
+                    '<option value="">Select region first</option>';
+                province.disabled = true;
+
+                city.innerHTML =
+                    '<option value="">Select province first</option>';
+                city.disabled = true;
+
+                barangay.innerHTML =
+                    '<option value="">Select city first</option>';
+                barangay.disabled = true;
+
+                syncSearchableSelect(province);
+                syncSearchableSelect(city);
+                syncSearchableSelect(barangay);
+
+                resetPostal();
+
+                if (code) {
+                    load(
+                        `/api/psgc/regions/${code}/provinces`,
+                        province,
+                        'Select province'
+                    );
+                }
+            }
+        );
+
+        province.addEventListener(
+            'change',
+            () => {
+                const code =
+                    province
+                        .selectedOptions[0]
+                        ?.dataset.code;
+
+                city.innerHTML =
+                    '<option value="">Select province first</option>';
+
+                city.disabled = true;
+
+                barangay.innerHTML =
+                    '<option value="">Select city first</option>';
+
+                barangay.disabled = true;
+
+                syncSearchableSelect(city);
+                syncSearchableSelect(barangay);
+
+                resetPostal();
+
+                if (code) {
+                    load(
+                        `/api/psgc/provinces/${code}/cities`,
+                        city,
+                        'Select municipality / city'
+                    );
+                }
+            }
+        );
+
+        city.addEventListener(
+            'change',
+            () => {
+                const code =
+                    city
+                        .selectedOptions[0]
+                        ?.dataset.code;
+
+                barangay.innerHTML =
+                    '<option value="">Select city first</option>';
+
+                barangay.disabled = true;
+
+                syncSearchableSelect(barangay);
+
+                resetPostal();
+
+                if (code) {
+                    load(
+                        `/api/psgc/cities/${code}/barangays`,
+                        barangay,
+                        'Select barangay'
+                    );
+                }
+
+                void loadPostalCode().finally(() => {
+                    if (!restoringAddress) return;
+
+                    const selectedCityCode = city.selectedOptions[0]?.dataset.code || '';
+                    if (selectedCityCode && selectedCityCode === savedCityCode) {
+                        postalCode.value = savedPostalCode;
+                        postalCode.readOnly = !savedPostalManual;
+                        postalManualField.value = savedPostalManual ? '1' : '0';
+                        cityCodeField.value = selectedCityCode;
+                    }
+
+                    restoringAddress = false;
+                });
+            }
+        );
+
+        barangay.addEventListener(
+            'change',
+            () => {
+                syncSearchableSelect(barangay);
+            }
+        );
+    }
+
+    syncLogisticsPartner();
+
+    show(step);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    setupShell();
+    setupModals();
+    setupTabs();
+    setupTables();
+    setupWorkflow();
+    setupHistoryDetails();
+    setupChat();
+    setupForms();
+    setupSingleSubmitForms();
+    setupCourierRunScrollRestoration();
+    setupDeliveryConfirmation();
+    setupRiderEarningsRealtime();
+    setupRiderOperationalStatusRealtime();
+    setupRiderLocationSharing();
+    setupRegistration();
+    refreshIcons();
+});

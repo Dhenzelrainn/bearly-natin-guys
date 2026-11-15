@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>My Addresses | Bearly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
+@include('buyer.partials.account-context-script')
+@vite(['resources/css/buyer.css','resources/css/addresses.css','resources/css/maps.css','resources/js/addresses.js'])
+</head>
+<body class="bh address-page">
+@include('buyer.partials.buyer-header', ['headerActive' => 'profile'])
+
+<main class="address-shell">
+<a class="address-back" href="{{ url('/home') }}"><span class="material-symbols-outlined">arrow_back</span> Back to Home</a>
+
+<section class="address-panel">
+<div class="address-panel-head">
+<div><h1>My Addresses</h1><p>Manage your delivery addresses.</p></div>
+<button id="add-address" class="add-address-btn" type="button"><span class="material-symbols-outlined">add</span>Add Address</button>
+</div>
+
+<div id="address-list" class="address-list"></div>
+
+<div id="address-empty" class="address-empty">
+<span class="material-symbols-outlined">location_on</span>
+<h2>No addresses yet</h2>
+<p>Add a delivery address for checkout.</p>
+<button id="empty-add-address" type="button">Add Address</button>
+</div>
+</section>
+</main>
+
+<div id="address-modal" class="address-modal" hidden>
+<div class="address-dialog">
+<div class="dialog-head">
+<h2 id="address-modal-title">New Address</h2>
+<button id="close-address-modal" type="button" aria-label="Close">×</button>
+</div>
+<form id="address-form">
+<input id="editing-id" type="hidden">
+<div class="form-grid two">
+<label><span>Full Name</span><input id="full-name" required placeholder="Recipient name"></label>
+<label><span>Phone Number</span><input id="phone-number" type="tel" inputmode="numeric" autocomplete="tel" required placeholder="+63 9123456789 or 09123456789"></label>
+</div>
+<div class="form-grid">
+<label><span>Province</span><select id="province" required><option value="">Loading provinces…</option></select></label>
+</div>
+<div class="form-grid two">
+<label><span>City / Municipality</span><select id="city" required disabled><option value="">Select province first</option></select></label>
+<label><span>Barangay</span><input id="barangay" required placeholder="Barangay"></label>
+</div>
+<div class="form-grid">
+<label><span>Postal Code</span><input id="postal-code" inputmode="numeric" maxlength="4" pattern="\d{4}" required placeholder="Postal Code"></label>
+<label><span>Street Name, Building, House No.</span><input id="street" required placeholder="Street Name, Building, House No."></label>
+</div>
+<p id="address-psgc-status" class="address-map-status" role="status">Select a province and city from the PSGC list. Legacy addresses need city re-verification before checkout.</p>
+<input id="city-code" type="hidden" value="">
+
+<div class="address-map-picker-section">
+<div class="address-map-picker-heading"><div><strong>Pin your location <span>(optional)</span></strong><small>Coordinates supplement your validated address. We do not reverse-geocode or change your PSGC fields.</small></div><div class="address-map-picker-actions"><button id="use-current-location" type="button" class="address-map-location"><span class="material-symbols-outlined" aria-hidden="true">my_location</span>Use my current location</button><button id="clear-address-pin" type="button" class="address-map-clear" hidden>Clear pin</button></div></div>
+<div id="address-map" class="address-map" data-map-tile-url="{{ config('maps.tile_url') }}" data-map-attribution="{{ config('maps.tile_attribution') }}" data-reverse-geocode-url="{{ route('maps.reverse-geocode') }}" data-forward-geocode-url="{{ route('maps.forward-geocode') }}" aria-label="Address map pin picker"></div>
+<p id="address-map-status" class="address-map-status" role="status">Click the map to place a pin, then save the address.</p>
+<input id="address-latitude" type="hidden">
+<input id="address-longitude" type="hidden">
+</div>
+
+<div class="label-section">Label As:</div>
+<div class="label-buttons">
+<button class="label-choice active" data-label="Home" type="button">Home</button>
+<button class="label-choice" data-label="Work" type="button">Work</button>
+</div>
+
+<label class="default-check">
+<input id="set-default" type="checkbox"><span></span>Set as Default Address
+</label>
+
+<div class="dialog-actions">
+<button id="cancel-address" class="cancel-btn" type="button">Cancel</button>
+<button class="save-btn" type="submit">Save Address</button>
+</div>
+</form>
+</div>
+</div>
+
+<div id="delete-modal" class="address-modal" hidden>
+<div class="confirm-dialog">
+<span class="material-symbols-outlined">delete</span>
+<h2>Delete Address?</h2>
+<p>This address will be removed from your saved addresses.</p>
+<div>
+<button id="cancel-delete" class="cancel-btn" type="button">Cancel</button>
+<button id="confirm-delete" class="delete-confirm" type="button">Delete</button>
+</div>
+</div>
+</div>
+
+<div id="address-toast" class="address-toast" role="status"></div>
+</body>
+</html>

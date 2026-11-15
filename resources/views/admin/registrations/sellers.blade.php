@@ -1,0 +1,518 @@
+@extends('layouts.admin')
+
+@section('title', 'Seller Applications')
+@section('page-title', 'Seller Applications')
+
+@section('content')
+
+<section class="page-hero">
+    <div>
+        <span class="eyebrow">Registration Management</span>
+        <h1>Seller applications</h1>
+
+        <p>
+            Review Seller registrations, verify business information,
+            registered product category, identity documents, and business permits
+            before approving marketplace access.
+        </p>
+    </div>
+
+    <div class="hero-context-stat">
+        <span class="hero-context-icon">
+            <i data-lucide="store"></i>
+        </span>
+
+        <div>
+            <strong>{{ count($applications) }}</strong>
+            <span>Seller applications</span>
+        </div>
+    </div>
+</section>
+
+
+<section class="panel">
+
+    <div class="panel-heading panel-heading-wrap">
+
+        <div>
+            <span class="eyebrow">Seller registration queue</span>
+            <h2>Applications for review</h2>
+        </div>
+
+
+        <div class="table-toolbar">
+
+            <label class="field-with-icon compact-field">
+                <i data-lucide="search"></i>
+
+                <input
+                    type="search"
+                    placeholder="Search seller..."
+                    data-table-search="seller-applications-table"
+                >
+            </label>
+
+
+            <select
+                class="select-field"
+                data-table-filter="seller-applications-table"
+                data-filter-key="category"
+            >
+                <option value="">All categories</option>
+
+                @foreach (collect($applications)->pluck('business_category')->unique() as $category)
+                    <option value="{{ $category }}">
+                        {{ $category }}
+                    </option>
+                @endforeach
+            </select>
+
+
+            <select
+                class="select-field"
+                data-table-filter="seller-applications-table"
+                data-filter-key="status"
+            >
+                <option value="">All statuses</option>
+                <option value="Pending">Pending</option>
+                <option value="Submitted">Submitted</option>
+                <option value="Under Review">Under Review</option>
+                <option value="Needs Revision">Needs Revision</option>
+            </select>
+
+        </div>
+
+    </div>
+
+
+    <div class="table-wrap">
+
+        <table class="admin-table" id="seller-applications-table">
+
+            <thead>
+                <tr>
+                    <th>Applicant</th>
+                    <th>Business</th>
+                    <th>Category</th>
+                    <th>Contact</th>
+                    <th>Submitted</th>
+                    <th>Status</th>
+                    <th class="align-right">Actions</th>
+                </tr>
+            </thead>
+
+
+            <tbody>
+
+                @foreach ($applications as $application)
+
+                    <tr
+                        data-table-row
+                        data-category="{{ $application['business_category'] }}"
+                        data-status="{{ $application['status'] }}"
+                        data-search="{{
+                            strtolower(
+                                $application['name']
+                                .' '
+                                .$application['business_name']
+                                .' '
+                                .$application['business_category']
+                                .' '
+                                .$application['email']
+                                .' '
+                                .$application['id']
+                            )
+                        }}"
+                    >
+
+                        <td>
+
+                            <div class="identity-cell">
+
+                                <span class="avatar avatar-soft">
+                                    {{
+                                        collect(explode(' ', $application['name']))
+                                            ->map(fn($part) => strtoupper(substr($part, 0, 1)))
+                                            ->take(2)
+                                            ->implode('')
+                                    }}
+                                </span>
+
+                                <div>
+                                    <strong>{{ $application['name'] }}</strong>
+
+                                    <small>
+                                        {{ $application['id'] }}
+                                        •
+                                        {{ $application['email'] }}
+                                    </small>
+                                </div>
+
+                            </div>
+
+                        </td>
+
+
+                        <td>
+                            <div class="table-primary-secondary">
+                                <strong>{{ $application['business_name'] }}</strong>
+
+                                    <small>
+                                        {{ $application['municipality'] }},
+                                        {{ $application['province'] }},
+                                        {{ $application['region'] }}
+                                </small>
+                            </div>
+                        </td>
+
+                        <td>
+                            {{ $application['business_category'] }}
+                        </td>
+
+
+                        <td>
+                            <div class="table-primary-secondary">
+                                <strong>{{ $application['contact'] }}</strong>
+                                <small>Age {{ $application['age'] }}</small>
+                            </div>
+                        </td>
+
+
+                        <td>
+                            {{ $application['submitted'] }}
+                        </td>
+
+
+                        <td>
+
+                            <span
+                                class="status-badge
+                                {{
+                                    $application['status'] === 'Pending'
+                                        ? 'badge-warning'
+                                        : 'badge-info'
+                                }}"
+                            >
+                                {{ $application['status'] }}
+                            </span>
+
+                        </td>
+
+
+                        <td class="align-right">
+
+                            <div class="row-actions">
+
+                                <button
+                                    type="button"
+                                    class="button button-ghost button-small"
+                                    data-open-modal="seller-application-{{ $loop->index }}"
+                                >
+                                    <i data-lucide="eye"></i>
+                                    Review
+                                </button>
+
+
+                                <button
+                                    type="button"
+                                    class="icon-button table-more"
+                                    data-registration-menu-toggle="seller-registration-menu-{{ $loop->index }}"
+                                    aria-expanded="false"
+                                >
+                                    <i data-lucide="ellipsis"></i>
+                                </button>
+
+
+                                <div
+                                    class="registration-action-menu"
+                                    data-registration-menu="seller-registration-menu-{{ $loop->index }}"
+                                    hidden
+                                >
+
+                                    <button
+                                        type="button"
+                                        data-open-modal="seller-application-{{ $loop->index }}"
+                                    >
+                                        <i data-lucide="eye"></i>
+                                        <span>View application</span>
+                                    </button>
+
+
+                                    @if (in_array($application['status'], ['Pending', 'Submitted'], true))
+                                        <form method="POST" action="{{ route('admin.applications.start-review', $application['database_id']) }}" style="display: contents">
+                                            @csrf
+                                            <input type="hidden" name="review_application_id" value="{{ $application['application_id'] }}">
+                                            <button type="submit">
+                                                <i data-lucide="flag"></i>
+                                                <span>Start review</span>
+                                            </button>
+                                        </form>
+                                    @endif
+
+
+                                    <button
+                                        type="button"
+                                        data-copy-application-id="{{ $application['id'] }}"
+                                    >
+                                        <i data-lucide="copy"></i>
+                                        <span>Copy application ID</span>
+                                    </button>
+
+                                </div>
+
+                            </div>
+
+                        </td>
+
+                    </tr>
+
+                @endforeach
+
+            </tbody>
+
+        </table>
+
+
+        <div
+            class="table-empty"
+            data-table-empty="seller-applications-table"
+            hidden
+        >
+            <i data-lucide="search-x"></i>
+            <strong>No Seller applications found</strong>
+            <span>Try a different search or filter.</span>
+        </div>
+
+    </div>
+
+    @if ($applications->hasPages())
+        <div class="panel-footer">
+            {{ $applications->links() }}
+        </div>
+    @endif
+
+</section>
+
+
+@foreach ($applications as $application)
+
+<div
+    class="modal-shell"
+    data-modal="seller-application-{{ $loop->index }}"
+    @if ((int) session('review_application_id', old('review_application_id')) !== (int) $application['application_id']) hidden @endif
+>
+
+    <button
+        class="modal-backdrop"
+        type="button"
+        data-close-modal
+    ></button>
+
+
+    <section
+        class="modal-card modal-wide"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Review {{ $application['name'] }}"
+    >
+
+        <div class="modal-heading">
+
+            <div>
+                <span class="eyebrow">
+                    {{ $application['id'] }}
+                </span>
+
+                <h2>
+                    Review Seller application
+                </h2>
+            </div>
+
+
+            <button
+                class="icon-button"
+                type="button"
+                data-close-modal
+            >
+                <i data-lucide="x"></i>
+            </button>
+
+        </div>
+
+
+        @if ((int) session('review_application_id', old('review_application_id')) === (int) $application['application_id'] && $errors->any())
+            <div class="registration-review-feedback" role="alert">{{ $errors->first() }}</div>
+        @elseif ((int) session('review_application_id', old('review_application_id')) === (int) $application['application_id'] && session('success'))
+            <div class="registration-review-feedback is-success">{{ session('success') }}</div>
+        @endif
+
+        <div class="review-grid">
+
+            <div class="review-profile">
+
+                <span class="avatar avatar-large avatar-warm">
+                    {{
+                        collect(explode(' ', $application['name']))
+                            ->map(fn($part) => strtoupper(substr($part, 0, 1)))
+                            ->take(2)
+                            ->implode('')
+                    }}
+                </span>
+
+                <h3>{{ $application['business_name'] }}</h3>
+
+                <p>{{ $application['name'] }}</p>
+
+                <small>{{ $application['email'] }}</small>
+
+                <span class="role-badge role-seller">
+                    Seller
+                </span>
+
+            </div>
+
+
+            <div class="review-details">
+
+                <h3 class="section-subtitle">
+                    Personal information
+                </h3>
+
+
+                <div class="detail-grid">
+
+                    <div>
+                        <span>Last name</span>
+                        <strong>{{ $application['last_name'] }}</strong>
+                    </div>
+
+                    <div>
+                        <span>First name</span>
+                        <strong>{{ $application['first_name'] }}</strong>
+                    </div>
+
+                    <div>
+                        <span>Middle initial</span>
+                        <strong>{{ $application['middle_initial'] }}</strong>
+                    </div>
+
+                    <div>
+                        <span>Sex</span>
+                        <strong>{{ $application['sex'] }}</strong>
+                    </div>
+
+                    <div>
+                        <span>Email</span>
+                        <strong>{{ $application['email'] }}</strong>
+                    </div>
+
+                    <div>
+                        <span>Contact number</span>
+                        <strong>{{ $application['contact'] }}</strong>
+                    </div>
+
+                    <div>
+                        <span>Birthday</span>
+                        <strong>{{ $application['birthday'] }}</strong>
+                    </div>
+
+                    <div>
+                        <span>Age</span>
+                        <strong>{{ $application['age'] }}</strong>
+                    </div>
+
+                </div>
+
+
+                <h3 class="section-subtitle">
+                    Business information
+                </h3>
+
+                <div class="detail-grid">
+
+                    <div>
+                        <span>Business name</span>
+                        <strong>{{ $application['business_name'] }}</strong>
+                    </div>
+
+                    <div>
+                        <span>Line of business</span>
+                        <strong>{{ $application['business_category'] }}</strong>
+                    </div>
+
+                    <div>
+                        <span>Application submitted</span>
+                        <strong>{{ $application['submitted'] }}</strong>
+                    </div>
+
+                </div>
+
+                <h3 class="section-subtitle">
+                    Business address
+                </h3>
+
+                <div class="detail-grid">
+
+                    <div>
+                        <span>Region</span>
+                        <strong>{{ $application['region'] }}</strong>
+                    </div>
+
+                    <div>
+                        <span>Province</span>
+                        <strong>{{ $application['province'] }}</strong>
+                    </div>
+
+                    <div>
+                        <span>Municipality / City</span>
+                        <strong>{{ $application['municipality'] }}</strong>
+                    </div>
+
+                    <div>
+                        <span>Barangay</span>
+                        <strong>{{ $application['barangay'] }}</strong>
+                    </div>
+
+                    <div>
+                        <span>Street</span>
+                        <strong>{{ $application['street'] }}</strong>
+                    </div>
+
+                    <div>
+                        <span>House number</span>
+                        <strong>{{ $application['house_number'] }}</strong>
+                    </div>
+
+                </div>
+
+
+                <h3 class="section-subtitle">
+                    Verification documents
+                </h3>
+
+
+                <div class="document-preview-grid">
+
+                    @include('admin.registrations._document-review')
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="modal-footer decision-footer">
+
+            @include('admin.registrations._decision-actions')
+
+        </div>
+
+    </section>
+
+</div>
+
+@endforeach
+
+
+@endsection

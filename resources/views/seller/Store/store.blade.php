@@ -1,0 +1,282 @@
+@extends('layouts.seller')
+
+@section('title', 'My Store')
+@section('page-title', 'My Store')
+
+@push('styles')
+    <style>
+        /* Keep document icons visible if a cached deployment serves the old Seller bundle. */
+        :root[data-theme="dark"] body.seller-body .seller-content .store-document-status > span:first-child {
+            border: 1px solid #806334;
+            background-color: #45331d !important;
+            color: #efbd71 !important;
+        }
+
+        :root[data-theme="dark"] body.seller-body .seller-content .store-document-status > span:first-child svg {
+            color: inherit !important;
+            fill: none;
+            stroke: currentColor;
+        }
+    </style>
+@endpush
+
+@section('content')
+<div class="store-profile-page">
+    <section class="page-heading store-profile-heading">
+        <div>
+            <span class="section-kicker">Store management</span>
+            <h2>Store Profile</h2>
+            <p>Review your registered business information and manage buyer-facing contact details.</p>
+        </div>
+    </section>
+
+    <form
+        class="store-profile-form"
+        method="POST"
+        action="{{ route('seller.store.save') }}"
+        enctype="multipart/form-data"
+        data-store-form
+    >
+        @csrf
+
+        <div class="store-profile-layout store-profile-layout-focused">
+            <section class="store-information-card">
+                <div class="store-profile-section">
+                    <div class="store-profile-section-heading">
+                        <span class="store-profile-section-icon" aria-hidden="true">
+                            <i data-lucide="store"></i>
+                        </span>
+
+                        <div>
+                            <h3>Registered Business Information</h3>
+                            <p>These details were submitted during registration and can only be changed after administrator review.</p>
+                        </div>
+                    </div>
+
+                    @if ($errors->any())
+                        <div class="form-alert">
+                            <i data-lucide="circle-alert" aria-hidden="true"></i>
+                            <span>{{ $errors->first() }}</span>
+                        </div>
+                    @endif
+
+                    <div class="store-profile-business-grid">
+                        <label class="seller-field">
+                            <span>Business / Store Name</span>
+                            <span class="locked-input">
+                                <input value="{{ $store['name'] }}" readonly aria-readonly="true">
+                                <i data-lucide="lock-keyhole" aria-hidden="true"></i>
+                            </span>
+                        </label>
+
+                        <label class="seller-field">
+                            <span>Line of Business / Category</span>
+                            <span class="locked-input">
+                                <input value="{{ $store['category'] }}" readonly aria-readonly="true">
+                                <i data-lucide="lock-keyhole" aria-hidden="true"></i>
+                            </span>
+                        </label>
+
+                        <label class="seller-field store-location-field">
+                            <span>Store Location</span>
+                            <span class="locked-input">
+                                <input value="{{ $store['location'] }}" readonly aria-readonly="true">
+                                <i data-lucide="lock-keyhole" aria-hidden="true"></i>
+                            </span>
+                            <small>Your exact registered address is kept private from buyers.</small>
+                        </label>
+                    </div>
+
+                    <div class="store-registration-divider" aria-hidden="true"></div>
+
+                    <div class="store-registration-heading">
+                        <div>
+                            <h4>Registration Documents</h4>
+                            <p>Documents required during seller registration.</p>
+                        </div>
+                    </div>
+
+                    <div class="store-registration-grid">
+                        @foreach ($documents as $document)
+                            <div class="store-document-status">
+                                <span aria-hidden="true">
+                                    <i data-lucide="{{ $document['label'] === 'Valid ID' ? 'badge-check' : 'file-check-2' }}"></i>
+                                </span>
+                                <div>
+                                    <strong>{{ $document['label'] }}</strong>
+                                    <small class="document-status-{{ $document['status'] }}">
+                                        <i data-lucide="{{ $document['status_icon'] }}"></i>
+                                        {{ $document['status_label'] }}
+                                    </small>
+                                    @if ($document['file_name'])
+                                        <small class="document-file-meta">
+                                            <i data-lucide="file-check-2"></i>
+                                            Document uploaded
+                                        </small>
+                                    @endif
+                                    @if ($document['preview_url'])
+                                        <a
+                                            class="document-preview-link"
+                                            href="{{ $document['preview_url'] }}"
+                                            data-document-preview="{{ $document['label'] }}"
+                                        >
+                                            <i data-lucide="eye"></i>
+                                            Preview document
+                                        </a>
+                                    @endif
+                                </div>
+                            </div>
+                        @endforeach
+
+                        <div class="store-admin-note">
+                            <i data-lucide="info" aria-hidden="true"></i>
+                            <p>Changes to registered business details or submitted documents require administrator review.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="store-profile-section">
+                    <div class="store-profile-section-heading">
+                        <span class="store-profile-section-icon" aria-hidden="true"><i data-lucide="map-pin"></i></span>
+                        <div><h3>Pickup Map Pin</h3><p>Open this page at your pickup location and detect your device location. Review the reported accuracy, then save the pin.</p></div>
+                    </div>
+                    @if ($pickupAddress)
+                        <div data-seller-pickup-map-form data-action="{{ route('seller.store.pickup.coordinates') }}">
+                            <div id="seller-pickup-map" class="address-map" data-seller-pickup-map data-latitude="{{ $pickupAddress->latitude ?? '' }}" data-longitude="{{ $pickupAddress->longitude ?? '' }}" data-map-tile-url="{{ config('maps.tile_url') }}" data-map-attribution="{{ config('maps.tile_attribution') }}"></div>
+                            <input type="hidden" name="latitude" value="{{ $pickupAddress->latitude ?? '' }}">
+                            <input type="hidden" name="longitude" value="{{ $pickupAddress->longitude ?? '' }}">
+                            <p id="pickup-map-status" class="address-map-status" data-pickup-map-status role="status" aria-live="polite">Tap the map to place a pin, or detect this device's location. Drag the pin to adjust it, then save.</p>
+                            <div class="address-map-picker-actions store-pickup-pin-actions">
+                                <button class="address-map-location" type="button" data-detect-pickup-location aria-describedby="pickup-map-status">
+                                    <i data-lucide="locate-fixed" aria-hidden="true"></i>Detect my current location
+                                </button>
+                                <button class="address-map-location address-map-manual" type="button" data-place-pickup-pin-manually aria-controls="seller-pickup-map" aria-describedby="pickup-map-status" aria-pressed="false">
+                                    <i data-lucide="map-pin" aria-hidden="true"></i>Place pin manually
+                                </button>
+                                <button class="seller-primary-button" type="button" data-save-pickup-pin>Save Pickup Pin</button>
+                                <button class="address-map-clear" type="button" data-clear-pickup-pin @if ($pickupAddress->latitude === null || $pickupAddress->longitude === null) hidden @endif>Clear pin</button>
+                            </div>
+                        </div>
+                    @else
+                        <p class="form-alert">No registered pickup address is available for a map pin.</p>
+                    @endif
+                </div>
+
+                <div class="store-profile-section store-contact-section">
+                    <div class="store-profile-section-heading">
+                        <span class="store-profile-section-icon" aria-hidden="true">
+                            <i data-lucide="contact-round"></i>
+                        </span>
+
+                        <div>
+                            <h3>Store Contact Information</h3>
+                            <p>These details are used by buyers for store communication.</p>
+                        </div>
+                    </div>
+
+                    <div class="store-profile-contact-grid">
+                        <label class="seller-field">
+                            <span>Store Contact Email</span>
+                            <span class="store-contact-input">
+                                <i data-lucide="mail" aria-hidden="true"></i>
+                                <input
+                                    type="email"
+                                    name="email"
+                                    value="{{ old('email', $store['email']) }}"
+                                    autocomplete="email"
+                                    required
+                                >
+                            </span>
+                        </label>
+
+                        <label class="seller-field">
+                            <span>Store Contact Number</span>
+                            <span class="store-contact-input">
+                                <i data-lucide="phone" aria-hidden="true"></i>
+                                <input
+                                    type="tel"
+                                    name="phone"
+                                    value="{{ old('phone', $store['phone']) }}"
+                                    autocomplete="tel"
+                                    required
+                                >
+                            </span>
+                        </label>
+                    </div>
+
+                    <div class="store-profile-actions">
+                        <button
+                            class="seller-primary-button"
+                            type="submit"
+                            name="intent"
+                            value="draft"
+                        >
+                            <i data-lucide="save" aria-hidden="true"></i>
+                            Save Contact Details
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <aside class="store-side-column" aria-label="Store management">
+                <section class="store-management-panel">
+                    <div class="store-management-heading">
+                        <span aria-hidden="true">
+                            <i data-lucide="settings-2"></i>
+                        </span>
+
+                        <div>
+                            <h3>Store Management</h3>
+                            <p>Manage how your store appears and is visible to buyers.</p>
+                        </div>
+                    </div>
+
+                    <a class="store-management-link" href="{{ route('seller.store.appearance') }}">
+                        <span aria-hidden="true">
+                            <i data-lucide="image"></i>
+                        </span>
+
+                        <div>
+                            <strong>Store Appearance</strong>
+                            <small>Manage description, profile photo, cover, and buyer preview.</small>
+                        </div>
+
+                        <i data-lucide="chevron-right" aria-hidden="true"></i>
+                    </a>
+
+                    <a class="store-management-link" href="{{ route('seller.store.publication') }}">
+                        <span aria-hidden="true">
+                            <i data-lucide="store"></i>
+                        </span>
+
+                        <div>
+                            <strong>Publication Settings</strong>
+                            <small>Review publishing requirements and control buyer visibility.</small>
+                        </div>
+
+                        <i data-lucide="chevron-right" aria-hidden="true"></i>
+                    </a>
+                </section>
+            </aside>
+        </div>
+    </form>
+
+    <div class="document-preview-modal" data-document-preview-modal hidden>
+        <div class="document-preview-backdrop" data-document-preview-close></div>
+        <section class="document-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="document-preview-title">
+            <header class="document-preview-header">
+                <div>
+                    <span class="section-kicker">Registration document</span>
+                    <h3 id="document-preview-title" data-document-preview-title>Document Preview</h3>
+                </div>
+                <button class="document-preview-close" type="button" aria-label="Close document preview" data-document-preview-close>
+                    <i data-lucide="x"></i>
+                </button>
+            </header>
+            <div class="document-preview-frame-wrap">
+                <iframe title="Registration document preview" data-document-preview-frame></iframe>
+            </div>
+        </section>
+    </div>
+</div>
+@endsection

@@ -1,0 +1,2095 @@
+@import "./theme.css";
+@import "./bearly-chatbot.css";
+
+/* Bearly Landing Page
+   Source: bearly-fusion-clean
+   Hero image blend polish: tech + fashion carousel slides
+   --------------------------------------------------------- */
+
+html:has(body.bl) { scroll-behavior: smooth; }
+body.bl button { border: 0; background: none; }
+body.bl img { display: block; max-width: 100%; }
+body.bl a,
+body.bl button { touch-action: manipulation; }
+body.bl [hidden] { display: none !important; }
+
+/* Bearly editorial landing. Scoped to this page so About and Contact keep their layouts. */
+body.bl.bearly-landing {
+    --lp-ink: #432214;
+    --lp-muted: #6c645f;
+    --lp-line: #e4ddd7;
+    margin: 0;
+    background: #fff;
+    color: var(--lp-ink);
+    font-family: "Poppins", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+    overflow-x: clip;
+}
+body.bearly-landing * {
+    box-sizing: border-box;
+}
+body.bl.bearly-landing h1,
+body.bl.bearly-landing h2,
+body.bl.bearly-landing h3,
+body.bl.bearly-landing p {
+    margin: 0;
+    font-family: inherit;
+}
+body.bl.bearly-landing h2 {
+    font-size: clamp(26px, 2.55vw, 38px);
+    font-weight: 700;
+    line-height: 1.16;
+    letter-spacing: -0.045em;
+}
+body.bearly-landing a {
+    color: inherit;
+    text-decoration: none;
+}
+body.bearly-landing button,
+body.bearly-landing input {
+    font: inherit;
+}
+body.bearly-landing button {
+    cursor: pointer;
+    color: inherit;
+}
+body.bearly-landing button:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+body.bearly-landing img {
+    display: block;
+    max-width: 100%;
+}
+body.bearly-landing [hidden] {
+    display: none !important;
+}
+body.bearly-landing :focus-visible {
+    outline: 3px solid #ad661b;
+    outline-offset: 5px;
+}
+body.bearly-landing .material-symbols-outlined {
+    font-size: 25px;
+    line-height: 1;
+    display: inline-block;
+    width: 25px;
+    height: 25px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+body.bearly-landing .lp-sr,
+body.bearly-landing .lp-skip:not(:focus) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+body.bearly-landing .lp-skip:focus {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    padding: 12px 20px;
+    background: #fff;
+    z-index: 100;
+}
+body.bearly-landing .lp-header {
+    max-width: 1600px;
+    margin: auto;
+    min-height: 100px;
+    padding: 20px 4%;
+    display: flex;
+    align-items: center;
+    gap: 32px;
+    background: white;
+    position: relative;
+    z-index: 5;
+}
+body.bearly-landing .lp-logo {
+    width: 180px;
+    flex-shrink: 0;
+}
+body.bearly-landing .lp-logo img,
+body.bearly-landing .lp-footer-logo img {
+    width: 100%;
+    height: auto;
+}
+
+body.bearly-landing .lp-footer-logo img {
+    filter:
+        drop-shadow(0 1px 0 rgba(255, 248, 239, 0.32))
+        drop-shadow(0 2px 7px rgba(20, 10, 6, 0.16));
+}
+body.bearly-landing .lp-nav {
+    display: flex;
+    gap: 26px;
+    align-items: center;
+    margin-left: auto;
+    font-size: 15px;
+    font-weight: 500;
+}
+body.bearly-landing .lp-nav a {
+    padding: 9px 0;
+    position: relative;
+}
+body.bearly-landing .lp-nav a:after {
+    content: "";
+    height: 2px;
+    background: var(--lp-ink);
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 0;
+    transition: width 0.2s;
+}
+body.bearly-landing .lp-nav a:hover:after,
+body.bearly-landing .lp-nav a[aria-current]:after {
+    width: 100%;
+}
+body.bearly-landing .lp-search {
+    display: flex;
+    border: 1px solid var(--lp-line);
+    border-radius: 30px;
+    overflow: hidden;
+    background: #f7f7f7;
+    max-width: 280px;
+    flex: 1;
+    min-width: 180px;
+}
+body.bearly-landing .lp-search input {
+    min-width: 0;
+    width: 100%;
+    border: 0;
+    background: transparent;
+    padding: 9px 0 9px 17px;
+    font-size: 14px;
+    outline-offset: -3px !important;
+}
+body.bearly-landing .lp-actions {
+    display: flex;
+    gap: 8px;
+}
+body.bearly-landing .lp-icon {
+    border: 0;
+    background: transparent;
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    flex-shrink: 0;
+    border-radius: 50%;
+}
+body.bearly-landing .lp-icon:hover {
+    background: #f2ebe4;
+}
+body.bearly-landing .lp-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    min-width: 20px;
+    padding: 1px 4px;
+    border-radius: 20px;
+    background: var(--lp-ink);
+    color: white;
+    font-size: 12px;
+}
+body.bearly-landing .lp-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    min-height: 49px;
+    padding: 12px 26px;
+    border: 1px solid var(--lp-ink);
+    border-radius: 4px;
+    background: var(--lp-ink);
+    color: #fff !important;
+    font-size: 15px;
+    font-weight: 500;
+    transition:
+        background 0.2s,
+        transform 0.2s;
+}
+body.bearly-landing .lp-button:hover {
+    background: #653c26;
+    transform: translateY(-2px);
+}
+body.bearly-landing .lp-text-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    border: 0;
+    background: transparent;
+    padding: 6px 0;
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none !important;
+}
+body.bearly-landing .lp-text-link:hover {
+    opacity: 0.72;
+}
+body.bearly-landing .lp-eyebrow {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    line-height: 1.5;
+}
+body.bearly-landing .lp-round {
+    width: 42px;
+    height: 42px;
+    border: 1px solid #d8cec6;
+    border-radius: 50%;
+    background: white;
+    color: var(--lp-ink);
+    font-size: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+        background 0.18s ease,
+        border-color 0.18s ease;
+}
+body.bearly-landing .lp-round:hover:not(:disabled) {
+    background: #f7f2ed;
+    border-color: #c8b9ad;
+}
+body.bearly-landing .lp-round:active:not(:disabled) {
+    background: #f1e8e0;
+}
+body.bearly-landing .lp-hero {
+    position: relative;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    background: #f5f1ea;
+    isolation: isolate;
+}
+body.bearly-landing .lp-slides {
+    position: relative;
+    width: 100%;
+}
+body.bearly-landing .lp-slide {
+    width: 100%;
+}
+body.bearly-landing .lp-slide {
+    position: relative;
+    min-height: 690px;
+    height: clamp(690px, 52vw, 830px);
+    overflow: hidden;
+    isolation: isolate;
+}
+body.bearly-landing .lp-slide.is-active {
+    animation: lp-slide-in 0.45s ease both;
+}
+body.bearly-landing .lp-hero-photo {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    z-index: -2;
+}
+body.bearly-landing .lp-slide:after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.95),
+        rgba(255, 255, 255, 0.85) 25%,
+        rgba(255, 255, 255, 0.12) 54%,
+        transparent 68%
+    );
+    pointer-events: none;
+}
+body.bearly-landing .lp-hero-copy {
+    position: relative;
+    padding: 54px 0 90px 4.5%;
+    width: 56%;
+    max-width: 800px;
+}
+body.bearly-landing .lp-hero-copy .lp-eyebrow {
+    margin-bottom: 16px;
+}
+body.bl.bearly-landing .lp-hero-copy h1,
+body.bl.bearly-landing .lp-hero-copy h2 {
+    font-size: clamp(44px, 5.05vw, 76px);
+    font-weight: 800;
+    line-height: 1.025;
+    letter-spacing: -0.065em;
+    margin: 0 0 20px;
+}
+body.bearly-landing .lp-hero-copy > p:not(.lp-eyebrow) {
+    max-width: 455px;
+    font-size: 18px;
+    line-height: 1.55;
+}
+body.bearly-landing .lp-hero-links {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 25px;
+}
+body.bearly-landing .lp-hero-copy > .lp-button {
+    margin-top: 25px;
+}
+body.bearly-landing .lp-bear-note {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-top: 27px;
+}
+body.bearly-landing .lp-bear {
+    display: inline-block;
+    flex-shrink: 0;
+    width: 118px;
+    height: 144px;
+    background-image: var(--landing-logo);
+    background-repeat: no-repeat;
+    background-size: auto 144px;
+    background-position: -13px center;
+    filter: drop-shadow(0 5px 3px #43221412);
+}
+body.bearly-landing .lp-bear-note p {
+    font-style: italic;
+    font-size: 17px;
+    line-height: 1.45;
+    transform: rotate(-7deg);
+    max-width: 180px;
+}
+body.bearly-landing .lp-hero-wordmark {
+    position: absolute;
+    bottom: 48px;
+    right: 3%;
+    font-size: clamp(110px, 15vw, 230px);
+    line-height: 0.9;
+    letter-spacing: -0.09em;
+    font-weight: 800;
+    color: white;
+    pointer-events: none;
+    text-shadow: 0 2px 8px #25170c10;
+}
+body.bearly-landing .lp-hero-controls {
+    position: absolute;
+    bottom: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.82);
+    padding: 4px 10px;
+    box-shadow: 0 3px 14px rgba(67, 34, 20, 0.08);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 4;
+}
+
+body.bearly-landing .lp-dots {
+    display: flex;
+    align-items: center;
+}
+body.bearly-landing .lp-dots button {
+    position: relative;
+    width: 24px;
+    height: 30px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+body.bearly-landing .lp-dots button:after {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: #c8c0b9;
+    transition:
+        width 0.22s ease,
+        background 0.22s ease;
+}
+body.bearly-landing .lp-dots button[aria-current="true"]:after {
+    width: 18px;
+    background: var(--lp-ink);
+}
+body.bearly-landing .lp-hero-toggle {
+    width: 34px;
+    height: 34px;
+    margin-left: 5px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #d8cec6;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.7);
+    color: var(--lp-ink);
+    transition:
+        background 0.18s ease,
+        border-color 0.18s ease;
+}
+body.bearly-landing .lp-hero-toggle:hover {
+    background: #fff;
+    border-color: #c8b9ad;
+}
+body.bearly-landing .lp-hero-toggle .material-symbols-outlined {
+    width: 18px;
+    height: 18px;
+    font-size: 18px;
+}
+body.bearly-landing .lp-hero-arrows {
+    position: absolute;
+    inset: 50% 0 auto;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 clamp(18px, 2.2vw, 42px);
+    pointer-events: none;
+    z-index: 4;
+}
+
+/* Hero navigation: bare editorial chevrons, no button chrome. */
+body.bearly-landing .lp-hero-arrows .lp-round {
+    pointer-events: auto;
+    width: 44px;
+    height: 64px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: rgba(67, 34, 20, 0.78);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 50px;
+    font-weight: 400;
+    line-height: 1;
+    padding: 0;
+    opacity: 0.72;
+    transition:
+        opacity 0.18s ease,
+        transform 0.18s ease,
+        color 0.18s ease;
+}
+body.bearly-landing .lp-hero-arrows .lp-round:hover:not(:disabled) {
+    background: transparent;
+    border: 0;
+    opacity: 1;
+    color: var(--lp-ink);
+    transform: scale(1.06);
+}
+body.bearly-landing .lp-hero-arrows .lp-round:active:not(:disabled) {
+    background: transparent;
+    transform: scale(0.98);
+}
+body.bearly-landing .lp-hero-arrows [data-hero-prev] {
+    margin-right: auto;
+}
+body.bearly-landing .lp-hero-arrows [data-hero-next] {
+    margin-left: auto;
+    color: #fffaf4;
+    text-shadow:
+        0 1px 2px rgba(35, 20, 12, 0.78),
+        0 0 5px rgba(35, 20, 12, 0.52),
+        0 0 12px rgba(35, 20, 12, 0.24);
+    filter: drop-shadow(0 1px 1px rgba(35, 20, 12, 0.34));
+}
+
+/* Desktop photo sizing for image-led hero slides. */
+body.bearly-landing .lp-photo-tech,
+body.bearly-landing .lp-photo-fashion {
+    width: 72%;
+    left: auto;
+    right: 0;
+    object-position: center 66%;
+
+    /*
+       Blend the image itself into the white copy panel.
+       This removes the visible vertical crop/seam without blurring
+       the product area or changing the actual image file.
+    */
+    -webkit-mask-image: linear-gradient(
+        to right,
+        transparent 0%,
+        rgba(0, 0, 0, 0.08) 4%,
+        rgba(0, 0, 0, 0.28) 9%,
+        rgba(0, 0, 0, 0.58) 16%,
+        rgba(0, 0, 0, 0.82) 23%,
+        #000 31%,
+        #000 100%
+    );
+    mask-image: linear-gradient(
+        to right,
+        transparent 0%,
+        rgba(0, 0, 0, 0.08) 4%,
+        rgba(0, 0, 0, 0.28) 9%,
+        rgba(0, 0, 0, 0.58) 16%,
+        rgba(0, 0, 0, 0.82) 23%,
+        #000 31%,
+        #000 100%
+    );
+}
+
+/* Keep the existing white editorial overlay while softening its handoff. */
+body.bearly-landing .lp-slide:has(.lp-photo-tech):after,
+body.bearly-landing .lp-slide:has(.lp-photo-fashion):after {
+    background: linear-gradient(
+        90deg,
+        #fff 0%,
+        rgba(255, 255, 255, 0.99) 27%,
+        rgba(255, 255, 255, 0.95) 34%,
+        rgba(255, 255, 255, 0.82) 42%,
+        rgba(255, 255, 255, 0.57) 50%,
+        rgba(255, 255, 255, 0.27) 58%,
+        rgba(255, 255, 255, 0.08) 64%,
+        transparent 70%
+    );
+}
+
+body.bearly-landing .lp-brand-strip {
+    background: var(--lp-ink);
+    color: white;
+    text-align: center;
+    padding: 16px 24px;
+    font-size: clamp(19px, 2vw, 28px);
+    font-weight: 600;
+    letter-spacing: -0.025em;
+}
+body.bearly-landing .lp-section {
+    max-width: 1500px;
+    margin: 0 auto;
+    padding: 38px 4.5%;
+}
+body.bearly-landing .lp-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+body.bearly-landing .lp-heading .lp-text-link {
+    flex-shrink: 0;
+}
+body.bearly-landing .lp-category-row {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 22px;
+}
+body.bearly-landing .lp-category-row button {
+    border: 0;
+    background: none;
+    padding: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-size: 16px;
+    font-weight: 500;
+    gap: 12px;
+}
+body.bearly-landing .lp-category-row .lp-product-photo {
+    width: 100%;
+    border-radius: 0;
+    transition: transform 0.3s;
+}
+body.bearly-landing .lp-category-row button:hover .lp-product-photo {
+    transform: translateY(-5px);
+}
+body.bearly-landing .lp-product-photo {
+    display: block;
+    aspect-ratio: 1;
+    background-color: #f7f6f4;
+    background-image: var(--mixed-atlas);
+    background-size: 400% 300%;
+    background-position: var(--x) var(--y);
+    background-repeat: no-repeat;
+    border-radius: 5px;
+}
+body.bearly-landing .lp-product-photo[data-atlas="existing"] {
+    background-image: var(--existing-atlas);
+    background-size: 400% 400%;
+}
+body.bearly-landing .lp-campaigns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    max-width: 1800px;
+    margin: auto;
+}
+body.bearly-landing .lp-campaign {
+    position: relative;
+    isolation: isolate;
+    min-height: 430px;
+    aspect-ratio: 1.3;
+    overflow: hidden;
+    color: white !important;
+}
+body.bearly-landing .lp-campaign img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: -2;
+    transition: transform 0.65s;
+}
+body.bearly-landing .lp-campaign:after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, #10202c6b, transparent 65%);
+    z-index: -1;
+}
+body.bearly-landing .lp-campaign:nth-child(2):after {
+    background: linear-gradient(135deg, #3a170e75, transparent 65%);
+}
+body.bearly-landing .lp-campaign:hover img {
+    transform: scale(1.035);
+}
+body.bearly-landing .lp-campaign > div {
+    padding: 42px 7%;
+}
+body.bearly-landing .lp-campaign .lp-eyebrow {
+    margin-bottom: 15px;
+}
+body.bl.bearly-landing .lp-campaign h2 {
+    font-size: clamp(32px, 4.2vw, 62px);
+    line-height: 1.04;
+    font-weight: 700;
+    letter-spacing: -0.055em;
+    color: white;
+    max-width: 90%;
+    margin-bottom: 16px;
+}
+body.bearly-landing .lp-campaign .lp-text-link {
+    font-size: 16px;
+    text-decoration-color: white !important;
+    margin-top: 8px;
+}
+body.bearly-landing .lp-featured {
+    padding-top: 44px;
+    padding-bottom: 24px;
+    scroll-margin-top: 18px;
+}
+body.bearly-landing .lp-featured-heading {
+    align-items: flex-end;
+    margin-bottom: 10px;
+}
+body.bearly-landing .lp-featured-heading p {
+    color: var(--lp-muted);
+    margin-top: 7px !important;
+}
+body.bearly-landing .lp-filters {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: 52%;
+}
+body.bearly-landing .lp-filters button {
+    border: 1px solid var(--lp-line);
+    background: white;
+    padding: 9px 14px;
+    border-radius: 4px;
+    font-size: 14px;
+    min-height: 43px;
+}
+body.bearly-landing .lp-filters button[aria-pressed="true"] {
+    background: var(--lp-ink);
+    color: white;
+    border-color: var(--lp-ink);
+}
+body.bearly-landing .lp-catalogue-note {
+    font-size: 12px;
+    color: var(--lp-muted);
+    line-height: 1.5;
+}
+body.bearly-landing .lp-product-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 30px 20px;
+    margin-top: 22px;
+}
+body.bearly-landing .lp-product {
+    position: relative;
+    min-width: 0;
+}
+body.bearly-landing .lp-product-open {
+    display: block;
+    width: 100%;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    padding: 0;
+    color: inherit;
+    text-decoration: none;
+}
+body.bearly-landing .lp-live-product-photo {
+    display: grid;
+    width: 100%;
+    aspect-ratio: 1;
+    place-items: center;
+    overflow: hidden;
+    background: var(--theme-surface-soft, #f7f6f4);
+}
+body.bearly-landing .lp-live-product-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: filter 0.2s;
+}
+body.bearly-landing .lp-live-product-photo.is-empty {
+    color: var(--lp-muted);
+    font-size: 13px;
+}
+body.bearly-landing .lp-product-open:hover .lp-live-product-photo img {
+    filter: brightness(0.975);
+}
+body.bearly-landing .lp-product-open .lp-product-photo {
+    width: 100%;
+    transition: filter 0.2s;
+}
+body.bearly-landing .lp-product-open:hover .lp-product-photo {
+    filter: brightness(0.975);
+}
+body.bl.bearly-landing .lp-product h3 {
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 1.5;
+    letter-spacing: -0.025em;
+    margin-top: 12px;
+}
+body.bearly-landing .lp-product p {
+    font-size: 14px;
+    color: var(--lp-muted);
+    margin-top: 3px !important;
+}
+body.bearly-landing .lp-product-price {
+    display: block;
+    margin-top: 5px;
+    color: var(--lp-ink);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.45;
+}
+body.bearly-landing .lp-product-view {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 9px;
+    color: var(--lp-ink);
+    font-size: 13px;
+    font-weight: 500;
+}
+body.bearly-landing .lp-product-view .material-symbols-outlined {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+}
+body.bearly-landing .lp-product-open:hover .lp-product-view,
+body.bearly-landing .lp-product-open:focus-visible .lp-product-view {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+}
+body.bearly-landing .lp-products-empty {
+    margin-top: 20px !important;
+    padding: 18px 0;
+    color: var(--lp-muted);
+    text-align: center;
+}
+body.bearly-landing .lp-save {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    border: 0;
+    border-radius: 50%;
+    background: #fffdf7ed;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+body.bearly-landing .lp-save .material-symbols-outlined {
+    font-size: 22px;
+    width: 22px;
+    height: 22px;
+}
+body.bearly-landing .lp-save[aria-pressed="true"] {
+    background: var(--lp-ink);
+    color: #fff;
+}
+body.bearly-landing .lp-save[aria-pressed="true"] .material-symbols-outlined {
+    font-variation-settings: "FILL" 1;
+}
+
+
+
+
+
+
+/* Featured Products pagination: minimal editorial controls. */
+
+
+
+
+body.bearly-landing .lp-product-pages button {
+    width: 22px;
+    height: 30px;
+}
+
+body.bearly-landing .lp-product-pages button:after {
+    width: 6px;
+    height: 6px;
+    background: #c8c0b9;
+    transition:
+        width 0.22s ease,
+        border-radius 0.22s ease,
+        background 0.22s ease,
+        transform 0.22s ease;
+}
+
+body.bearly-landing .lp-product-pages button[aria-current="true"]:after {
+    width: 18px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--lp-ink);
+}
+
+
+
+
+
+body.bearly-landing .lp-product-nav-actions .lp-product-chevron:hover:not(:disabled) {
+    background: transparent;
+    border: 0;
+    opacity: 1;
+    transform: translateX(2px);
+}
+
+body.bearly-landing .lp-product-nav-actions [data-products-prev]:hover:not(:disabled) {
+    transform: translateX(-2px);
+}
+
+body.bearly-landing .lp-product-nav-actions .lp-product-chevron:active:not(:disabled) {
+    transform: scale(0.96);
+}
+
+body.bearly-landing .lp-product-nav-actions .lp-product-chevron:disabled {
+    opacity: 0.22;
+}
+
+
+/* Auto-carousel page transition: soft, quick, and not flashy. */
+@keyframes lp-products-auto-in {
+    from {
+        opacity: 0.35;
+        transform: translateX(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+body.bearly-landing .lp-product-grid.is-changing {
+    animation: lp-products-auto-in 0.42s cubic-bezier(.22,.61,.36,1);
+}
+
+
+/* Featured Products toolbar: filters + carousel controls live together. */
+body.bearly-landing .lp-featured-heading {
+    align-items: flex-end;
+    gap: 26px;
+    margin-bottom: 18px;
+}
+
+body.bearly-landing .lp-featured-copy {
+    flex-shrink: 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* Bottom area is now only a quiet page indicator. */
+
+
+
+
+
+
+
+/* Featured Products guest preview. */
+body.bearly-landing .lp-featured-heading {
+    align-items: flex-end;
+    gap: 24px;
+    margin-bottom: 18px;
+}
+
+body.bearly-landing .lp-featured-heading .lp-filters {
+    margin-left: auto;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 7px;
+    max-width: 62%;
+}
+
+/* Guest-only continuation CTA, inspired by marketplace preview patterns. */
+body.bearly-landing .lp-guest-more {
+    display: flex;
+    justify-content: center;
+    padding: 28px 0 10px;
+}
+
+body.bearly-landing .lp-guest-login {
+    width: min(420px, 100%);
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--lp-line);
+    background: #fff;
+    color: var(--lp-ink);
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none;
+    transition:
+        border-color 0.18s ease,
+        background 0.18s ease,
+        transform 0.18s ease;
+}
+
+body.bearly-landing .lp-guest-login:hover {
+    border-color: #c9b8aa;
+    background: #fbf8f5;
+    transform: translateY(-1px);
+}
+
+body.bearly-landing .lp-story {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 70px;
+    border-top: 1px solid var(--lp-line);
+    border-bottom: 1px solid var(--lp-line);
+    padding-top: 30px;
+    padding-bottom: 30px;
+}
+body.bearly-landing .lp-story .lp-eyebrow {
+    margin-bottom: 9px;
+}
+body.bearly-landing .lp-story > div:last-child {
+    align-self: center;
+}
+body.bearly-landing .lp-story p:not(.lp-eyebrow) {
+    color: var(--lp-muted);
+}
+body.bearly-landing .lp-support {
+    display: flex;
+    gap: 28px;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 26px;
+    padding-bottom: 26px;
+}
+body.bearly-landing .lp-support h2 {
+    font-size: 24px !important;
+}
+body.bearly-landing .lp-support > a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+}
+body.bearly-landing .lp-support > a:hover {
+    color: #986030;
+}
+body.bearly-landing .lp-support .lp-eyebrow {
+    margin-bottom: 5px;
+}
+body.bearly-landing .lp-signup {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 28px;
+    background: #fcf0da;
+    padding: 24px 4.5%;
+}
+
+body.bearly-landing .lp-signup h2 {
+    font-size: clamp(23px, 2.5vw, 36px) !important;
+}
+body.bearly-landing .lp-signup .lp-button {
+    margin-left: auto;
+    margin-bottom: 0;
+}
+body.bearly-landing .lp-signup > div {
+    padding-bottom: 0;
+}
+body.bearly-landing .lp-signup p {
+    margin-top: 5px !important;
+}
+body.bearly-landing .lp-footer {
+    background: var(--lp-ink);
+    color: #fff8ef;
+    padding: 34px 4.5% 18px;
+}
+body.bearly-landing .lp-footer-grid {
+    max-width: 1380px;
+    margin: auto;
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr 1fr 1.5fr;
+    gap: 40px;
+}
+body.bearly-landing .lp-footer-logo {
+    display: inline-block;
+    width: 205px;
+    max-width: 100%;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    transform: none;
+}
+body.bearly-landing .lp-footer p {
+    font-size: 14px;
+    line-height: 1.6;
+    margin-top: 9px !important;
+}
+body.bearly-landing .lp-footer h2 {
+    font-size: 16px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0 !important;
+    line-height: 1.5 !important;
+    margin-bottom: 12px !important;
+}
+body.bearly-landing .lp-footer nav a {
+    display: block;
+    font-size: 14px;
+    margin: 7px 0;
+    color: #eadbd0;
+}
+body.bearly-landing .lp-footer a:hover {
+    text-decoration: underline;
+}
+body.bearly-landing .lp-newsletter {
+    border-left: 1px solid #886b58;
+    padding-left: 30px;
+}
+body.bearly-landing .lp-newsletter form {
+    display: flex;
+    border: 1px solid #d8c6b5;
+    background: #fffaf3;
+    padding: 4px;
+    border-radius: 5px;
+    margin-top: 13px;
+    gap: 4px;
+}
+body.bearly-landing .lp-newsletter input {
+    background: transparent;
+    border: 0;
+    min-width: 0;
+    width: 100%;
+    font-size: 14px;
+    padding: 7px 8px;
+    color: var(--lp-ink);
+}
+body.bearly-landing .lp-newsletter button {
+    background: var(--lp-ink);
+    color: white !important;
+    border: 0;
+    border-radius: 3px;
+    padding: 9px 14px;
+    font-size: 14px;
+}
+body.bearly-landing .lp-newsletter-status {
+    font-size: 13px !important;
+}
+body.bearly-landing .lp-footer-bottom {
+    max-width: 1380px;
+    margin: 27px auto 0;
+    padding-top: 17px;
+    border-top: 1px solid #876854;
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    font-size: 12px;
+    color: #e9dace;
+}
+body.bearly-landing .lp-footer-bottom > div {
+    display: flex;
+    gap: 20px;
+}
+body.bearly-landing .lp-footer-bottom a,
+body.bearly-landing .lp-footer-bottom button {
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: 12px;
+    padding: 4px 0;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+}
+body.bearly-landing .lp-dialog {
+    border: 0;
+    border-radius: 12px;
+    padding: 28px;
+    color: var(--lp-ink);
+    background: #fff;
+    width: min(640px, calc(100% - 32px));
+    max-height: 88dvh;
+    overflow: auto;
+    overscroll-behavior: contain;
+    box-shadow: 0 24px 90px #22120e3b;
+}
+body.bearly-landing .lp-dialog::backdrop {
+    background: #261b14a6;
+    backdrop-filter: blur(3px);
+}
+body:has(.lp-dialog[open]) {
+    overflow: hidden;
+}
+body.bearly-landing .lp-dialog-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 20px;
+}
+body.bearly-landing .lp-dialog-heading h2 {
+    font-size: 27px !important;
+    line-height: 1.2 !important;
+}
+body.bearly-landing .lp-dialog-heading .lp-round {
+    flex-shrink: 0;
+}
+body.bearly-landing .lp-dialog p {
+    margin: 12px 0 !important;
+}
+body.bearly-landing .lp-detail-image {
+    max-width: 280px;
+    margin: 0 auto 22px;
+}
+body.bearly-landing .lp-dialog .lp-button {
+    margin-top: 12px;
+}
+body.bearly-landing .lp-dialog .lp-preview-link {
+    background: #432214;
+    color: #fff !important;
+}
+body.bearly-landing .lp-dialog .lp-text-link {
+    margin-right: 20px;
+}
+body.bearly-landing .lp-category-dialog {
+    width: min(1040px, calc(100% - 32px));
+}
+body.bearly-landing .lp-category-search {
+    width: 100%;
+    padding: 13px 16px;
+    border: 1px solid var(--lp-line);
+    border-radius: 6px;
+    margin-bottom: 22px;
+}
+body.bearly-landing .lp-category-dialog [data-category-groups] {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+}
+body.bearly-landing .lp-category-group h3 {
+    font-size: 17px !important;
+    font-weight: 600 !important;
+    margin-bottom: 9px !important;
+}
+body.bearly-landing .lp-category-group a {
+    display: block;
+    font-size: 14px;
+    color: var(--lp-muted);
+    padding: 5px 0;
+}
+body.bearly-landing .lp-category-group a:hover {
+    text-decoration: underline;
+    color: var(--lp-ink);
+}
+body.bearly-landing .lp-saved-item {
+    display: flex;
+    width: 100%;
+    gap: 14px;
+    align-items: center;
+    border: 0;
+    border-bottom: 1px solid var(--lp-line);
+    padding: 12px 0;
+    background: none;
+    text-align: left;
+}
+body.bearly-landing .lp-saved-item .lp-product-photo {
+    width: 70px;
+    flex-shrink: 0;
+}
+body.bearly-landing .lp-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--lp-ink);
+    color: white;
+    padding: 13px 22px;
+    border-radius: 6px;
+    box-shadow: 0 6px 30px #321c1933;
+    z-index: 30;
+    max-width: calc(100% - 30px);
+    font-size: 14px;
+    pointer-events: none;
+}
+
+/* Admin-managed featured campaigns on the public landing page. */
+body.bearly-landing .lp-live-campaign-section {
+    padding-top: 36px;
+    padding-bottom: 28px;
+}
+body.bearly-landing .lp-live-campaign-heading {
+    margin-bottom: 18px;
+}
+body.bearly-landing .lp-live-campaign-heading > div > p:last-child {
+    margin-top: 6px !important;
+    color: var(--lp-muted);
+    font-size: 14px;
+}
+body.bearly-landing .lp-live-campaign-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+}
+body.bearly-landing .lp-live-campaign-card {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--lp-line);
+    background: var(--theme-surface, #fff);
+    color: var(--lp-ink);
+    text-decoration: none;
+    transition:
+        border-color 0.18s ease,
+        transform 0.18s ease;
+}
+body.bearly-landing .lp-live-campaign-card:hover {
+    border-color: #c8a77d;
+    transform: translateY(-2px);
+}
+body.bearly-landing .lp-live-campaign-card:focus-visible {
+    outline: 3px solid #d88b12;
+    outline-offset: 3px;
+}
+body.bearly-landing .lp-live-campaign-banner {
+    display: grid;
+    width: 100%;
+    place-items: center;
+    overflow: hidden;
+    background: var(--theme-surface-soft, #fbf7f1);
+}
+body.bearly-landing .lp-live-campaign-banner:not(:has(img)) {
+    aspect-ratio: 1.9 / 1;
+}
+body.bearly-landing .lp-live-campaign-banner img {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+body.bearly-landing .lp-live-campaign-fallback {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px;
+    background: linear-gradient(135deg, #f7f0e8, #ead8c3);
+    color: #432214;
+    text-align: center;
+}
+body.bearly-landing .lp-live-campaign-fallback .material-symbols-outlined {
+    font-size: 32px;
+}
+body.bearly-landing .lp-live-campaign-fallback > span:last-child {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+body.bearly-landing .lp-live-campaign-copy {
+    display: flex;
+    min-height: 160px;
+    flex: 1;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 16px 18px 18px;
+}
+body.bearly-landing .lp-live-campaign-type {
+    color: var(--lp-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+body.bearly-landing .lp-live-campaign-copy > strong {
+    margin-top: 5px;
+    font-size: 19px;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+body.bearly-landing .lp-live-campaign-period {
+    margin-top: 7px;
+    color: var(--lp-muted);
+    font-size: 12px;
+}
+body.bearly-landing .lp-live-campaign-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: auto;
+    padding-top: 14px;
+    color: var(--lp-ink);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+/* Public campaign preview: limited product fields for non-Buyers. */
+body.bearly-landing .lp-campaign-preview-hero {
+    position: relative;
+    display: flex;
+    min-height: clamp(230px, 34vw, 420px);
+    align-items: flex-end;
+    overflow: hidden;
+    margin-top: 22px;
+    background: #432214;
+    color: #fff;
+}
+body.bearly-landing .lp-campaign-preview-hero > img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+body.bearly-landing .lp-campaign-preview-hero::after {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(35, 19, 12, 0.86), rgba(35, 19, 12, 0.12));
+    content: "";
+}
+body.bearly-landing .lp-campaign-preview-hero-copy {
+    position: relative;
+    z-index: 1;
+    width: min(720px, 100%);
+    padding: clamp(24px, 5vw, 54px);
+}
+body.bearly-landing .lp-campaign-preview-hero-copy .lp-eyebrow {
+    margin-bottom: 8px;
+    color: #f6d8a7;
+}
+body.bl.bearly-landing .lp-campaign-preview-hero-copy h1 {
+    color: #fff;
+    font-size: clamp(30px, 5vw, 56px);
+    line-height: 1.08;
+    letter-spacing: -0.045em;
+    overflow-wrap: anywhere;
+}
+body.bearly-landing .lp-campaign-preview-period {
+    margin-top: 12px !important;
+    color: #fff7ef;
+    font-size: 14px;
+}
+body.bearly-landing .lp-campaign-preview-description {
+    max-width: 620px;
+    margin-top: 12px !important;
+    color: #fff7ef;
+    font-size: 14px;
+}
+body.bearly-landing .lp-campaign-product-heading {
+    align-items: flex-end;
+    margin: 30px 0 18px;
+}
+body.bl.bearly-landing .lp-campaign-product-heading h2 {
+    font-size: clamp(22px, 3vw, 30px);
+}
+body.bearly-landing .lp-campaign-product-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 22px 18px;
+}
+body.bearly-landing .lp-campaign-product-card {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    color: var(--lp-ink);
+    text-decoration: none;
+}
+body.bearly-landing .lp-campaign-product-image {
+    display: grid;
+    width: 100%;
+    aspect-ratio: 1;
+    place-items: center;
+    overflow: hidden;
+    background: var(--theme-surface-soft, #f7f6f4);
+}
+body.bearly-landing .lp-campaign-product-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.2s ease;
+}
+body.bearly-landing .lp-campaign-product-card:hover .lp-campaign-product-image img {
+    transform: scale(1.025);
+}
+body.bearly-landing .lp-campaign-product-name {
+    display: -webkit-box;
+    overflow: hidden;
+    margin-top: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.45;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+body.bearly-landing .lp-campaign-product-price {
+    margin-top: 5px;
+    font-size: 15px;
+    font-weight: 600;
+}
+body.bearly-landing .lp-campaign-preview-empty {
+    padding: 38px 18px;
+    color: var(--lp-muted);
+    text-align: center;
+}
+body.bearly-landing .lp-campaign-preview-actions {
+    display: flex;
+    justify-content: center;
+    padding: 30px 0 10px;
+}
+body.bearly-landing .lp-campaign-preview-actions .lp-button {
+    background: #432214;
+    color: #fff !important;
+}
+body.bearly-landing .lp-campaign-preview-account-note {
+    color: var(--lp-muted);
+    font-size: 13px;
+    text-align: center;
+}
+body.bearly-landing .lp-campaign-preview-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    color: var(--lp-muted);
+    font-size: 14px;
+}
+body.bearly-landing .lp-campaign-preview-back-link:hover {
+    color: var(--lp-ink);
+}
+
+/* Public, price-only product preview for visitors who are not Buyers. */
+body.bearly-landing.lp-preview-page {
+    min-height: 100vh;
+    background: var(--theme-page, #f7f5f2);
+}
+body.bearly-landing .lp-preview-header {
+    width: 100%;
+    border-bottom: 1px solid var(--lp-line);
+}
+body.bearly-landing .lp-preview-main {
+    width: min(1240px, calc(100% - 64px));
+    min-height: calc(100vh - 205px);
+    margin: 0 auto;
+    padding: 30px 0 72px;
+}
+body.bearly-landing .lp-preview-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 44px;
+    color: var(--lp-muted);
+    font-size: 14px;
+}
+body.bearly-landing .lp-preview-back:hover {
+    color: var(--lp-ink);
+}
+body.bearly-landing .lp-preview-product {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(300px, 0.95fr);
+    align-items: center;
+    gap: clamp(36px, 7vw, 96px);
+    margin: 20px auto 0;
+}
+body.bearly-landing .lp-preview-image {
+    display: grid;
+    min-width: 0;
+    aspect-ratio: 1.08;
+    place-items: center;
+    overflow: hidden;
+    background: var(--theme-surface, #fff);
+}
+body.bearly-landing .lp-preview-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+body.bearly-landing .lp-preview-image-empty {
+    padding: 24px;
+    color: var(--lp-muted);
+    text-align: center;
+}
+body.bl.bearly-landing .lp-preview-copy h1 {
+    margin: 10px 0 14px;
+    font-size: clamp(28px, 4vw, 44px);
+    line-height: 1.15;
+    letter-spacing: -0.045em;
+    overflow-wrap: anywhere;
+}
+body.bearly-landing .lp-preview-price {
+    color: var(--lp-ink);
+    font-size: clamp(22px, 2.7vw, 30px);
+    font-weight: 600;
+}
+body.bearly-landing .lp-preview-note,
+body.bearly-landing .lp-preview-account-note {
+    max-width: 480px;
+    margin: 20px 0 !important;
+    padding-left: 14px;
+    border-left: 2px solid #d88b12;
+    color: var(--lp-muted);
+    font-size: 14px;
+}
+body.bearly-landing.lp-preview-page .lp-button {
+    background: #432214;
+    color: #fff !important;
+}
+body.bearly-landing .lp-preview-copy > .lp-text-link {
+    display: flex;
+    width: fit-content;
+    margin-top: 10px;
+}
+body.bearly-landing .lp-preview-footer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 20px;
+    padding: 18px 24px;
+    border-top: 1px solid var(--lp-line);
+    color: var(--lp-muted);
+    font-size: 12px;
+}
+body.bearly-landing .lp-preview-footer a:hover {
+    color: var(--lp-ink);
+    text-decoration: underline;
+}
+body.bearly-landing.lp-animate .lp-reveal {
+    opacity: 0;
+    transform: translateY(20px);
+    transition:
+        opacity 0.65s ease,
+        transform 0.65s ease;
+}
+body.bearly-landing.lp-animate .lp-reveal.is-visible {
+    opacity: 1;
+    transform: none;
+}
+@keyframes lp-slide-in {
+    from {
+        opacity: 0.45;
+        transform: scale(1.008);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@media (min-width: 1600px) {
+    body.bearly-landing .lp-section {
+        padding-left: 50px;
+        padding-right: 50px;
+    }
+    body.bearly-landing .lp-signup {
+        padding-left: max(4.5%, calc((100% - 1400px) / 2));
+        padding-right: max(4.5%, calc((100% - 1400px) / 2));
+    }
+}
+@media (max-width: 1150px) {
+    body.bearly-landing .lp-header {
+        gap: 20px;
+        flex-wrap: wrap;
+        padding: 16px 4%;
+    }
+    body.bearly-landing .lp-logo {
+        width: 155px;
+    }
+    body.bearly-landing .lp-nav {
+        margin-left: auto;
+        gap: 20px;
+    }
+    body.bearly-landing .lp-search {
+        order: 4;
+        max-width: none;
+        flex-basis: 100%;
+    }
+    body.bearly-landing .lp-slide {
+        height: 690px;
+    }
+    body.bearly-landing .lp-hero-copy {
+        width: 63%;
+        padding-top: 42px;
+    }
+    body.bearly-landing .lp-hero-copy > p:not(.lp-eyebrow) {
+        max-width: 360px;
+        font-size: 16px;
+    }
+    body.bearly-landing .lp-hero-wordmark {
+        font-size: 17vw;
+    }
+    body.bearly-landing .lp-support {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: 22px;
+    }
+    body.bearly-landing .lp-support > div {
+        width: 100%;
+    }
+    body.bearly-landing .lp-support .lp-text-link {
+        margin-left: auto;
+    }
+    body.bearly-landing .lp-filters {
+        max-width: 55%;
+    }
+    body.bearly-landing .lp-footer-grid {
+        gap: 22px;
+    }
+    body.bearly-landing .lp-newsletter {
+        padding-left: 20px;
+    }
+    body.bearly-landing .lp-campaign {
+        min-height: 370px;
+        min-width: 0;
+        aspect-ratio: auto;
+    }
+    body.bearly-landing .lp-campaign > div {
+        padding-top: 30px;
+    }
+    body.bearly-landing .lp-live-campaign-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+@media (max-width: 760px) {
+    body.bearly-landing .lp-header {
+        gap: 14px;
+    }
+    body.bearly-landing .lp-logo {
+        width: 140px;
+    }
+    body.bearly-landing .lp-nav {
+        order: 3;
+        flex-basis: 100%;
+        justify-content: space-between;
+    }
+    body.bearly-landing .lp-actions {
+        margin-left: auto;
+    }
+    body.bearly-landing .lp-search {
+        order: 4;
+    }
+    body.bearly-landing .lp-slide {
+        height: auto;
+        min-height: 720px;
+    }
+    body.bearly-landing .lp-hero-copy {
+        width: 100%;
+        max-width: none;
+        padding: 32px 6% 285px;
+    }
+    body.bearly-landing .lp-hero-copy > p:not(.lp-eyebrow) {
+        max-width: 400px;
+    }
+    body.bearly-landing .lp-hero-photo {
+        height: 320px;
+        top: auto;
+        bottom: 0;
+        object-position: right center;
+    }
+    body.bearly-landing .lp-slide:after {
+        background: linear-gradient(
+            180deg,
+            #fff 0%,
+            #fff 46%,
+            #ffffff20 65%,
+            transparent 80%
+        );
+    }
+    body.bl.bearly-landing .lp-hero-copy h1,
+    body.bl.bearly-landing .lp-hero-copy h2 {
+        font-size: clamp(39px, 8vw, 57px);
+        letter-spacing: -0.055em;
+        max-width: 600px;
+    }
+    body.bearly-landing .lp-bear-note {
+        margin-top: 18px;
+    }
+    body.bearly-landing .lp-bear-note .lp-bear {
+        width: 73px;
+        height: 90px;
+        background-size: auto 90px;
+        background-position: -8px center;
+    }
+    body.bearly-landing .lp-bear-note p {
+        font-size: 14px;
+    }
+    body.bearly-landing .lp-hero-wordmark {
+        font-size: 26vw;
+        bottom: 60px;
+    }
+    body.bearly-landing .lp-photo-tech,
+    body.bearly-landing .lp-photo-fashion {
+        width: 100%;
+        left: 0;
+        right: 0;
+        -webkit-mask-image: none;
+        mask-image: none;
+    }
+    body.bearly-landing .lp-slide:has(.lp-photo-tech):after,
+    body.bearly-landing .lp-slide:has(.lp-photo-fashion):after {
+        background: linear-gradient(
+            180deg,
+            #fff 0%,
+            #fff 46%,
+            #ffffff20 65%,
+            transparent 80%
+        );
+    }
+    body.bearly-landing .lp-hero-arrows {
+        inset: auto 0 24px;
+        transform: none;
+        padding: 0 5%;
+    }
+    body.bearly-landing .lp-hero-controls {
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: 24px;
+    }
+    body.bearly-landing .lp-hero-arrows .lp-round {
+        width: 38px;
+        height: 52px;
+        font-size: 42px;
+    }
+
+    body.bearly-landing .lp-section {
+        padding: 28px 5%;
+    }
+    body.bearly-landing .lp-heading {
+        gap: 14px;
+        align-items: flex-start;
+    }
+    body.bearly-landing .lp-heading .lp-text-link {
+        font-size: 12px;
+    }
+    body.bearly-landing .lp-category-row {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 22px 14px;
+    }
+    body.bearly-landing .lp-category-row button {
+        font-size: 14px;
+        gap: 6px;
+    }
+    body.bearly-landing .lp-campaigns {
+        gap: 7px;
+    }
+    body.bearly-landing .lp-campaign {
+        min-height: 320px;
+        aspect-ratio: auto;
+    }
+    body.bearly-landing .lp-campaign > div {
+        padding: 24px 8%;
+    }
+    body.bearly-landing .lp-campaign .lp-eyebrow {
+        font-size: 10px;
+    }
+    body.bl.bearly-landing .lp-campaign h2 {
+        font-size: 31px;
+    }
+    body.bearly-landing .lp-campaign p:not(.lp-eyebrow) {
+        font-size: 14px;
+        max-width: 150px;
+    }
+    body.bearly-landing .lp-campaign .lp-text-link {
+        font-size: 14px;
+    }
+    body.bearly-landing .lp-featured-heading {
+        flex-direction: column;
+        gap: 15px;
+    }
+    body.bearly-landing .lp-filters {
+        max-width: 100%;
+        justify-content: flex-start;
+        gap: 6px;
+    }
+    body.bearly-landing .lp-filters button {
+        padding: 8px 12px;
+        font-size: 13px;
+    }
+    body.bearly-landing .lp-product-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 24px 14px;
+    }
+    body.bearly-landing .lp-product h3 {
+        font-size: 15px !important;
+    }
+    body.bearly-landing .lp-product p {
+        font-size: 13px;
+    }
+    body.bearly-landing .lp-product-nav {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    body.bearly-landing .lp-product-nav > p {
+        flex-basis: 100%;
+        text-align: center;
+    }
+    body.bearly-landing .lp-product-pages {
+        margin: 0 auto 0 0;
+    }
+    body.bearly-landing .lp-product-nav-actions .lp-text-link {
+        font-size: 12px;
+        margin-left: 4px;
+    }
+    body.bearly-landing .lp-product-nav-actions .lp-round {
+        width: 39px;
+        height: 39px;
+    }
+    body.bearly-landing .lp-story {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+    body.bearly-landing .lp-support {
+        gap: 16px;
+    }
+    body.bearly-landing .lp-support > a {
+        width: calc(50% - 8px);
+        font-size: 13px;
+    }
+    body.bearly-landing .lp-support .lp-text-link {
+        margin: 0;
+    }
+    body.bearly-landing .lp-signup {
+        padding: 20px 5% 0;
+        gap: 16px;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+    }
+
+    body.bearly-landing .lp-signup > div {
+        flex: 1;
+        padding-bottom: 0;
+    }
+    body.bearly-landing .lp-signup h2 {
+        font-size: 23px !important;
+    }
+    body.bearly-landing .lp-signup p {
+        font-size: 14px;
+    }
+    body.bearly-landing .lp-signup .lp-button {
+        margin: 0 0 22px 0;
+    }
+    body.bearly-landing .lp-footer {
+        padding: 30px 5% 20px;
+    }
+    body.bearly-landing .lp-footer-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 28px 20px;
+    }
+    body.bearly-landing .lp-footer-grid > div:first-child {
+        grid-column: 1/-1;
+    }
+    body.bearly-landing .lp-newsletter {
+        grid-column: 1/-1;
+        border: 0;
+        padding: 0;
+    }
+    body.bearly-landing .lp-footer-logo {
+        width: 190px;
+    }
+    body.bearly-landing .lp-footer-bottom {
+        flex-direction: column;
+        gap: 9px;
+    }
+    body.bearly-landing .lp-category-dialog [data-category-groups] {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    body.bearly-landing .lp-dialog {
+        padding: 22px;
+    }
+    body.bearly-landing .lp-category-search {
+        font-size: 16px;
+    }
+    body.bearly-landing .lp-preview-main {
+        width: min(620px, calc(100% - 36px));
+        padding-top: 20px;
+    }
+    body.bearly-landing .lp-preview-product {
+        grid-template-columns: 1fr;
+        gap: 26px;
+        margin-top: 12px;
+    }
+    body.bearly-landing .lp-preview-image {
+        aspect-ratio: 1.15;
+    }
+    body.bearly-landing .lp-live-campaign-grid {
+        grid-template-columns: 1fr;
+        gap: 14px;
+    }
+    body.bearly-landing .lp-live-campaign-card {
+        display: flex;
+        flex-direction: column;
+    }
+    body.bearly-landing .lp-live-campaign-banner {
+        height: auto;
+        min-height: 0;
+    }
+    body.bearly-landing .lp-live-campaign-banner:not(:has(img)) {
+        aspect-ratio: 2.2 / 1;
+    }
+    body.bearly-landing .lp-live-campaign-copy {
+        min-height: 140px;
+        padding: 12px 14px;
+    }
+    body.bearly-landing .lp-live-campaign-copy > strong {
+        font-size: 16px;
+    }
+    body.bearly-landing .lp-campaign-product-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 20px 12px;
+    }
+    body.bearly-landing .lp-campaign-preview-hero {
+        min-height: 260px;
+    }
+    body.bearly-landing .lp-preview-copy .lp-button {
+        width: 100%;
+        justify-content: space-between;
+    }
+}
+
+
+
+
+
+@media (max-width: 960px) {
+    body.bearly-landing .lp-featured-heading {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    body.bearly-landing .lp-featured-heading .lp-filters {
+        margin-left: 0;
+        max-width: 100%;
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 580px) {
+    body.bearly-landing .lp-guest-login {
+        width: 100%;
+    }
+}
+
+@media (max-width: 420px) {
+    body.bearly-landing .lp-logo {
+        width: 125px;
+    }
+    body.bearly-landing .lp-actions {
+        gap: 0;
+    }
+    body.bearly-landing .lp-hero-links {
+        gap: 16px;
+    }
+    body.bearly-landing .lp-hero-links .lp-button {
+        padding: 12px 20px;
+    }
+    body.bearly-landing .lp-campaigns {
+        grid-template-columns: 1fr;
+    }
+    body.bearly-landing .lp-campaign {
+        min-height: 360px;
+        min-width: 0;
+        aspect-ratio: auto;
+    }
+    body.bearly-landing .lp-campaign > div {
+        padding: 30px 6%;
+    }
+    body.bearly-landing .lp-campaign h2 {
+        font-size: 40px !important;
+    }
+    body.bearly-landing .lp-slide {
+        min-height: 690px;
+    }
+    body.bearly-landing .lp-hero-copy h1 br {
+        display: none;
+    }
+    body.bearly-landing .lp-hero-copy {
+        padding-bottom: 250px;
+    }
+    body.bearly-landing .lp-hero-photo {
+        height: 290px;
+    }
+    body.bearly-landing .lp-category-dialog [data-category-groups] {
+        grid-template-columns: 1fr;
+    }
+    body.bearly-landing .lp-product-nav-actions .lp-text-link {
+        max-width: 85px;
+    }
+    body.bearly-landing .lp-filters {
+        gap: 5px;
+    }
+    body.bearly-landing .lp-filters button {
+        padding: 8px 10px;
+    }
+    body.bearly-landing .lp-category-row {
+        gap: 20px 10px;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    body.bearly-landing *,
+    body.bearly-landing *:before,
+    body.bearly-landing *:after {
+        animation: none !important;
+        transition: none !important;
+        scroll-behavior: auto !important;
+    }
+    body.bearly-landing.lp-animate .lp-reveal {
+        opacity: 1;
+        transform: none;
+    }
+}

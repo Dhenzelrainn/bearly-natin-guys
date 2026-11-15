@@ -1,0 +1,174 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Address;
+use App\Models\Parcel;
+use App\Models\Waybill;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Collection;
+use Picqer\Barcode\Renderers\HtmlRenderer;
+use Picqer\Barcode\Types\TypeCode128;
+
+class WaybillPdfService
+{
+    /** @param Collection<int, Waybill> $waybills */
+    public function render(Collection $waybills): string
+    {
+        $logoPath = public_path('images/bearly-logo-waybill.jpg');
+        $logoDataUri = is_file($logoPath)
+            ? 'data:image/jpeg;base64,'.base64_encode((string) file_get_contents($logoPath))
+            : null;
+        $labels = $waybills
+            ->flatMap(function (Waybill $waybill) use ($logoDataUri): array {
+                $waybill->loadMissing('parcels.contents.orderItem');
+
+                return $this->labelsForWaybill($waybill, $logoDataUri);
+            })
+            ->all();
+
+        return Pdf::loadView('seller.fulfillment.waybill-pdf', ['labels' => $labels])
+            ->setPaper([0, 0, 288, 432])
+            ->setOptions([
+                'defaultFont' => 'DejaVu Sans',
+                'isRemoteEnabled' => false,
+                'isPhpEnabled' => false,
+            ])
+            ->output();
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function labelsForWaybill(Waybill $waybill, ?string $logoDataUri): array
+    {
+        $parcels = $waybill->parcels
+            ->sortBy('piece_sequence')
+            ->values();
+
+        $pieceCount = $parcels->count();
+        $shipmentParcelCount = Parcel::query()
+            ->where('shipment_id', $waybill->shipment_id)
+            ->count();
+        $expectedPieceSequences = range(1, $pieceCount);
+
+        abort_unless(
+            $pieceCount > 0
+                && $shipmentParcelCount === $pieceCount
+                && (int) $waybill->piece_count === $pieceCount
+                && $parcels->every(fn (Parcel $parcel): bool => (int) $parcel->shipment_id === (int) $waybill->shipment_id)
+                && $parcels->pluck('waybill_id')->map(fn ($id): int => (int) $id)->every(fn (int $id): bool => $id === (int) $waybill->id)
+                && $parcels->pluck('piece_sequence')->map(fn ($sequence): int => (int) $sequence)->all() === $expectedPieceSequences,
+            409,
+            'This waybill does not match its registered parcel records. Contact support before printing labels.',
+        );
+
+        return $parcels
+            ->map(fn (Parcel $parcel, int $index): array => $this->label(
+                $waybill,
+                $logoDataUri,
+                $parcel,
+                $index + 1,
+                $pieceCount,
+            ))
+            ->all();
+    }
+
+    private function label(
+        Waybill $waybill,
+        ?string $logoDataUri,
+        Parcel $parcel,
+        int $pieceSequence,
+        int $pieceCount,
+    ): array
+    {
+        $shipment = $waybill->shipment;
+        $shipment->loadMissing([
+            'sellerOrder.order:id,order_no,recipient_name,address_line,barangay,city_municipality,province,postal_code',
+            'sellerOrder.store',
+            'sellerOrders.order:id,order_no',
+        ]);
+        $sellerOrder = $shipment->sellerOrder;
+        $order = $sellerOrder->order;
+        $store = $sellerOrder->store;
+        $orderReferences = $shipment->sellerOrders
+            ->map(fn ($included): array => [
+                (string) $included->seller_order_no,
+                (string) ($included->order?->order_no ?? 'Order'),
+            ])
+            ->values()
+            ->all();
+        $origin = $shipment->originAddress;
+        $barcodeValue = trim((string) $parcel->parcel_no);
+        $barcode = (new TypeCode128)->getBarcode($barcodeValue);
+        $barcodeHtml = (new HtmlRenderer)->render($barcode, 310, 48);
+        $contents = $parcel->contents
+            ->map(function ($content): ?string {
+                $item = $content->orderItem;
+
+                if (! $item) {
+                    return null;
+                }
+
+                $name = trim($item->product_name.' · '.$item->variant_name, ' ·');
+
+                return $name.' × '.(int) $content->quantity;
+            })
+            ->filter()
+            ->values()
+            ->all();
+
+        return [
+            'waybill_no' => (string) $waybill->waybill_no,
+            'seller_order_no' => (string) $sellerOrder->seller_order_no,
+            'order_no' => (string) $order->order_no,
+            'order_references' => $orderReferences,
+            'store_name' => (string) $store->name,
+            'parcel_no' => (string) $parcel->parcel_no,
+            'contents' => $contents,
+            'logo_data_uri' => $logoDataUri,
+            'sender_address' => $this->address($origin) ?: 'Seller pickup address on file',
+            'sender_phone' => (string) ($origin?->phone ?: $store->contact_phone ?: '—'),
+            'recipient_name' => (string) ($order->recipient_name ?: 'Recipient'),
+            'recipient_address' => implode(', ', array_filter([
+                $order->address_line,
+                $order->barangay,
+                $order->city_municipality,
+                $order->province,
+                $order->postal_code,
+            ], fn ($part): bool => filled($part))),
+            'piece_sequence' => $pieceSequence,
+            'piece_count' => $pieceCount,
+            'package_count' => 1,
+            'weight' => number_format((float) $parcel->weight_kg, 3),
+            'dimensions' => implode(' × ', array_map(
+                fn ($value): string => is_numeric($value) ? rtrim(rtrim(number_format((float) $value, 2, '.', ''), '0'), '.') : '—',
+                [$parcel->length_cm, $parcel->width_cm, $parcel->height_cm],
+            )),
+            'cod_amount' => (int) $shipment->cod_amount_minor > 0
+                ? $this->peso((int) $shipment->cod_amount_minor)
+                : null,
+            'generated_at' => $waybill->generated_at?->format('M j, Y g:i A') ?? now()->format('M j, Y g:i A'),
+            'barcode_value' => $barcodeValue,
+            'barcode_html' => $barcodeHtml,
+        ];
+    }
+
+    private function address(?Address $address): string
+    {
+        if (! $address) {
+            return '';
+        }
+
+        return implode(', ', array_filter([
+            trim(implode(' ', array_filter([$address->house_number, $address->street]))),
+            $address->barangay,
+            $address->city_municipality,
+            $address->province,
+            $address->postal_code,
+        ], fn ($part): bool => filled($part)));
+    }
+
+    private function peso(int $minor): string
+    {
+        return '₱'.number_format(intdiv($minor, 100)).'.'.str_pad((string) ($minor % 100), 2, '0', STR_PAD_LEFT);
+    }
+}

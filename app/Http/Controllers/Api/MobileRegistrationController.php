@@ -1,0 +1,429 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Enums\AccountStatus;
+use App\Enums\UserRole;
+use App\Http\Controllers\Controller;
+use App\Models\User;
+use App\Services\InternationalPhone;
+use App\Services\MobileEmailVerificationService;
+use App\Services\PostalCodeLookup;
+use App\Services\PsgcAddressService;
+use App\Services\RegistrationLifecycleService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
+use Throwable;
+
+class MobileRegistrationController extends Controller
+{
+    public function sendEmailCode(
+        Request $request,
+        MobileEmailVerificationService $verification
+    ): JsonResponse {
+        $request->merge([
+            'email' => strtolower(
+                trim((string) $request->input('email'))
+            ),
+        ]);
+
+        $data = $request->validate([
+            'email' => [
+                'required',
+                'email',
+                'max:255',
+                'unique:users,email',
+            ],
+        ]);
+
+        $result = $verification->send(
+            $request,
+            $data['email']
+        );
+
+        return response()->json($result);
+    }
+
+    public function verifyEmailCode(
+        Request $request,
+        MobileEmailVerificationService $verification
+    ): JsonResponse {
+        $request->merge([
+            'email' => strtolower(
+                trim((string) $request->input('email'))
+            ),
+            'code' => trim(
+                (string) $request->input('code')
+            ),
+            'verification_id' => trim(
+                (string) $request->input('verification_id')
+            ),
+        ]);
+
+        $data = $request->validate([
+            'email' => [
+                'required',
+                'email',
+                'max:255',
+                'unique:users,email',
+            ],
+
+            'code' => [
+                'required',
+                'digits:6',
+            ],
+
+            'verification_id' => [
+                'required',
+                'string',
+                'size:64',
+            ],
+        ]);
+
+        $result = $verification->check(
+            $data['email'],
+            $data['code'],
+            $data['verification_id']
+        );
+
+        return response()->json($result);
+    }
+
+    public function registerBuyer(
+        Request $request,
+        MobileEmailVerificationService $verification,
+        InternationalPhone $phone,
+        PostalCodeLookup $postalCodes,
+        RegistrationLifecycleService $lifecycle
+    ): JsonResponse {
+        $request->merge([
+            'email' => strtolower(
+                trim((string) $request->input('email'))
+            ),
+        ]);
+
+        $phoneCountry = strtoupper(
+            trim((string) $request->input('phone_country'))
+        );
+        $contactNumber = trim(
+            (string) $request->input('contact_number')
+        );
+
+        if ($contactNumber !== '' && $phoneCountry !== '') {
+            $request->merge([
+                'contact_number' => $phone->normalize(
+                    $contactNumber,
+                    $phoneCountry
+                ),
+            ]);
+        }
+
+        foreach (['first_name', 'last_name'] as $nameField) {
+            $name = $request->input($nameField);
+
+            if (is_string($name)) {
+                $request->merge([
+                    $nameField => trim($name),
+                ]);
+            }
+        }
+
+        $data = $request->validate([
+            'first_name' => [
+                'required',
+                'string',
+                'min:2',
+                'max:50',
+                'regex:/^[\pL\s\'\-]+$/u',
+            ],
+
+            'last_name' => [
+                'required',
+                'string',
+                'min:2',
+                'max:50',
+                'regex:/^[\pL\s\'\-]+$/u',
+            ],
+
+            'middle_initial' => [
+                'nullable',
+                'string',
+                'max:2',
+                'regex:/^[A-Za-z]\.?$/D',
+            ],
+
+            'sex' => [
+                'required',
+                Rule::in([
+                    'female',
+                    'male',
+                    'prefer_not_to_say',
+                ]),
+            ],
+
+            'birthday' => [
+                'required',
+                'bail',
+                'date',
+                'before:today',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (Carbon::parse((string) $value)->gt(today()->subYears(18))) {
+                        $fail('You must be at least 18 years old to register.');
+                    }
+                },
+            ],
+
+            'email' => [
+                'required',
+                'email',
+                'max:255',
+                'unique:users,email',
+            ],
+
+            'verification_id' => [
+                'required',
+                'string',
+                'size:64',
+            ],
+
+            'contact_number' => [
+                'required',
+                'string',
+                'max:17',
+                Rule::unique('users', 'contact_number'),
+                Rule::unique('users', 'phone'),
+            ],
+
+            'phone_country' => [
+                'required',
+                'string',
+                'size:2',
+            ],
+
+            'city_code' => [
+                'nullable',
+                'regex:/^[0-9]{6,10}$/D',
+            ],
+
+            'region_code' => [
+                'nullable',
+                'regex:/^\d{10}$/D',
+            ],
+
+            'postal_manual' => [
+                'nullable',
+                'boolean',
+            ],
+
+            'province' => [
+                'required',
+                'string',
+                'max:100',
+            ],
+
+            'region' => [
+                'required',
+                'string',
+                'max:160',
+            ],
+
+            'city' => [
+                'required',
+                'string',
+                'max:100',
+            ],
+
+            'barangay' => [
+                'required',
+                'string',
+                'max:100',
+            ],
+
+            'street_name' => [
+                'required',
+                'string',
+                'max:180',
+            ],
+
+            'house_number' => [
+                'required',
+                'string',
+                'max:40',
+            ],
+
+            'postal_code' => [
+                'required',
+                'digits:4',
+            ],
+
+            'password' => [
+                'required',
+                'confirmed',
+                'min:8',
+                'regex:/[a-z]/',
+                'regex:/[A-Z]/',
+                'regex:/[0-9]/',
+            ],
+
+            'terms' => [
+                'accepted',
+            ],
+
+            'valid_id' => [
+                'nullable',
+                'file',
+                'mimes:jpg,jpeg,png,pdf',
+                'max:5120',
+            ],
+
+            'profile_photo' => [
+                'nullable',
+                'image',
+                'mimes:jpg,jpeg,png,webp',
+                'max:10240',
+            ],
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Verify email proof
+        |--------------------------------------------------------------------------
+        */
+
+        $verifiedAt = $verification->verifiedAt(
+            $data['email'],
+            $data['verification_id']
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | Normalize phone and validate address
+        |--------------------------------------------------------------------------
+        */
+
+        $postalCodes->validate($data);
+        $data = app(PsgcAddressService::class)->normalize($data);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Normalize middle initial
+        |--------------------------------------------------------------------------
+        */
+
+        $data['middle_initial'] = empty(
+            $data['middle_initial']
+        )
+            ? null
+            : strtoupper(
+                substr(
+                    $data['middle_initial'],
+                    0,
+                    1
+                )
+            ) . '.';
+
+        $validIdPath = null;
+        $profilePhotoPath = null;
+
+        try {
+            if ($request->hasFile('valid_id')) {
+                $validIdPath = $request->file('valid_id')
+                    ->store('registration-documents/buyer-valid-ids', 'local');
+            }
+
+            if ($request->hasFile('profile_photo')) {
+                $profilePhotoPath = $request->file('profile_photo')
+                    ->store('profile-photos', 'public');
+            }
+
+            $user = DB::transaction(function () use (
+                $data,
+                $verifiedAt,
+                $lifecycle,
+                $validIdPath,
+                $profilePhotoPath
+            ): User {
+                $user = User::create([
+                    'name' => trim(
+                        $data['first_name'].' '.($data['middle_initial'] ?? '').' '.$data['last_name']
+                    ),
+                    'first_name' => $data['first_name'],
+                    'last_name' => $data['last_name'],
+                    'middle_initial' => $data['middle_initial'],
+                    'sex' => $data['sex'],
+                    'birthday' => $data['birthday'],
+                    'email' => $data['email'],
+                    'google_id' => null,
+                    'phone' => $data['contact_number'],
+                    'contact_number' => $data['contact_number'],
+                    'phone_country' => $data['phone_country'],
+                    'phone_verified_at' => null,
+                    'email_verified_at' => $verifiedAt,
+                    'terms_accepted_at' => now(),
+                    'terms_version' => config('bearly-policies.version'),
+                    'privacy_version' => config('bearly-policies.version'),
+                    'role' => UserRole::Buyer->value,
+                    'status' => AccountStatus::Pending->value,
+                    'region' => $data['region'],
+                    'region_code' => $data['region_code'] ?? null,
+                    'province' => $data['province'],
+                    'city' => $data['city'],
+                    'barangay' => $data['barangay'],
+                    'street_address' => trim($data['house_number'].' '.$data['street_name']).', '.$data['postal_code'],
+                    'business_name' => null,
+                    'business_category' => null,
+                    'business_permit_path' => null,
+                    'valid_id_path' => $validIdPath,
+                    'profile_photo_path' => $profilePhotoPath,
+                    'password' => Hash::make($data['password']),
+                ]);
+
+                return $lifecycle->activateBuyer($user, [
+                    'house_number' => $data['house_number'],
+                    'street_name' => $data['street_name'],
+                    'region' => $data['region'],
+                    'region_code' => $data['region_code'] ?? null,
+                    'barangay' => $data['barangay'],
+                    'city' => $data['city'],
+                    'province' => $data['province'],
+                    'postal_code' => $data['postal_code'],
+                    'city_code' => $data['city_code'] ?? null,
+                ]);
+            });
+        } catch (Throwable $exception) {
+            Storage::disk('local')->delete(array_filter([$validIdPath]));
+            Storage::disk('public')->delete(array_filter([$profilePhotoPath]));
+
+            throw $exception;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | OTP can no longer be reused
+        |--------------------------------------------------------------------------
+        */
+
+        $verification->forget(
+            $data['verification_id']
+        );
+
+        return response()->json([
+            'message' => 'Buyer account created and activated. You can now sign in.',
+            'data' => [
+                'user_id' => (int) $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $user->role,
+                'status' => $user->status,
+                'profile_photo_url' => $user->profile_photo_path
+                    ? Storage::disk('public')->url($user->profile_photo_path)
+                    : null,
+            ],
+        ], 201);
+    }
+}

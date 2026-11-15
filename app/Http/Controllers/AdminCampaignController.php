@@ -1,0 +1,290 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\AuditLog;
+use App\Models\Category;
+use App\Models\PlatformCampaignParticipation;
+use App\Models\PlatformPromotion;
+use App\Models\Store;
+use App\Services\CampaignService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
+
+class AdminCampaignController extends Controller
+{
+    public function index(CampaignService $campaigns): View
+    {
+        return view('admin.campaigns.index', [
+            'campaigns' => $campaigns->adminListing(),
+        ]);
+    }
+
+    public function create(): View
+    {
+        return $this->formView();
+    }
+
+    public function edit(PlatformPromotion $campaign): View
+    {
+        abort_unless($campaign->isCampaign(), 404);
+
+        return $this->formView($campaign->load(['stores:id,name', 'categories:id,name']));
+    }
+
+    public function store(Request $request, CampaignService $campaigns): RedirectResponse
+    {
+        $campaign = $campaigns->createCampaign(
+            $request->user(),
+            $this->validated($request, true),
+            $request->file('banner'),
+        );
+
+        return redirect()
+            ->route('admin.campaigns.show', $campaign)
+            ->with('success_title', 'Campaign created')
+            ->with('success', 'Campaign created successfully: '.$campaign->name.'.');
+    }
+
+    public function update(
+        Request $request,
+        PlatformPromotion $campaign,
+        CampaignService $campaigns,
+    ): RedirectResponse {
+        abort_unless($campaign->isCampaign(), 404);
+
+        $campaigns->updateCampaign(
+            $request->user(),
+            $campaign,
+            $this->validated($request, false, $campaign),
+            $request->file('banner'),
+        );
+
+        return redirect()
+            ->route('admin.campaigns.show', $campaign)
+            ->with('success_title', 'Campaign updated')
+            ->with('success', 'Campaign changes saved successfully.');
+    }
+
+    public function show(PlatformPromotion $campaign, CampaignService $campaigns): View
+    {
+        abort_unless($campaign->isCampaign(), 404);
+
+        $campaign = $campaigns->adminDetail($campaign);
+        $participationIds = $campaign->participations->pluck('id')->all();
+
+        return view('admin.campaigns.show', [
+            'campaign' => $campaign,
+            'budgetEstimate' => $campaigns->adminBudgetEstimate($campaign),
+            'auditLogs' => AuditLog::query()
+                ->with('actor:id,name')
+                ->where(function ($query) use ($campaign, $participationIds): void {
+                    $query->where(function ($campaignLogs) use ($campaign): void {
+                        $campaignLogs->where('auditable_type', $campaign->getMorphClass())
+                            ->where('auditable_id', $campaign->id);
+                    });
+                    if ($participationIds !== []) {
+                        $query->orWhere(function ($participationLogs) use ($participationIds): void {
+                            $participationLogs->where('auditable_type', (new PlatformCampaignParticipation)->getMorphClass())
+                                ->whereIn('auditable_id', $participationIds);
+                        });
+                    }
+                })
+                ->latest('id')
+                ->take(10)
+                ->get(),
+        ]);
+    }
+
+    public function refreshParticipations(PlatformPromotion $campaign, CampaignService $campaigns): JsonResponse
+    {
+        abort_unless($campaign->isCampaign(), 404);
+
+        $campaign = $campaigns->adminDetail($campaign);
+        $budgetEstimate = $campaigns->adminBudgetEstimate($campaign);
+        $html = view('admin.campaigns.partials.participation-rows', [
+            'campaign' => $campaign,
+            'budgetEstimate' => $budgetEstimate,
+            'isPisoSale' => $campaign->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE,
+            'formatCampaignMinor' => static function (?int $minor): string {
+                if ($minor === null) {
+                    return '—';
+                }
+
+                $absolute = abs($minor);
+                $formatted = '₱'.number_format(intdiv($absolute, 100), 0, '.', ',').'.'.str_pad((string) ($absolute % 100), 2, '0', STR_PAD_LEFT);
+
+                return $minor < 0 ? '-'.$formatted : $formatted;
+            },
+        ])->render();
+
+        return response()->json([
+            'data' => ['html' => $html],
+            'message' => 'Campaign participations refreshed.',
+        ])->header('Cache-Control', 'private, no-store');
+    }
+
+    public function updateStatus(
+        Request $request,
+        PlatformPromotion $campaign,
+        CampaignService $campaigns,
+    ): RedirectResponse {
+        abort_unless($campaign->isCampaign(), 404);
+        $validated = $request->validate([
+            'status' => ['required', Rule::in([
+                PlatformPromotion::STATUS_DRAFT,
+                PlatformPromotion::STATUS_OPEN,
+                PlatformPromotion::STATUS_ACTIVE,
+                PlatformPromotion::STATUS_PAUSED,
+                PlatformPromotion::STATUS_ENDED,
+            ])],
+            'reason' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $campaigns->updateStatus($request->user(), $campaign, $validated['status'], $validated['reason'] ?? null);
+
+        return back()->with('success', 'Campaign status updated.');
+    }
+
+    public function reviewParticipation(
+        Request $request,
+        PlatformCampaignParticipation $participation,
+        CampaignService $campaigns,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'decision' => ['required', Rule::in(['approve', 'reject'])],
+            'reason' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $campaigns->reviewParticipation(
+            $request->user(),
+            $participation,
+            $validated['decision'],
+            $validated['reason'] ?? null,
+        );
+
+        return back()->with('success', 'Seller participation reviewed.');
+    }
+
+    private function formView(?PlatformPromotion $campaign = null): View
+    {
+        return view('admin.campaigns.form', [
+            'campaign' => $campaign,
+            'campaignTypes' => $this->campaignTypes(),
+            'stores' => Store::query()->orderBy('name')->get(['id', 'name']),
+            'categories' => Category::query()->orderBy('name')->get(['id', 'name']),
+        ]);
+    }
+
+    /** @return array<string, string> */
+    private function campaignTypes(): array
+    {
+        return [
+            PlatformPromotion::CAMPAIGN_FLASH_DEAL => 'Flash Deal',
+            PlatformPromotion::CAMPAIGN_PISO_SALE => 'Piso Sale',
+            PlatformPromotion::CAMPAIGN_PAYDAY_SALE => 'Payday Sale',
+            PlatformPromotion::CAMPAIGN_MONTHLY_DEAL => 'Monthly Deal',
+            PlatformPromotion::CAMPAIGN_DOUBLE_DATE => '9.9 / 10.10 / 11.11 / 12.12',
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function validated(
+        Request $request,
+        bool $creating,
+        ?PlatformPromotion $campaign = null,
+    ): array
+    {
+        $request->merge([
+            'start_time' => $request->input('start_time', '00:00'),
+            'end_time' => $request->input('end_time', '23:59'),
+        ]);
+
+        $allowedFundingTypes = $creating
+            ? [PlatformPromotion::FUNDING_PLATFORM]
+            : [$campaign?->funding_type ?? PlatformPromotion::FUNDING_PLATFORM];
+        $requiresPlatformBudget = $creating
+            || $campaign?->funding_type === PlatformPromotion::FUNDING_PLATFORM;
+        $campaignType = (string) $request->input('campaign_type', $campaign?->campaign_type);
+        $isPisoSale = $campaignType === PlatformPromotion::CAMPAIGN_PISO_SALE;
+        $minimumDiscountRequired = $creating
+            || $campaign?->minimum_discount_percent !== null
+            || $campaign?->campaign_type === PlatformPromotion::CAMPAIGN_PISO_SALE;
+
+        $rules = [
+            'name' => ['required', 'string', 'max:120'],
+            'campaign_type' => ['required', Rule::in(array_keys($this->campaignTypes()))],
+            'funding_type' => ['required', Rule::in($allowedFundingTypes)],
+            'minimum_discount_percent' => $isPisoSale
+                ? ['prohibited']
+                : [
+                    $minimumDiscountRequired ? 'required' : 'nullable',
+                    'integer',
+                    'between:1,90',
+                ],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'terms' => ['nullable', 'string', 'max:5000'],
+            'campaign_notes' => ['nullable', 'string', 'max:2000'],
+            'budget' => $requiresPlatformBudget
+                ? ['required', 'string', 'regex:/^\d{1,10}(?:\.\d{1,2})?$/D']
+                : ['prohibited'],
+            'starts_on' => ['required', 'date_format:Y-m-d'],
+            'ends_on' => ['required', 'date_format:Y-m-d', 'after_or_equal:starts_on'],
+            'start_time' => ['required', 'date_format:H:i'],
+            'end_time' => ['required', 'date_format:H:i'],
+            'join_deadline' => ['required', 'date_format:Y-m-d', 'before_or_equal:starts_on'],
+            'requires_approval' => ['sometimes', 'boolean'],
+            'max_participating_stores' => ['nullable', 'integer', 'min:1', 'max:4294967295'],
+            'max_products_per_store' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'is_featured' => ['sometimes', 'boolean'],
+            'banner_title' => ['nullable', 'string', 'max:120'],
+            'banner_link' => ['nullable', 'url', 'max:255'],
+            'banner' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+            'scope_submitted' => ['sometimes', 'boolean'],
+            'store_ids' => ['nullable', 'array', 'max:500'],
+            'store_ids.*' => ['integer', 'exists:stores,id'],
+            'category_ids' => ['nullable', 'array', 'max:100'],
+            'category_ids.*' => ['integer', 'exists:categories,id'],
+            'product_ids' => ['nullable', 'array', 'max:500'],
+            'product_ids.*' => ['integer', 'exists:products,id'],
+        ];
+
+        if ($creating) {
+            $rules['status'] = ['required', Rule::in([
+                PlatformPromotion::STATUS_DRAFT,
+                PlatformPromotion::STATUS_OPEN,
+            ])];
+        }
+
+        $validated = $request->validate($rules, [
+            'ends_on.after_or_equal' => 'The campaign end date must be on or after the start date.',
+            'join_deadline.before_or_equal' => 'The Seller join deadline must be on or before the campaign start date. If you move the start earlier, update the deadline too.',
+        ]);
+
+        if ($requiresPlatformBudget && $this->pesoMinor($validated['budget']) < 1) {
+            throw ValidationException::withMessages([
+                'budget' => 'Set a Bearly-funded budget greater than ₱0.00. No-cap Bearly campaigns are not available for Admin campaigns.',
+            ]);
+        }
+
+        if (PlatformPromotion::dateTimeFromInput($validated['ends_on'], $validated['end_time'], true)
+            ->lessThan(PlatformPromotion::dateTimeFromInput($validated['starts_on'], $validated['start_time']))) {
+            throw ValidationException::withMessages([
+                'end_time' => 'The campaign end date and time must be after the start date and time.',
+            ]);
+        }
+
+        return $validated;
+    }
+
+    private function pesoMinor(string $value): int
+    {
+        [$whole, $fraction] = array_pad(explode('.', trim($value), 2), 2, '');
+
+        return ((int) $whole * 100) + (int) str_pad($fraction, 2, '0');
+    }
+}

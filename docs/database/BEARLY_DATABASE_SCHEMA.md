@@ -1,0 +1,3361 @@
+# Bearly Database Schema Dictionary
+
+> Laravel migrations remain the executable source of truth. This dictionary includes additive Logistics/shipment-transfer, Finance-verified Logistics payout destination, Seller Wallet/withdrawal, and Courier line-haul schemas. The Courier schema below is documented from `2026_11_01_000001_add_courier_linehaul_workflows`; its rollback refuses while Courier requests, verified Rider capability, or line-haul data exists. That migration has only been exercised by guarded SQLite feature tests and its MySQL migration/locking behavior remains unverified. The Seller Wallet and Logistics payout-destination migrations intentionally refuse rollback once their financial data exists. Sections tagged as added by `2026_10_11_000001_create_cod_cash_and_refund_cash_workflows` also require MySQL migration/rollback verification before release.
+
+Conventions: money integers are centavos; timestamps are UTC at storage boundaries; workflow statuses use application strings rather than MySQL enums; nullable foreign keys represent optional actors or later assignments.
+
+## `account_applications`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `application_no` | `varchar(30)` | NO | — | UNI |
+| `user_id` | `bigint unsigned` | NO | — | MUL |
+| `requested_role_id` | `bigint unsigned` | NO | — | MUL |
+| `requested_work_type` | `varchar(20)` | YES | — |  |
+| `rider_vehicle_model` | `varchar(160)` | YES | — |  |
+| `sponsor_logistics_profile_id` | `bigint unsigned` | YES | — | MUL |
+| `business_name` | `varchar(160)` | YES | — |  |
+| `business_category_id` | `bigint unsigned` | YES | — | MUL |
+| `status` | `varchar(32)` | NO | draft | MUL |
+| `submitted_at` | `timestamp` | YES | — |  |
+| `review_started_at` | `timestamp` | YES | — |  |
+| `decided_at` | `timestamp` | YES | — |  |
+| `reviewed_by` | `bigint unsigned` | YES | — | MUL |
+| `decision_reason` | `text` | YES | — |  |
+| `revision_notes` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `business_category_id` → `categories.id`; update NO ACTION, delete SET NULL.
+- `requested_role_id` → `roles.id`; update NO ACTION, delete RESTRICT.
+- `reviewed_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `sponsor_logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete SET NULL.
+- `user_id` → `users.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `account_applications_application_no_unique` (application_no) — unique.
+- `account_applications_business_category_id_foreign` (business_category_id) — index.
+- `account_applications_requested_role_id_status_submitted_at_index` (requested_role_id,status,submitted_at) — index.
+- `account_applications_reviewed_by_foreign` (reviewed_by) — index.
+- `account_applications_sponsor_logistics_profile_id_foreign` (sponsor_logistics_profile_id) — index.
+- `account_applications_status_index` (status) — index.
+- `account_applications_user_id_foreign` (user_id) — index.
+
+## `addresses`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `user_id` | `bigint unsigned` | YES | — | MUL |
+| `label` | `varchar(50)` | NO | Home |  |
+| `recipient_name` | `varchar(160)` | NO | — |  |
+| `phone` | `varchar(30)` | NO | — |  |
+| `house_number` | `varchar(40)` | YES | — |  |
+| `street` | `varchar(180)` | NO | — |  |
+| `barangay` | `varchar(120)` | NO | — |  |
+| `region` | `varchar(160)` | YES | — |  |
+| `city_municipality` | `varchar(120)` | NO | — |  |
+| `province` | `varchar(120)` | NO | — |  |
+| `postal_code` | `varchar(10)` | YES | — |  |
+| `psgc_province_code` | `varchar(20)` | YES | — |  |
+| `psgc_region_code` | `varchar(20)` | YES | — |  |
+| `psgc_city_code` | `varchar(20)` | YES | — |  |
+| `psgc_barangay_code` | `varchar(20)` | YES | — |  |
+| `latitude` | `decimal(10,7)` | YES | — |  |
+| `longitude` | `decimal(10,7)` | YES | — |  |
+| `is_default_shipping` | `tinyint(1)` | NO | 0 |  |
+| `is_default_pickup` | `tinyint(1)` | NO | 0 |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+| `deleted_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `user_id` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `addresses_user_id_is_default_shipping_index` (user_id,is_default_shipping) — index.
+
+## `announcement_roles`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `announcement_id` | `bigint unsigned` | NO | — | PRI |
+| `role_id` | `bigint unsigned` | NO | — | PRI |
+
+**Foreign keys**
+
+- `announcement_id` → `announcements.id`; update NO ACTION, delete CASCADE.
+- `role_id` → `roles.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `announcement_roles_role_id_foreign` (role_id) — index.
+
+## `announcements`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `announcement_no` | `varchar(32)` | NO | — | UNI |
+| `title` | `varchar(180)` | NO | — |  |
+| `body` | `text` | NO | — |  |
+| `status` | `varchar(20)` | NO | draft |  |
+| `archive_reason` | `varchar(20)` | YES | — | MUL |
+| `created_by` | `bigint unsigned` | YES | — | MUL |
+| `publish_at` | `timestamp` | YES | — |  |
+| `published_at` | `timestamp` | YES | — |  |
+| `expires_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `created_by` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `announcements_announcement_no_unique` (announcement_no) — unique.
+- `announcements_status_archive_reason_index` (status, archive_reason) — index.
+- `announcements_created_by_foreign` (created_by) — index.
+
+## `application_documents`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `application_id` | `bigint unsigned` | NO | — | MUL |
+| `document_type` | `varchar(50)` | NO | — |  |
+| `file_path` | `varchar(500)` | NO | — |  |
+| `original_name` | `varchar(255)` | NO | — |  |
+| `mime_type` | `varchar(100)` | NO | — |  |
+| `size_bytes` | `bigint unsigned` | NO | — |  |
+| `verification_status` | `varchar(30)` | NO | pending |  |
+| `verified_by` | `bigint unsigned` | YES | — | MUL |
+| `verified_at` | `timestamp` | YES | — |  |
+| `rejection_reason` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `application_id` → `account_applications.id`; update NO ACTION, delete CASCADE.
+- `verified_by` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `application_documents_application_id_document_type_index` (application_id,document_type) — index.
+- `application_documents_verified_by_foreign` (verified_by) — index.
+
+## `audit_logs`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `actor_user_id` | `bigint unsigned` | YES | — | MUL |
+| `action` | `varchar(100)` | NO | — |  |
+| `module` | `varchar(80)` | NO | — |  |
+| `auditable_type` | `varchar(100)` | YES | — | MUL |
+| `auditable_id` | `bigint unsigned` | YES | — |  |
+| `description` | `text` | YES | — |  |
+| `old_values` | `json` | YES | — |  |
+| `new_values` | `json` | YES | — |  |
+| `ip_address` | `varchar(45)` | YES | — |  |
+| `user_agent` | `text` | YES | — |  |
+| `severity` | `varchar(20)` | NO | info |  |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys**
+
+- `actor_user_id` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `audit_logs_actor_user_id_foreign` (actor_user_id) — index.
+- `audit_logs_auditable_type_auditable_id_index` (auditable_type,auditable_id) — index.
+
+## `cart_items`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `cart_id` | `bigint unsigned` | NO | — | MUL |
+| `product_variant_id` | `bigint unsigned` | NO | — | MUL |
+| `quantity` | `int unsigned` | NO | 1 |  |
+| `selected` | `tinyint(1)` | NO | 1 |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `cart_id` → `carts.id`; update NO ACTION, delete CASCADE.
+- `product_variant_id` → `product_variants.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `cart_items_cart_id_product_variant_id_unique` (cart_id,product_variant_id) — unique.
+- `cart_items_product_variant_id_foreign` (product_variant_id) — index.
+
+## `carts`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `user_id` | `bigint unsigned` | YES | — | MUL |
+| `session_token` | `varchar(100)` | YES | — | MUL |
+| `status` | `varchar(20)` | NO | active |  |
+| `expires_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `user_id` → `users.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `carts_session_token_status_index` (session_token,status) — index.
+- `carts_user_id_foreign` (user_id) — index.
+
+## `categories`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `parent_id` | `bigint unsigned` | YES | — | MUL |
+| `name` | `varchar(120)` | NO | — |  |
+| `slug` | `varchar(140)` | NO | — | UNI |
+| `description` | `text` | YES | — |  |
+| `is_restricted` | `tinyint(1)` | NO | 0 |  |
+| `is_active` | `tinyint(1)` | NO | 1 |  |
+| `position` | `int unsigned` | NO | 0 |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `parent_id` → `categories.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `categories_parent_id_name_unique` (parent_id,name) — unique.
+- `categories_slug_unique` (slug) — unique.
+
+## `compliance_rules`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `code` | `varchar(50)` | NO | — | UNI |
+| `name` | `varchar(160)` | NO | — |  |
+| `rule_type` | `varchar(40)` | NO | — |  |
+| `target_field` | `varchar(40)` | NO | — |  |
+| `pattern` | `text` | YES | — |  |
+| `category_id` | `bigint unsigned` | YES | — | MUL |
+| `severity` | `varchar(20)` | NO | — |  |
+| `default_action` | `varchar(30)` | NO | — |  |
+| `configuration` | `json` | YES | — |  |
+| `is_active` | `tinyint(1)` | NO | 1 |  |
+| `version` | `int unsigned` | NO | 1 |  |
+| `created_by` | `bigint unsigned` | YES | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `category_id` → `categories.id`; update NO ACTION, delete SET NULL.
+- `created_by` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `compliance_rules_category_id_foreign` (category_id) — index.
+- `compliance_rules_code_unique` (code) — unique.
+- `compliance_rules_created_by_foreign` (created_by) — index.
+
+## `conversation_participants`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `conversation_id` | `bigint unsigned` | NO | — | PRI |
+| `user_id` | `bigint unsigned` | NO | — | PRI |
+| `participant_role` | `varchar(30)` | NO | — |  |
+| `last_read_at` | `timestamp` | YES | — |  |
+| `joined_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys**
+
+- `conversation_id` → `conversations.id`; update NO ACTION, delete CASCADE.
+- `user_id` → `users.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `conversation_participants_user_id_foreign` (user_id) — index.
+
+## `conversations`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `subject` | `varchar(180)` | YES | — |  |
+| `order_id` | `bigint unsigned` | YES | — | MUL |
+| `seller_order_id` | `bigint unsigned` | YES | — | MUL |
+| `product_id` | `bigint unsigned` | YES | — | MUL |
+| `dispute_id` | `bigint unsigned` | YES | — | MUL |
+| `type` | `varchar(30)` | NO | direct |  |
+| `status` | `varchar(20)` | NO | open |  |
+| `created_by` | `bigint unsigned` | YES | — | MUL |
+| `last_message_at` | `timestamp` | YES | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `created_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `dispute_id` → `disputes.id`; update NO ACTION, delete SET NULL.
+- `order_id` → `orders.id`; update NO ACTION, delete SET NULL.
+- `product_id` → `products.id`; update NO ACTION, delete SET NULL.
+- `seller_order_id` → `seller_orders.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `conversations_created_by_foreign` (created_by) — index.
+- `conversations_dispute_id_foreign` (dispute_id) — index.
+- `conversations_last_message_at_index` (last_message_at) — index.
+- `conversations_order_id_foreign` (order_id) — index.
+- `conversations_product_id_foreign` (product_id) — index.
+- `conversations_seller_order_id_foreign` (seller_order_id) — index.
+
+## `delivery_attempts`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `parcel_id` | `bigint unsigned` | NO | — | MUL |
+| `dispatch_batch_id` | `bigint unsigned` | YES | — | MUL |
+| `rider_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `attempt_no` | `smallint unsigned` | NO | — |  |
+| `outcome` | `varchar(30)` | NO | — |  |
+| `failure_reason` | `varchar(100)` | YES | — |  |
+| `notes` | `text` | YES | — |  |
+| `latitude` | `decimal(10,7)` | YES | — |  |
+| `longitude` | `decimal(10,7)` | YES | — |  |
+| `attempted_at` | `timestamp` | NO | — |  |
+| `next_attempt_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `dispatch_batch_id` → `dispatch_batches.id`; update NO ACTION, delete SET NULL.
+- `parcel_id` → `parcels.id`; update NO ACTION, delete RESTRICT.
+- `rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `delivery_attempts_dispatch_batch_id_foreign` (dispatch_batch_id) — index.
+- `delivery_attempts_parcel_id_attempt_no_unique` (parcel_id,attempt_no) — unique.
+- `delivery_attempts_rider_profile_id_foreign` (rider_profile_id) — index.
+
+## `delivery_proofs`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `delivery_attempt_id` | `bigint unsigned` | NO | — | MUL |
+| `type` | `varchar(30)` | NO | — |  |
+| `file_path` | `varchar(500)` | YES | — |  |
+| `recipient_name` | `varchar(160)` | YES | — |  |
+| `recipient_signature_path` | `varchar(500)` | YES | — |  |
+| `otp_verified_at` | `timestamp` | YES | — |  |
+| `captured_at` | `timestamp` | NO | — |  |
+| `uploaded_by` | `bigint unsigned` | YES | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `delivery_attempt_id` → `delivery_attempts.id`; update NO ACTION, delete CASCADE.
+- `uploaded_by` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `delivery_proofs_delivery_attempt_id_foreign` (delivery_attempt_id) — index.
+- `delivery_proofs_uploaded_by_foreign` (uploaded_by) — index.
+
+## `dispatch_batch_parcels`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `dispatch_batch_id` | `bigint unsigned` | NO | — | PRI |
+| `parcel_id` | `bigint unsigned` | NO | — | PRI |
+| `sequence` | `smallint unsigned` | YES | — |  |
+| `loaded_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `dispatch_batch_id` → `dispatch_batches.id`; update NO ACTION, delete CASCADE.
+- `parcel_id` → `parcels.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `dispatch_batch_parcels_parcel_id_foreign` (parcel_id) — index.
+
+## `dispatch_batches`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `batch_no` | `varchar(32)` | NO | — | UNI |
+| `sorting_center_id` | `bigint unsigned` | NO | — | MUL |
+| `sorting_zone_id` | `bigint unsigned` | YES | — | MUL |
+| `rider_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `status` | `varchar(30)` | NO | preparing |  |
+| `prepared_by` | `bigint unsigned` | YES | — | MUL |
+| `prepared_at` | `timestamp` | YES | — |  |
+| `assigned_at` | `timestamp` | YES | — |  |
+| `dispatched_at` | `timestamp` | YES | — |  |
+| `completed_at` | `timestamp` | YES | — |  |
+| `cancelled_at` | `timestamp` | YES | — |  |
+| `planned_window_start` | `timestamp` | YES | — |  |
+| `planned_window_end` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+| `assignment_mode` | `varchar(24)` | YES | — |  |
+| `rider_zone_id` | `bigint unsigned` | YES | — | MUL |
+| `assignment_reason` | `text` | YES | — |  |
+
+**Foreign keys**
+
+- `prepared_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete RESTRICT.
+- `sorting_center_id` → `sorting_centers.id`; update NO ACTION, delete RESTRICT.
+- `sorting_zone_id` → `sorting_zones.id`; update NO ACTION, delete SET NULL.
+- `rider_zone_id` → `sorting_zones.id`; update NO ACTION, delete SET NULL. Shipment event metadata retains the zone ID/code snapshot after a zone is archived and permanently removed.
+
+**Indexes**
+
+- `dispatch_batches_batch_no_unique` (batch_no) — unique.
+- `dispatch_batches_prepared_by_foreign` (prepared_by) — index.
+- `dispatch_batches_rider_planned_window_idx` (rider_profile_id,planned_window_start) — index.
+- `dispatch_batches_rider_profile_id_foreign` (rider_profile_id) — index.
+- `dispatch_batches_sorting_center_id_foreign` (sorting_center_id) — index.
+- `dispatch_batches_sorting_zone_id_foreign` (sorting_zone_id) — index.
+- `dispatch_batches_rider_zone_idx` (rider_zone_id) — index.
+
+## `dispute_events`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `dispute_id` | `bigint unsigned` | NO | — | MUL |
+| `event_type` | `varchar(40)` | NO | — |  |
+| `actor_user_id` | `bigint unsigned` | YES | — | MUL |
+| `from_status` | `varchar(30)` | YES | — |  |
+| `to_status` | `varchar(30)` | YES | — |  |
+| `note` | `text` | YES | — |  |
+| `metadata` | `json` | YES | — |  |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys**
+
+- `actor_user_id` → `users.id`; update NO ACTION, delete SET NULL.
+- `dispute_id` → `disputes.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `dispute_events_actor_user_id_foreign` (actor_user_id) — index.
+- `dispute_events_dispute_id_foreign` (dispute_id) — index.
+
+## `dispute_evidence`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `dispute_id` | `bigint unsigned` | NO | — | MUL |
+| `uploaded_by` | `bigint unsigned` | YES | — | MUL |
+| `type` | `varchar(30)` | NO | — |  |
+| `mime_type` | `varchar(100)` | YES | — |  |
+| `file_path` | `varchar(500)` | NO | — |  |
+| `original_name` | `varchar(255)` | NO | — |  |
+| `size_bytes` | `bigint unsigned` | YES | — |  |
+| `description` | `varchar(500)` | YES | — |  |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys**
+
+- `dispute_id` → `disputes.id`; update NO ACTION, delete CASCADE.
+- `uploaded_by` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `dispute_evidence_dispute_id_foreign` (dispute_id) — index.
+- `dispute_evidence_uploaded_by_foreign` (uploaded_by) — index.
+
+## `dispute_participants`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `dispute_id` | `bigint unsigned` | NO | — | PRI |
+| `user_id` | `bigint unsigned` | NO | — | PRI |
+| `participant_role` | `varchar(30)` | NO | — |  |
+| `joined_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys**
+
+- `dispute_id` → `disputes.id`; update NO ACTION, delete CASCADE.
+- `user_id` → `users.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `dispute_participants_user_id_foreign` (user_id) — index.
+
+## `disputes`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `dispute_no` | `varchar(32)` | NO | — | UNI |
+| `seller_order_id` | `bigint unsigned` | YES | — | MUL |
+| `return_request_id` | `bigint unsigned` | YES | — | MUL |
+| `shipment_id` | `bigint unsigned` | YES | — | MUL |
+| `opened_by` | `bigint unsigned` | NO | — | MUL |
+| `subject` | `varchar(180)` | NO | — |  |
+| `description` | `text` | NO | — |  |
+| `priority` | `varchar(20)` | NO | normal |  |
+| `status` | `varchar(30)` | NO | open |  |
+| `amount_minor` | `bigint unsigned` | YES | — |  |
+| `assigned_to` | `bigint unsigned` | YES | — | MUL |
+| `opened_at` | `timestamp` | NO | — |  |
+| `response_due_at` | `timestamp` | YES | — |  |
+| `resolved_at` | `timestamp` | YES | — |  |
+| `closed_at` | `timestamp` | YES | — |  |
+| `resolution` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `assigned_to` → `users.id`; update NO ACTION, delete SET NULL.
+- `opened_by` → `users.id`; update NO ACTION, delete RESTRICT.
+- `return_request_id` → `return_requests.id`; update NO ACTION, delete SET NULL.
+- `seller_order_id` → `seller_orders.id`; update NO ACTION, delete SET NULL.
+- `shipment_id` → `shipments.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `disputes_assigned_to_foreign` (assigned_to) — index.
+- `disputes_dispute_no_unique` (dispute_no) — unique.
+- `disputes_opened_by_foreign` (opened_by) — index.
+- `disputes_return_request_id_foreign` (return_request_id) — index.
+- `disputes_seller_order_id_foreign` (seller_order_id) — index.
+- `disputes_shipment_id_foreign` (shipment_id) — index.
+
+## `inventory_movements`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `variant_id` | `bigint unsigned` | NO | — | MUL |
+| `type` | `varchar(40)` | NO | — |  |
+| `quantity_delta` | `int` | NO | — |  |
+| `balance_after` | `int unsigned` | NO | — |  |
+| `reference_type` | `varchar(50)` | YES | — | MUL |
+| `reference_id` | `bigint unsigned` | YES | — |  |
+| `reason` | `varchar(255)` | YES | — |  |
+| `created_by` | `bigint unsigned` | YES | — | MUL |
+| `occurred_at` | `timestamp` | NO | — |  |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+| `reserved_delta` | `bigint` | NO | 0 |  |
+| `reserved_balance_after` | `int unsigned` | YES | — |  |
+
+**Foreign keys**
+
+- `created_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `variant_id` → `product_variants.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `inventory_movements_created_by_foreign` (created_by) — index.
+- `inventory_movements_reference_type_reference_id_index` (reference_type,reference_id) — index.
+- `inventory_movements_variant_id_occurred_at_index` (variant_id,occurred_at) — index.
+
+## `logistics_profiles`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `user_id` | `bigint unsigned` | NO | — | UNI |
+| `application_id` | `bigint unsigned` | YES | — | MUL |
+| `legal_name` | `varchar(160)` | NO | — |  |
+| `display_name` | `varchar(160)` | NO | — |  |
+| `contact_phone` | `varchar(30)` | NO | — |  |
+| `psgc_city_code` | `varchar(20)` | YES | — | UNI |
+| `status` | `varchar(30)` | NO | active |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+| `deleted_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `application_id` → `account_applications.id`; update NO ACTION, delete SET NULL.
+- `user_id` → `users.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `logistics_profiles_application_id_foreign` (application_id) — index.
+- `logistics_profiles_user_id_unique` (user_id) — unique.
+- `logistics_profiles_psgc_city_code_unique` (psgc_city_code) — unique.
+
+## `linehaul_run_events` (added by `2026_11_01_000001_add_courier_linehaul_workflows`)
+
+Append-only run lifecycle and exception history. `metadata` is operational context; actor and reason are retained where supplied.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `linehaul_run_id` | `bigint unsigned` | NO | — | MUL |
+| `actor_user_id` | `bigint unsigned` | YES | — | MUL |
+| `event_type` | `varchar(40)` | NO | — |  |
+| `from_status` | `varchar(24)` | YES | — |  |
+| `to_status` | `varchar(24)` | YES | — |  |
+| `reason` | `text` | YES | — |  |
+| `metadata` | `json` | YES | — |  |
+| `occurred_at` | `timestamp` | NO | — |  |
+
+**Foreign keys**
+
+- `linehaul_run_id` → `linehaul_runs.id`; update NO ACTION, delete RESTRICT.
+- `actor_user_id` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `linehaul_run_events_linehaul_run_id_foreign` (linehaul_run_id) — index.
+- `linehaul_run_events_actor_user_id_foreign` (actor_user_id) — index.
+- `linehaul_run_events_run_occurred_idx` (linehaul_run_id,occurred_at) — index.
+
+## `linehaul_run_shipments` (added by `2026_11_01_000001_add_courier_linehaul_workflows`)
+
+Each shipment can be assigned to at most one line-haul run. Loaded time is retained per manifest shipment.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `linehaul_run_id` | `bigint unsigned` | NO | — | MUL |
+| `shipment_id` | `bigint unsigned` | NO | — | UNI |
+| `loaded_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `linehaul_run_id` → `linehaul_runs.id`; update NO ACTION, delete RESTRICT.
+- `shipment_id` → `shipments.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `linehaul_run_shipments_linehaul_run_id_foreign` (linehaul_run_id) — index.
+- `linehaul_run_shipments_shipment_id_unique` (shipment_id) — unique.
+- `linehaul_run_shipments_run_shipment_idx` (linehaul_run_id,shipment_id) — index.
+
+## `linehaul_runs` (added by `2026_11_01_000001_add_courier_linehaul_workflows`)
+
+One provider-scoped manifest with one destination, origin Sorting Center, and assigned Courier. Run statuses are `assigned`, `loading`, `loaded`, `departed`, `arrived`, `exception`, and `completed`; exception recovery is recorded in `linehaul_run_events`.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `run_no` | `varchar(36)` | NO | — | UNI |
+| `origin_logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `destination_logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `origin_sorting_center_id` | `bigint unsigned` | NO | — | MUL |
+| `courier_rider_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `status` | `varchar(24)` | NO | assigned |  |
+| `status_before_exception` | `varchar(24)` | YES | — |  |
+| `assigned_by` | `bigint unsigned` | YES | — | MUL |
+| `assigned_at` | `timestamp` | NO | — |  |
+| `loaded_at` | `timestamp` | YES | — |  |
+| `departed_at` | `timestamp` | YES | — |  |
+| `arrived_at` | `timestamp` | YES | — |  |
+| `completed_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `origin_logistics_profile_id` / `destination_logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `origin_sorting_center_id` → `sorting_centers.id`; update NO ACTION, delete RESTRICT.
+- `courier_rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete RESTRICT.
+- `assigned_by` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `linehaul_runs_run_no_unique` (run_no) — unique.
+- `linehaul_runs_origin_status_assigned_idx` (origin_logistics_profile_id,status,assigned_at) — index.
+- `linehaul_runs_destination_status_assigned_idx` (destination_logistics_profile_id,status,assigned_at) — index.
+- `linehaul_runs_courier_status_assigned_idx` (courier_rider_profile_id,status,assigned_at) — index.
+
+## `logistics_payout_accounts` (added by `2026_10_30_000001_add_logistics_payout_destinations`)
+
+Finance-verified bank-transfer or GCash destinations owned by one Logistics profile. `destination_value` is encrypted by the Eloquent encrypted cast; application lists and audit values expose only `destination_last4`. Account details are immutable after submission; a changed destination is a new row.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `channel` | `varchar(24)` | NO | — |  |
+| `provider_name` | `varchar(120)` | NO | — |  |
+| `account_name` | `varchar(160)` | NO | — |  |
+| `destination_value` | `text` | NO | — |  |
+| `destination_last4` | `char(4)` | NO | — |  |
+| `status` | `varchar(24)` | NO | pending_review | MUL |
+| `created_by` | `bigint unsigned` | YES | — | MUL |
+| `reviewed_by` | `bigint unsigned` | YES | — | MUL |
+| `reviewed_at` | `timestamp` | YES | — |  |
+| `review_note` | `text` | YES | — |  |
+| `deactivated_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `created_by` / `reviewed_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `logistics_payout_accounts_profile_status_idx` (logistics_profile_id,status) — index.
+- `logistics_payout_accounts_channel_status_idx` (channel,status) — index.
+
+## `message_attachments`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `message_id` | `bigint unsigned` | NO | — | MUL |
+| `file_path` | `varchar(500)` | NO | — |  |
+| `original_name` | `varchar(255)` | NO | — |  |
+| `mime_type` | `varchar(100)` | NO | — |  |
+| `size_bytes` | `bigint unsigned` | NO | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `message_id` → `messages.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `message_attachments_message_id_foreign` (message_id) — index.
+
+## `messages`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `conversation_id` | `bigint unsigned` | NO | — | MUL |
+| `sender_id` | `bigint unsigned` | YES | — | MUL |
+| `body` | `text` | NO | — |  |
+| `message_type` | `varchar(20)` | NO | text |  |
+| `sent_at` | `timestamp` | NO | — |  |
+| `edited_at` | `timestamp` | YES | — |  |
+| `deleted_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `conversation_id` → `conversations.id`; update NO ACTION, delete CASCADE.
+- `sender_id` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `messages_conversation_id_sent_at_index` (conversation_id,sent_at) — index.
+- `messages_sender_id_foreign` (sender_id) — index.
+
+## `notifications`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `char(36)` | NO | — | PRI |
+| `type` | `varchar(255)` | NO | — |  |
+| `notifiable_type` | `varchar(255)` | NO | — | MUL |
+| `notifiable_id` | `bigint unsigned` | NO | — |  |
+| `data` | `text` | NO | — |  |
+| `read_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Indexes**
+
+- `notifications_notifiable_type_notifiable_id_index` (notifiable_type,notifiable_id) — index.
+
+## `order_items`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `seller_order_id` | `bigint unsigned` | NO | — | MUL |
+| `product_id` | `bigint unsigned` | YES | — | MUL |
+| `product_variant_id` | `bigint unsigned` | YES | — | MUL |
+| `category_id_snapshot` | `bigint unsigned` | YES | — | MUL |
+| `category_name_snapshot` | `varchar(120)` | YES | — |  |
+| `product_name` | `varchar(180)` | NO | — |  |
+| `variant_name` | `varchar(140)` | NO | — |  |
+| `sku` | `varchar(80)` | NO | — |  |
+| `options` | `json` | YES | — |  |
+| `product_image_disk` | `varchar(40)` | YES | — |  |
+| `product_image_path` | `varchar(500)` | YES | — |  |
+| `unit_price_minor` | `bigint unsigned` | NO | — |  |
+| `quantity` | `int unsigned` | NO | — |  |
+| `discount_minor` | `bigint unsigned` | NO | 0 |  |
+| `subtotal_minor` | `bigint unsigned` | NO | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `product_id` → `products.id`; update NO ACTION, delete SET NULL.
+- `product_variant_id` → `product_variants.id`; update NO ACTION, delete SET NULL.
+- `category_id_snapshot` → `categories.id`; update NO ACTION, delete SET NULL.
+- `seller_order_id` → `seller_orders.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `order_items_category_id_snapshot_foreign` (category_id_snapshot) — index.
+- `order_items_product_id_foreign` (product_id) — index.
+- `order_items_product_variant_id_foreign` (product_variant_id) — index.
+- `order_items_seller_order_id_foreign` (seller_order_id) — index.
+
+## `orders`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `order_no` | `varchar(32)` | NO | — | UNI |
+| `buyer_id` | `bigint unsigned` | NO | — | MUL |
+| `shipping_address_id` | `bigint unsigned` | YES | — | MUL |
+| `recipient_name` | `varchar(160)` | NO | — |  |
+| `recipient_phone` | `varchar(30)` | NO | — |  |
+| `address_line` | `varchar(255)` | NO | — |  |
+| `barangay` | `varchar(120)` | NO | — |  |
+| `city_municipality` | `varchar(120)` | NO | — |  |
+| `province` | `varchar(120)` | NO | — |  |
+| `postal_code` | `varchar(10)` | YES | — |  |
+| `psgc_city_code` | `varchar(20)` | YES | — |  |
+| `currency` | `char(3)` | NO | PHP |  |
+| `subtotal_minor` | `bigint unsigned` | NO | — |  |
+| `shipping_fee_minor` | `bigint unsigned` | NO | 0 |  |
+| `discount_minor` | `bigint unsigned` | NO | 0 |  |
+| `total_minor` | `bigint unsigned` | NO | — |  |
+| `status` | `varchar(30)` | NO | pending_payment | MUL |
+| `payment_status` | `varchar(30)` | NO | unpaid |  |
+| `placed_at` | `timestamp` | YES | — |  |
+| `cancelled_at` | `timestamp` | YES | — |  |
+| `completed_at` | `timestamp` | YES | — |  |
+| `cancel_reason` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+| `checkout_request_key` | `char(36)` | YES | — | MUL |
+| `delivery_latitude` | `decimal(10,7)` | YES | — |  |
+| `delivery_longitude` | `decimal(10,7)` | YES | — |  |
+
+**Foreign keys**
+
+- `buyer_id` → `users.id`; update NO ACTION, delete RESTRICT.
+- `shipping_address_id` → `addresses.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `orders_buyer_id_created_at_index` (buyer_id,created_at) — index.
+- `orders_buyer_checkout_request_unique` (buyer_id,checkout_request_key) — unique.
+- `orders_order_no_unique` (order_no) — unique.
+- `orders_shipping_address_id_foreign` (shipping_address_id) — index.
+- `orders_status_created_at_index` (status,created_at) — index.
+
+## `parcels`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `shipment_id` | `bigint unsigned` | NO | — | MUL |
+| `waybill_id` | `bigint unsigned` | NO | — | MUL |
+| `parcel_no` | `varchar(50)` | NO | — | UNI |
+| `piece_sequence` | `smallint unsigned` | NO | — |  |
+| `weight_kg` | `decimal(10,3)` | NO | — |  |
+| `length_cm` | `decimal(10,2)` | YES | — |  |
+| `width_cm` | `decimal(10,2)` | YES | — |  |
+| `height_cm` | `decimal(10,2)` | YES | — |  |
+| `size_class` | `varchar(20)` | YES | — |  |
+| `status` | `varchar(40)` | NO | created | MUL |
+| `current_sorting_center_id` | `bigint unsigned` | YES | — | MUL |
+| `current_zone_id` | `bigint unsigned` | YES | — | MUL |
+| `last_event_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `current_sorting_center_id` → `sorting_centers.id`; update NO ACTION, delete SET NULL.
+- `current_zone_id` → `sorting_zones.id`; update NO ACTION, delete SET NULL.
+- `shipment_id` → `shipments.id`; update NO ACTION, delete RESTRICT.
+- `waybill_id` → `waybills.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `parcels_current_sorting_center_id_foreign` (current_sorting_center_id) — index.
+- `parcels_current_zone_id_foreign` (current_zone_id) — index.
+- `parcels_parcel_no_unique` (parcel_no) — unique.
+- `parcels_shipment_id_foreign` (shipment_id) — index.
+- `parcels_status_current_sorting_center_id_index` (status,current_sorting_center_id) — index.
+- `parcels_waybill_id_piece_sequence_unique` (waybill_id,piece_sequence) — unique.
+
+## `parcel_items`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `parcel_id` | `bigint unsigned` | NO | — | MUL |
+| `order_item_id` | `bigint unsigned` | NO | — | MUL |
+| `quantity` | `int unsigned` | NO | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `parcel_id` → `parcels.id`; update NO ACTION, delete RESTRICT.
+- `order_item_id` → `order_items.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `parcel_items_order_item_id_index` (order_item_id) — index.
+- `parcel_items_parcel_id_order_item_id_unique` (parcel_id,order_item_id) — unique.
+
+## `payments`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `payment_no` | `varchar(40)` | NO | — | UNI |
+| `order_id` | `bigint unsigned` | NO | — | MUL |
+| `method` | `varchar(30)` | NO | — |  |
+| `provider` | `varchar(50)` | YES | — |  |
+| `provider_reference` | `varchar(150)` | YES | — | MUL |
+| `amount_minor` | `bigint unsigned` | NO | — |  |
+| `status` | `varchar(30)` | NO | pending |  |
+| `initiated_at` | `timestamp` | YES | — |  |
+| `authorized_at` | `timestamp` | YES | — |  |
+| `paid_at` | `timestamp` | YES | — |  |
+| `failed_at` | `timestamp` | YES | — |  |
+| `refunded_at` | `timestamp` | YES | — |  |
+| `failure_reason` | `text` | YES | — |  |
+| `metadata` | `json` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `order_id` → `orders.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `payments_order_id_status_index` (order_id,status) — index.
+- `payments_payment_no_unique` (payment_no) — unique.
+- `payments_provider_reference_index` (provider_reference) — index.
+
+## `cod_cash_collections` (added by `2026_10_11_000001_create_cod_cash_and_refund_cash_workflows`)
+
+Each outbound COD shipment has at most one Rider collection record. `amount_due_minor`, `amount_collected_minor`, and signed `discrepancy_minor` are integer centavos. A disputed amount never captures the marketplace payment or makes proceeds settlement-eligible. `logistics_reference` stores the `CODH-` Rider-to-Logistics reference; new `finance_remittance_reference` values are Bearly-generated `L2F-` Logistics-to-Finance references (existing values are preserved); and new `finance_reference` values are Bearly-generated `BFR-<year>-<collection-id>` internal Finance receipt numbers (existing references are preserved). A printed Bearly receipt documents the Finance/Admin user's reconciliation confirmation; it is not a tax invoice or bank deposit receipt.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `collection_no` | `varchar(40)` | NO | — | UNI |
+| `shipment_id` | `bigint unsigned` | NO | — | UNI |
+| `payment_id` | `bigint unsigned` | NO | — | MUL |
+| `order_id` | `bigint unsigned` | NO | — | MUL |
+| `seller_order_id` | `bigint unsigned` | NO | — | MUL |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `rider_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `amount_due_minor` | `bigint unsigned` | NO | — |  |
+| `amount_collected_minor` | `bigint unsigned` | NO | — |  |
+| `discrepancy_minor` | `bigint` | NO | 0 |  |
+| `amount_received_by_logistics_minor` | `bigint unsigned` | YES | — |  |
+| `amount_remitted_to_finance_minor` | `bigint unsigned` | YES | — |  |
+| `amount_reconciled_minor` | `bigint unsigned` | YES | — |  |
+| `status` | `varchar(32)` | NO | collected |  |
+| `collected_at` | `timestamp` | NO | — |  |
+| `collected_by` | `bigint unsigned` | NO | — | MUL |
+| `logistics_reference` | `varchar(150)` | YES | — |  |
+| `logistics_received_at` | `timestamp` | YES | — |  |
+| `logistics_received_by` | `bigint unsigned` | YES | — | MUL |
+| `finance_remittance_reference` | `varchar(150)` | YES | — |  |
+| `remitted_to_finance_at` | `timestamp` | YES | — |  |
+| `remitted_to_finance_by` | `bigint unsigned` | YES | — | MUL |
+| `finance_reference` | `varchar(150)` | YES | — |  |
+| `reconciled_at` | `timestamp` | YES | — |  |
+| `reconciled_by` | `bigint unsigned` | YES | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `shipment_id` → `shipments.id`; delete RESTRICT. Collection is unique per shipment.
+- `payment_id` → `payments.id`; `order_id` → `orders.id`; `seller_order_id` → `seller_orders.id`; all delete RESTRICT.
+- `logistics_profile_id` → `logistics_profiles.id`; `rider_profile_id` → `rider_profiles.id`; delete RESTRICT.
+- Rider, Logistics, and Finance actor foreign keys reference `users.id`; original collector deletion is RESTRICT, later actor deletion sets NULL.
+
+**Indexes**
+
+- `cod_cash_logistics_status_idx` (logistics_profile_id,status,collected_at).
+- `cod_cash_payment_status_idx` (payment_id,status).
+- `cod_cash_seller_order_status_idx` (seller_order_id,status).
+
+## `cod_cash_collection_events` (added by `2026_10_11_000001_create_cod_cash_and_refund_cash_workflows`)
+
+Append-only custody history. Contains the collection ID, event type, from/to roles and optional users, actor, integer-centavo amount, reference, note, optional JSON metadata, occurrence timestamp, and creation timestamp. Collection deletion is RESTRICT; actor/from/to user deletion sets nullable actor references to NULL. Indexed by (`cod_cash_collection_id`,`occurred_at`).
+
+## `cod_cash_collection_allocations` (added by `2026_11_07_000003_add_seller_order_shipment_consolidation`)
+
+Immutable per-Seller-Order/payment due and cash allocation for one aggregate COD custody record. `amount_collected_minor` and `amount_reconciled_minor` remain null until the corresponding exact stage is confirmed; a discrepancy must not be silently apportioned as a successful payment. Existing one-Seller-Order collections are backfilled as one allocation. The collection header's `payment_id`, `order_id`, and `seller_order_id` remain the legacy/primary allocation references.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `cod_cash_collection_id` | `bigint unsigned` | NO | — | MUL |
+| `payment_id` | `bigint unsigned` | NO | — | MUL |
+| `order_id` | `bigint unsigned` | NO | — | MUL |
+| `seller_order_id` | `bigint unsigned` | NO | — | MUL |
+| `amount_due_minor` | `bigint unsigned` | NO | — |  |
+| `amount_collected_minor` | `bigint unsigned` | YES | — |  |
+| `amount_reconciled_minor` | `bigint unsigned` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `cod_cash_collection_id` → `cod_cash_collections.id`; `payment_id` → `payments.id`; `order_id` → `orders.id`; `seller_order_id` → `seller_orders.id`; all delete RESTRICT.
+
+**Indexes**
+
+- `cod_cash_allocations_collection_order_unique` (`cod_cash_collection_id`,`seller_order_id`) — unique.
+- `cod_cash_allocations_payment_order_idx` (`payment_id`,`seller_order_id`) — index.
+- `cod_cash_allocations_marketplace_order_idx` (`order_id`,`payment_id`) — index.
+
+## `pickup_assignments`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `pickup_request_id` | `bigint unsigned` | NO | — | MUL |
+| `rider_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `status` | `varchar(30)` | NO | assigned |  |
+| `assigned_by` | `bigint unsigned` | YES | — | MUL |
+| `assigned_at` | `timestamp` | NO | — |  |
+| `accepted_at` | `timestamp` | YES | — |  |
+| `arrived_at` | `timestamp` | YES | — |  |
+| `picked_up_at` | `timestamp` | YES | — |  |
+| `completed_at` | `timestamp` | YES | — |  |
+| `cancelled_at` | `timestamp` | YES | — |  |
+| `notes` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `assigned_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `pickup_request_id` → `pickup_requests.id`; update NO ACTION, delete RESTRICT.
+- `rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `pickup_assignments_assigned_by_foreign` (assigned_by) — index.
+- `pickup_assignments_pickup_request_id_foreign` (pickup_request_id) — index.
+- `pickup_assignments_rider_profile_id_status_assigned_at_index` (rider_profile_id,status,assigned_at) — index.
+
+## `pickup_request_parcels`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `pickup_request_id` | `bigint unsigned` | NO | — | PRI |
+| `parcel_id` | `bigint unsigned` | NO | — | PRI |
+| `added_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys**
+
+- `parcel_id` → `parcels.id`; update NO ACTION, delete RESTRICT.
+- `pickup_request_id` → `pickup_requests.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `pickup_request_parcels_parcel_id_foreign` (parcel_id) — index.
+
+## `pickup_requests`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `pickup_no` | `varchar(32)` | NO | — | UNI |
+| `store_id` | `bigint unsigned` | NO | — | MUL |
+| `return_request_id` | `bigint unsigned` | YES | — | UNI |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `pickup_address_id` | `bigint unsigned` | NO | — | MUL |
+| `pickup_address_snapshot` | `json` | YES | — |  |
+| `return_pickup_date` | `date` | YES | — |  |
+| `return_pickup_window` | `varchar(30)` | YES | — |  |
+| `status` | `varchar(30)` | NO | requested |  |
+| `requested_date` | `date` | NO | — |  |
+| `window_start` | `datetime` | NO | — |  |
+| `window_end` | `datetime` | NO | — |  |
+| `seller_instructions` | `text` | YES | — |  |
+| `verified_by` | `bigint unsigned` | YES | — | MUL |
+| `verified_at` | `timestamp` | YES | — |  |
+| `cancelled_at` | `timestamp` | YES | — |  |
+| `completed_at` | `timestamp` | YES | — |  |
+| `cancellation_reason` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `return_request_id` → `return_requests.id`; update NO ACTION, delete SET NULL.
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `pickup_address_id` → `addresses.id`; update NO ACTION, delete RESTRICT.
+- `store_id` → `stores.id`; update NO ACTION, delete RESTRICT.
+- `verified_by` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `pickup_requests_logistics_profile_id_status_requested_date_index` (logistics_profile_id,status,requested_date) — index.
+- `pickup_requests_pickup_address_id_foreign` (pickup_address_id) — index.
+- `pickup_requests_pickup_no_unique` (pickup_no) — unique.
+- `pickup_requests_return_request_id_unique` (return_request_id) — unique.
+- `pickup_requests_store_id_foreign` (store_id) — index.
+- `pickup_requests_verified_by_foreign` (verified_by) — index.
+
+## `platform_commissions`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `seller_order_id` | `bigint unsigned` | NO | — | MUL |
+| `refund_id` | `bigint unsigned` | YES | — | MUL |
+| `type` | `varchar(30)` | NO | — |  |
+| `base_amount_minor` | `bigint unsigned` | NO | — |  |
+| `rate_bps` | `smallint unsigned` | NO | — |  |
+| `amount_minor` | `bigint` | NO | — |  |
+| `status` | `varchar(30)` | NO | estimated |  |
+| `calculated_at` | `timestamp` | NO | — |  |
+| `finalized_at` | `timestamp` | YES | — |  |
+| `reversed_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `refund_id` → `refunds.id`; update NO ACTION, delete RESTRICT.
+- `seller_order_id` → `seller_orders.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `platform_commissions_refund_id_foreign` (refund_id) — index.
+- `platform_commissions_seller_order_id_foreign` (seller_order_id) — index.
+
+## `policies`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `code` | `varchar(50)` | NO | — | UNI |
+| `title` | `varchar(180)` | NO | — |  |
+| `category` | `varchar(80)` | NO | — |  |
+| `scope` | `varchar(40)` | NO | platform | MUL |
+| `scope_key` | `varchar(100)` | YES | — | MUL |
+| `status` | `varchar(20)` | NO | active |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Indexes**
+
+- `policies_code_unique` (code) — unique.
+- `policies_scope_key_status_index` (scope,scope_key,status) — index.
+
+## `policy_versions`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `policy_id` | `bigint unsigned` | NO | — | MUL |
+| `version` | `varchar(20)` | NO | — |  |
+| `body` | `longtext` | NO | — |  |
+| `summary` | `text` | YES | — |  |
+| `title` | `varchar(180)` | YES | — |  |
+| `category` | `varchar(80)` | YES | — |  |
+| `source_reference` | `text` | YES | — |  |
+| `status` | `varchar(20)` | NO | draft |  |
+| `created_by` | `bigint unsigned` | YES | — | MUL |
+| `effective_at` | `timestamp` | YES | — |  |
+| `published_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `created_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `policy_id` → `policies.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `policy_versions_created_by_foreign` (created_by) — index.
+- `policy_versions_policy_id_version_unique` (policy_id,version) — unique.
+
+## `shipping_policy_settings`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `provider_key` | `varchar(100)` | NO | — | UNI |
+| `manager_logistics_profile_id` | `bigint unsigned` | YES | — | MUL |
+| `updated_by` | `bigint unsigned` | YES | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `manager_logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete SET NULL.
+- `updated_by` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `shipping_policy_settings_provider_key_unique` (provider_key) — unique.
+- `sps_manager_profile_fk` (manager_logistics_profile_id) — index.
+- `sps_updated_by_fk` (updated_by) — index.
+
+## `product_compliance_check_matches`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `check_id` | `bigint unsigned` | NO | — | MUL |
+| `rule_id` | `bigint unsigned` | NO | — | MUL |
+| `matched_field` | `varchar(40)` | NO | — |  |
+| `matched_excerpt` | `varchar(500)` | YES | — |  |
+| `score` | `decimal(5,4)` | YES | — |  |
+| `severity` | `varchar(20)` | NO | — |  |
+| `recommended_action` | `varchar(30)` | NO | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `check_id` → `product_compliance_checks.id`; update NO ACTION, delete CASCADE.
+- `rule_id` → `compliance_rules.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `product_compliance_check_matches_check_id_foreign` (check_id) — index.
+- `product_compliance_check_matches_rule_id_foreign` (rule_id) — index.
+
+## `product_compliance_checks`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `product_id` | `bigint unsigned` | NO | — | MUL |
+| `trigger` | `varchar(20)` | NO | — |  |
+| `status` | `varchar(30)` | NO | queued |  |
+| `result` | `varchar(30)` | YES | — |  |
+| `name_snapshot` | `varchar(180)` | NO | — |  |
+| `description_snapshot` | `text` | YES | — |  |
+| `category_id_snapshot` | `bigint unsigned` | YES | — | MUL |
+| `rules_version` | `varchar(50)` | YES | — |  |
+| `started_at` | `timestamp` | YES | — |  |
+| `completed_at` | `timestamp` | YES | — |  |
+| `error_message` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `category_id_snapshot` → `categories.id`; update NO ACTION, delete SET NULL.
+- `product_id` → `products.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `product_compliance_checks_category_id_snapshot_foreign` (category_id_snapshot) — index.
+- `product_compliance_checks_product_id_created_at_index` (product_id,created_at) — index.
+
+## `product_images`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `product_id` | `bigint unsigned` | NO | — | MUL |
+| `variant_id` | `bigint unsigned` | YES | — | MUL |
+| `path` | `varchar(500)` | NO | — |  |
+| `disk` | `varchar(40)` | NO | public |  |
+| `mime_type` | `varchar(100)` | YES | — |  |
+| `size_bytes` | `bigint unsigned` | YES | — |  |
+| `purpose` | `varchar(40)` | NO | product_image |  |
+| `alt_text` | `varchar(255)` | YES | — |  |
+| `position` | `smallint unsigned` | NO | 0 |  |
+| `is_primary` | `tinyint(1)` | NO | 0 |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `product_id` → `products.id`; update NO ACTION, delete CASCADE.
+- `variant_id` → `product_variants.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `product_images_product_id_position_index` (product_id,position) — index.
+- `product_images_variant_id_foreign` (variant_id) — index.
+
+## `product_reports`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `report_no` | `varchar(32)` | NO | — | UNI |
+| `product_id` | `bigint unsigned` | NO | — | MUL |
+| `reporter_user_id` | `bigint unsigned` | YES | — | MUL |
+| `reason_code` | `varchar(50)` | NO | — |  |
+| `details` | `text` | YES | — |  |
+| `status` | `varchar(30)` | NO | submitted |  |
+| `reviewed_by` | `bigint unsigned` | YES | — | MUL |
+| `reviewed_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `product_id` → `products.id`; update NO ACTION, delete RESTRICT.
+- `reporter_user_id` → `users.id`; update NO ACTION, delete SET NULL.
+- `reviewed_by` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `product_reports_product_id_foreign` (product_id) — index.
+- `product_reports_report_no_unique` (report_no) — unique.
+- `product_reports_reporter_user_id_foreign` (reporter_user_id) — index.
+- `product_reports_reviewed_by_foreign` (reviewed_by) — index.
+
+## `product_variants`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `product_id` | `bigint unsigned` | NO | — | MUL |
+| `sku` | `varchar(80)` | NO | — | UNI |
+| `name` | `varchar(140)` | NO | — |  |
+| `options` | `json` | YES | — |  |
+| `price_minor` | `bigint unsigned` | NO | — |  |
+| `compare_at_price_minor` | `bigint unsigned` | YES | — |  |
+| `stock_on_hand` | `int unsigned` | NO | 0 |  |
+| `stock_reserved` | `int unsigned` | NO | 0 |  |
+| `low_stock_threshold` | `int unsigned` | NO | 5 |  |
+| `weight_kg` | `decimal(10,3)` | YES | — |  |
+| `is_active` | `tinyint(1)` | NO | 1 |  |
+| `position` | `smallint unsigned` | NO | 0 |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+| `deleted_at` | `timestamp` | YES | — |  |
+| `package_weight_kg` | `decimal(10,3)` | YES | — |  |
+| `package_length_cm` | `decimal(10,3)` | YES | — |  |
+| `package_width_cm` | `decimal(10,3)` | YES | — |  |
+| `package_height_cm` | `decimal(10,3)` | YES | — |  |
+
+**Foreign keys**
+
+- `product_id` → `products.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `product_variants_product_id_is_active_index` (product_id,is_active) — index.
+- `product_variants_sku_unique` (sku) — unique.
+
+## `product_violations`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `violation_no` | `varchar(32)` | NO | — | UNI |
+| `product_id` | `bigint unsigned` | NO | — | MUL |
+| `seller_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `check_id` | `bigint unsigned` | YES | — | MUL |
+| `rule_id` | `bigint unsigned` | YES | — | MUL |
+| `product_report_id` | `bigint unsigned` | YES | — | MUL |
+| `source` | `varchar(30)` | NO | — |  |
+| `violation_type` | `varchar(50)` | NO | — |  |
+| `severity` | `varchar(20)` | NO | — |  |
+| `reason` | `text` | NO | — |  |
+| `detected_excerpt` | `varchar(500)` | YES | — |  |
+| `status` | `varchar(30)` | NO | flagged | MUL |
+| `assigned_to` | `bigint unsigned` | YES | — | MUL |
+| `reviewed_at` | `timestamp` | YES | — |  |
+| `resolved_at` | `timestamp` | YES | — |  |
+| `resolution` | `varchar(40)` | YES | — |  |
+| `admin_note` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `assigned_to` → `users.id`; update NO ACTION, delete SET NULL.
+- `check_id` → `product_compliance_checks.id`; update NO ACTION, delete SET NULL.
+- `product_id` → `products.id`; update NO ACTION, delete RESTRICT.
+- `product_report_id` → `product_reports.id`; update NO ACTION, delete SET NULL.
+- `rule_id` → `compliance_rules.id`; update NO ACTION, delete SET NULL.
+- `seller_profile_id` → `seller_profiles.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `product_violations_assigned_to_foreign` (assigned_to) — index.
+- `product_violations_check_id_foreign` (check_id) — index.
+- `product_violations_product_id_foreign` (product_id) — index.
+- `product_violations_product_report_id_foreign` (product_report_id) — index.
+- `product_violations_rule_id_foreign` (rule_id) — index.
+- `product_violations_seller_profile_id_foreign` (seller_profile_id) — index.
+- `product_violations_status_severity_created_at_index` (status,severity,created_at) — index.
+- `product_violations_violation_no_unique` (violation_no) — unique.
+
+## `products`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `store_id` | `bigint unsigned` | NO | — | MUL |
+| `category_id` | `bigint unsigned` | NO | — | MUL |
+| `subcategory_id` | `bigint unsigned` | YES | — | MUL |
+| `name` | `varchar(180)` | NO | — |  |
+| `slug` | `varchar(220)` | NO | — |  |
+| `description` | `text` | YES | — |  |
+| `product_status` | `varchar(30)` | NO | draft |  |
+| `compliance_status` | `varchar(30)` | NO | pending_scan | MUL |
+| `voucher_eligible` | `tinyint(1)` | NO | 0 |  |
+| `payment_methods` | `json` | YES | — |  |
+| `published_at` | `timestamp` | YES | — |  |
+| `archived_at` | `timestamp` | YES | — |  |
+| `archived_previous_status` | `varchar(30)` | YES | — |  |
+| `archived_previous_published_at` | `timestamp` | YES | — |  |
+| `removed_at` | `timestamp` | YES | — |  |
+| `removed_reason` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+| `deleted_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `category_id` → `categories.id`; update NO ACTION, delete RESTRICT.
+- `subcategory_id` → `store_subcategories.id`; update NO ACTION, delete SET NULL.
+- `store_id` → `stores.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `products_category_id_foreign` (category_id) — index.
+- `products_compliance_status_updated_at_index` (compliance_status,updated_at) — index.
+- `products_subcategory_id_foreign` (subcategory_id) — index.
+- `products_store_id_product_status_index` (store_id,product_status) — index.
+- `products_store_id_slug_unique` (store_id,slug) — unique.
+
+## `remembered_accounts` (added by `2026_11_09_000002_create_remembered_accounts_table`)
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `user_id` | `bigint unsigned` | NO | — | MUL |
+| `token_hash` | `varchar(64)` | NO | — | UNI |
+| `expires_at` | `timestamp` | NO | — |  |
+| `last_used_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `user_id` → `users.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `remembered_accounts_token_hash_unique` (token_hash) — unique.
+- `remembered_accounts_user_id_expires_at_index` (user_id,expires_at) — index.
+
+## `refunds`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `refund_no` | `varchar(40)` | NO | — | UNI |
+| `return_request_id` | `bigint unsigned` | YES | — | MUL |
+| `payment_id` | `bigint unsigned` | YES | — | MUL |
+| `order_id` | `bigint unsigned` | NO | — | MUL |
+| `amount_minor` | `bigint unsigned` | NO | — |  |
+| `payout_amount_minor` | `bigint unsigned` | YES | — |  |
+| `status` | `varchar(30)` | NO | pending |  |
+| `financially_responsible_party` | `varchar(20)` | YES | — |  |
+| `financial_responsibility_reason` | `text` | YES | — |  |
+| `method` | `varchar(30)` | NO | — |  |
+| `provider_reference` | `varchar(150)` | YES | — |  |
+| `external_paid_on` | `date` | YES | — |  |
+| `payout_receipt_disk` | `varchar(50)` | YES | — |  |
+| `payout_receipt_path` | `varchar(500)` | YES | — |  |
+| `payout_receipt_mime_type` | `varchar(100)` | YES | — |  |
+| `payout_receipt_original_name` | `varchar(255)` | YES | — |  |
+| `payout_receipt_size_bytes` | `bigint unsigned` | YES | — |  |
+| `approved_by` | `bigint unsigned` | YES | — | MUL |
+| `processed_by` | `bigint unsigned` | YES | — | MUL |
+| `approved_at` | `timestamp` | YES | — |  |
+| `processed_at` | `timestamp` | YES | — |  |
+| `completed_at` | `timestamp` | YES | — |  |
+| `failed_at` | `timestamp` | YES | — |  |
+| `failure_reason` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `processed_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `approved_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `order_id` → `orders.id`; update NO ACTION, delete RESTRICT.
+- `payment_id` → `payments.id`; update NO ACTION, delete RESTRICT.
+- `return_request_id` → `return_requests.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `refunds_approved_by_foreign` (approved_by) — index.
+- `refunds_order_id_foreign` (order_id) — index.
+- `refunds_processed_by_foreign` (processed_by) — index.
+- `refunds_payment_id_foreign` (payment_id) — index.
+- `refunds_refund_no_unique` (refund_no) — unique.
+- `refunds_return_request_id_foreign` (return_request_id) — index.
+
+## `refund_cash_payouts` (added by `2026_10_11_000001_create_cod_cash_and_refund_cash_workflows`)
+
+One cash-custody workflow per approved refund. Buyer acknowledgment files are stored on a private Laravel disk; rows keep file metadata and path only. `delivery_attempt_count` includes failed and successful Rider delivery attempts.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `payout_no` | `varchar(40)` | NO | — | UNI |
+| `refund_id` | `bigint unsigned` | NO | — | UNI |
+| `return_request_id` | `bigint unsigned` | NO | — | MUL |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `rider_profile_id` | `bigint unsigned` | YES | — | MUL |
+| `amount_minor` | `bigint unsigned` | NO | — |  |
+| `status` | `varchar(40)` | NO | awaiting_logistics_receipt |  |
+| `finance_issue_reference` | `varchar(150)` | YES | — |  |
+| `issued_to_logistics_at` | `timestamp` | YES | — |  |
+| `issued_to_logistics_by` | `bigint unsigned` | YES | — | MUL |
+| `logistics_receipt_reference` | `varchar(150)` | YES | — |  |
+| `received_by_logistics_at` | `timestamp` | YES | — |  |
+| `received_by_logistics` | `bigint unsigned` | YES | — | MUL |
+| `assigned_at` | `timestamp` | YES | — |  |
+| `assigned_by` | `bigint unsigned` | YES | — | MUL |
+| `received_by_rider_at` | `timestamp` | YES | — |  |
+| `received_by_rider_user_id` | `bigint unsigned` | YES | — | MUL |
+| `started_at` | `timestamp` | YES | — |  |
+| `last_attempt_at` | `timestamp` | YES | — |  |
+| `failure_reason` | `text` | YES | — |  |
+| `amount_returned_to_logistics_minor` | `bigint unsigned` | YES | — |  |
+| `cash_return_reference` | `varchar(150)` | YES | — |  |
+| `cash_returned_to_logistics_at` | `timestamp` | YES | — |  |
+| `cash_returned_to_logistics_by` | `bigint unsigned` | YES | — | MUL |
+| `logistics_cash_return_reference` | `varchar(150)` | YES | — |  |
+| `logistics_cash_return_received_at` | `timestamp` | YES | — |  |
+| `logistics_cash_return_received_by` | `bigint unsigned` | YES | — | MUL |
+| `recipient_name` | `varchar(160)` | YES | — |  |
+| `acknowledgment_reference` | `varchar(150)` | YES | — |  |
+| `acknowledgment_disk` | `varchar(32)` | YES | — |  |
+| `acknowledgment_path` | `varchar(500)` | YES | — |  |
+| `acknowledgment_mime_type` | `varchar(100)` | YES | — |  |
+| `acknowledgment_original_name` | `varchar(255)` | YES | — |  |
+| `acknowledgment_size_bytes` | `bigint unsigned` | YES | — |  |
+| `delivered_at` | `timestamp` | YES | — |  |
+| `delivered_by_user_id` | `bigint unsigned` | YES | — | MUL |
+| `logistics_verified_at` | `timestamp` | YES | — |  |
+| `logistics_verified_by` | `bigint unsigned` | YES | — | MUL |
+| `completed_at` | `timestamp` | YES | — |  |
+| `completed_by` | `bigint unsigned` | YES | — | MUL |
+| `delivery_attempt_count` | `int unsigned` | NO | 0 |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `refund_id` → `refunds.id`; `return_request_id` → `return_requests.id`; delete RESTRICT. `refund_id` is unique.
+- `logistics_profile_id` → `logistics_profiles.id`; delete RESTRICT. `rider_profile_id` → `rider_profiles.id`; delete SET NULL.
+- Finance, Logistics, Rider, and completion actor references point to `users.id`; delete SET NULL.
+
+**Indexes**
+
+- `refund_cash_logistics_status_idx` (logistics_profile_id,status,created_at).
+- `refund_cash_rider_status_idx` (rider_profile_id,status).
+
+`acknowledgment_reference` stores the active Rider delivery attempt's system-generated reference. It is generated when Logistics assigns a Rider (or by an explicit Logistics preparation action for a legacy assignment) so Logistics can print the form before dispatch. The matching `refund_cash_payout_events.reference` preserves assignment, delivery-start, and failed-attempt references for audit; reassignment after a confirmed cash return replaces the active value with the next attempt's reference.
+
+## `refund_cash_payout_events` (added by `2026_10_11_000001_create_cod_cash_and_refund_cash_workflows`)
+
+Append-only refund custody history with payout ID, event type, from/to statuses, nullable actor, integer-centavo amount, reference, note, optional JSON metadata, occurrence timestamp, and creation timestamp. Payout deletion is RESTRICT; actor deletion sets NULL. Indexed by (`refund_cash_payout_id`,`occurred_at`).
+
+## `return_evidence`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `return_request_id` | `bigint unsigned` | NO | — | MUL |
+| `uploaded_by` | `bigint unsigned` | YES | — | MUL |
+| `type` | `varchar(30)` | NO | — |  |
+| `mime_type` | `varchar(100)` | YES | — |  |
+| `file_path` | `varchar(500)` | NO | — |  |
+| `original_name` | `varchar(255)` | NO | — |  |
+| `size_bytes` | `bigint unsigned` | YES | — |  |
+| `description` | `varchar(500)` | YES | — |  |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys**
+
+- `return_request_id` → `return_requests.id`; update NO ACTION, delete CASCADE.
+- `uploaded_by` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `return_evidence_return_request_id_foreign` (return_request_id) — index.
+- `return_evidence_uploaded_by_foreign` (uploaded_by) — index.
+
+## `return_events`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `return_request_id` | `bigint unsigned` | NO | — | MUL |
+| `actor_user_id` | `bigint unsigned` | YES | — | MUL |
+| `event_type` | `varchar(50)` | NO | — |  |
+| `from_status` | `varchar(40)` | YES | — |  |
+| `to_status` | `varchar(40)` | YES | — |  |
+| `note` | `text` | YES | — |  |
+| `metadata` | `json` | YES | — |  |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys**
+
+- `actor_user_id` → `users.id`; update NO ACTION, delete SET NULL.
+- `return_request_id` → `return_requests.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `return_events_return_request_id_created_at_index` (return_request_id,created_at) — index.
+
+## `return_items`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `return_request_id` | `bigint unsigned` | NO | — | MUL |
+| `order_item_id` | `bigint unsigned` | NO | — | MUL |
+| `quantity` | `int unsigned` | NO | — |  |
+| `condition_code` | `varchar(40)` | YES | — |  |
+| `resolution` | `varchar(30)` | YES | — |  |
+| `quarantine_review_status` | `varchar(20)` | YES | — | MUL |
+| `quarantine_final_condition_code` | `varchar(40)` | YES | — |  |
+| `quarantine_final_resolution` | `varchar(30)` | YES | — |  |
+| `quarantine_review_note` | `text` | YES | — |  |
+| `quarantine_reviewed_by` | `bigint unsigned` | YES | — | MUL |
+| `quarantine_reviewed_at` | `timestamp` | YES | — |  |
+| `refund_amount_minor` | `bigint unsigned` | NO | 0 |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `order_item_id` → `order_items.id`; update NO ACTION, delete RESTRICT.
+- `return_request_id` → `return_requests.id`; update NO ACTION, delete CASCADE.
+- `quarantine_reviewed_by` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `return_items_order_item_id_foreign` (order_item_id) — index.
+- `return_items_return_request_id_order_item_id_unique` (return_request_id,order_item_id) — unique.
+- `return_items_quarantine_review_status_index` (quarantine_review_status,return_request_id) — index.
+
+## `return_requests`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `return_no` | `varchar(32)` | NO | — | UNI |
+| `order_id` | `bigint unsigned` | NO | — | MUL |
+| `seller_order_id` | `bigint unsigned` | NO | — | MUL |
+| `buyer_id` | `bigint unsigned` | NO | — | MUL |
+| `store_id` | `bigint unsigned` | NO | — | MUL |
+| `request_type` | `varchar(30)` | NO | — |  |
+| `return_delivery_method` | `varchar(30)` | YES | — |  |
+| `reason_code` | `varchar(50)` | NO | — |  |
+| `buyer_note` | `text` | YES | — |  |
+| `seller_response` | `text` | YES | — |  |
+| `status` | `varchar(40)` | NO | awaiting_seller |  |
+| `requested_amount_minor` | `bigint unsigned` | NO | — |  |
+| `response_due_at` | `timestamp` | YES | — |  |
+| `submitted_at` | `timestamp` | NO | — |  |
+| `seller_responded_at` | `timestamp` | YES | — |  |
+| `reviewed_at` | `timestamp` | YES | — |  |
+| `resolved_at` | `timestamp` | YES | — |  |
+| `reviewed_by` | `bigint unsigned` | YES | — | MUL |
+| `resolution` | `text` | YES | — |  |
+| `return_shipment_id` | `bigint unsigned` | YES | — | MUL |
+| `dropoff_due_at` | `timestamp` | YES | — |  |
+| `dropoff_sorting_center_id` | `bigint unsigned` | YES | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `buyer_id` → `users.id`; update NO ACTION, delete RESTRICT.
+- `dropoff_sorting_center_id` → `sorting_centers.id`; update NO ACTION, delete SET NULL.
+- `order_id` → `orders.id`; update NO ACTION, delete RESTRICT.
+- `return_shipment_id` → `shipments.id`; update NO ACTION, delete SET NULL.
+- `reviewed_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `seller_order_id` → `seller_orders.id`; update NO ACTION, delete RESTRICT.
+- `store_id` → `stores.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `return_requests_buyer_id_foreign` (buyer_id) — index.
+- `return_requests_order_id_foreign` (order_id) — index.
+- `return_requests_return_no_unique` (return_no) — unique.
+- `return_requests_return_shipment_id_foreign` (return_shipment_id) — index.
+- `return_requests_dropoff_sorting_center_id_foreign` (dropoff_sorting_center_id) — index.
+- `return_requests_reviewed_by_foreign` (reviewed_by) — index.
+- `return_requests_seller_order_id_foreign` (seller_order_id) — index.
+- `return_requests_store_id_foreign` (store_id) — index.
+
+## `rider_earnings`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `rider_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `pickup_assignment_id` | `bigint unsigned` | YES | — | MUL |
+| `delivery_attempt_id` | `bigint unsigned` | YES | — | MUL |
+| `shipping_settlement_id` | `bigint unsigned` | YES | — | UNI |
+| `shipment_id` | `bigint unsigned` | YES | — | MUL |
+| `logistics_profile_id` | `bigint unsigned` | YES | — | MUL |
+| `type` | `varchar(30)` | NO | — |  |
+| `amount_minor` | `bigint` | NO | — |  |
+| `status` | `varchar(30)` | NO | pending |  |
+| `description` | `varchar(255)` | YES | — |  |
+| `earned_at` | `timestamp` | NO | — |  |
+| `posted_at` | `timestamp` | YES | — |  |
+| `paid_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+| `parcel_id` | `bigint unsigned` | YES | — | MUL |
+| `rider_shift_id` | `bigint unsigned` | YES | — | MUL |
+| `linehaul_run_id` | `bigint unsigned` | YES | — | MUL |
+| `work_date` | `date` | YES | — | MUL |
+| `size_class_snapshot` | `varchar(20)` | YES | — |  |
+| `rate_minor` | `bigint unsigned` | YES | — |  |
+| `worked_seconds_snapshot` | `int unsigned` | YES | — |  |
+| `daily_cap_minor_snapshot` | `bigint unsigned` | YES | — |  |
+
+**Foreign keys**
+
+- `delivery_attempt_id` → `delivery_attempts.id`; update NO ACTION, delete SET NULL.
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `linehaul_run_id` → `linehaul_runs.id`; update NO ACTION, delete SET NULL.
+- `parcel_id` → `parcels.id`; update NO ACTION, delete SET NULL.
+- `pickup_assignment_id` → `pickup_assignments.id`; update NO ACTION, delete SET NULL.
+- `rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete RESTRICT.
+- `rider_shift_id` → `rider_shifts.id`; update NO ACTION, delete SET NULL.
+- `shipping_settlement_id` → `shipping_settlements.id`; update NO ACTION, delete RESTRICT.
+- `shipment_id` → `shipments.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `rider_earnings_delivery_attempt_id_foreign` (delivery_attempt_id) — index.
+- `rider_earnings_parcel_id_foreign` (parcel_id) — index.
+- `rider_earnings_pickup_assignment_id_foreign` (pickup_assignment_id) — index.
+- `rider_earnings_rider_profile_id_foreign` (rider_profile_id) — index.
+- `rider_earnings_rider_shift_id_foreign` (rider_shift_id) — index.
+- `rider_earnings_linehaul_run_id_foreign` (linehaul_run_id) — index.
+- `rider_earnings_courier_work_date_idx` (rider_profile_id,work_date) — index.
+- `rider_earnings_pickup_parcel_unique` (pickup_assignment_id,parcel_id) — unique.
+- `rider_earnings_courier_daily_unique` (rider_profile_id,type,work_date) — unique; `work_date` remains null for non-Courier ledger rows.
+- `rider_earnings_provider_status_idx` (logistics_profile_id,status,earned_at) — index.
+- `rider_earnings_shipping_settlement_id_unique` (shipping_settlement_id) — unique.
+
+## `rider_earning_payouts`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `rider_earning_id` | `bigint unsigned` | NO | — | UNI |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `amount_minor` | `bigint unsigned` | NO | — |  |
+| `method` | `varchar(30)` | NO | — |  |
+| `reference` | `varchar(150)` | NO | — |  |
+| `paid_on` | `date` | NO | — |  |
+| `recorded_by` | `bigint unsigned` | NO | — | MUL |
+| `reason` | `text` | NO | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `recorded_by` → `users.id`; update NO ACTION, delete RESTRICT.
+- `rider_earning_id` → `rider_earnings.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `rider_earning_payouts_provider_created_idx` (logistics_profile_id,created_at) — index.
+- `rider_earning_payouts_rider_earning_id_unique` (rider_earning_id) — unique.
+
+## `rider_payout_batches` (added by `2026_11_03_000001_add_flexible_rider_assignment_and_payouts`)
+
+One reviewed, provider-owned external payout for one Rider; batch items snapshot the eligible posted earning amounts/types across assignments and attendance shifts. The batch is not a wallet or transfer instruction.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `batch_no` | `varchar(40)` | NO | — | UNI |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `rider_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `status` | `varchar(24)` | NO | pending_review |  |
+| `total_minor` | `bigint unsigned` | NO | 0 |  |
+| `review_notes` | `text` | YES | — |  |
+| `reviewed_by` | `bigint unsigned` | YES | — | MUL |
+| `reviewed_at` | `timestamp` | YES | — |  |
+| `approved_by` | `bigint unsigned` | YES | — | MUL |
+| `approved_at` | `timestamp` | YES | — |  |
+| `method` | `varchar(30)` | YES | — |  |
+| `reference` | `varchar(150)` | YES | — |  |
+| `paid_on` | `date` | YES | — |  |
+| `recorded_by` | `bigint unsigned` | YES | — | MUL |
+| `reason` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `approved_by`, `recorded_by`, and `reviewed_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `rider_payout_batches_batch_no_unique` (batch_no) — unique.
+- `rider_payout_batches_provider_status_idx` (logistics_profile_id,status,created_at) — index.
+- `rider_payout_batches_rider_status_idx` (rider_profile_id,status) — index.
+
+## `rider_payout_batch_items` (added by `2026_11_03_000001_add_flexible_rider_assignment_and_payouts`)
+
+Unique earning allocation within a payout batch. External payment details and the actual paid transition are retained on the batch and the existing per-earning `rider_earning_payouts` records.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `rider_payout_batch_id` | `bigint unsigned` | NO | — | MUL |
+| `rider_earning_id` | `bigint unsigned` | NO | — | UNI |
+| `amount_minor` | `bigint unsigned` | NO | — |  |
+| `earning_type` | `varchar(30)` | NO | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `rider_earning_id` → `rider_earnings.id`; update NO ACTION, delete RESTRICT.
+- `rider_payout_batch_id` → `rider_payout_batches.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `rider_payout_batch_items_rider_earning_id_unique` (rider_earning_id) — unique.
+- `rider_payout_batch_items_batch_type_idx` (rider_payout_batch_id,earning_type) — index.
+
+## `rider_shifts` (added by `2026_11_03_000001_add_flexible_rider_assignment_and_payouts`)
+
+Both Local Riders and Couriers must scan their owning Logistics provider's short-lived QR challenge for check-in and check-out. `rider_attendance_scans` stores server-timestamped transition proof and generation metadata; station rows retain only the active challenge SHA-256 hash, never the raw QR token. Local Rider attendance remains reporting-only and does not gate per-job earnings. Courier compensation is ₱81.25/hour (8,125 centavos), rounded from elapsed seconds and capped at ₱650/28,800 paid seconds per Asia/Manila work date. Fully QR-proven closed shifts aggregate into one `courier_daily` ledger row per Rider/PHT date, only when a run assigned during a closed shift is completed after destination Logistics accepts the full manifest. The hourly rate, paid seconds, and daily cap are saved snapshots; historical rows with null hourly snapshots remain unchanged. Payout is blocked while a same-date shift is open, and additional shifts are blocked after the day's earning is batched or paid. Actual payout remains in the existing reviewed payout batch rather than a wallet.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `rider_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `checked_in_at` | `timestamp` | NO | — |  |
+| `checked_out_at` | `timestamp` | YES | — |  |
+| `check_in_source` | `varchar(30)` | NO | rider |  |
+| `check_out_source` | `varchar(30)` | YES | — |  |
+| `notes` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `rider_shifts_rider_checked_in_idx` (rider_profile_id,checked_in_at) — index.
+- `rider_shifts_rider_profile_id_foreign` (rider_profile_id) — index.
+
+## `rider_attendance_qr_stations` (added by `2026_11_07_000001_add_qr_rider_attendance_and_hourly_courier_pay`)
+
+One provider-scoped row holds the currently valid rotating attendance challenge. `token_hash` is SHA-256 only; raw QR payloads are returned to the authenticated Logistics station client and are not persisted. A newly issued generation replaces the previous one and expires after the configured short TTL.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | UNI |
+| `token_hash` | `char(64)` | YES | — |  |
+| `generation` | `bigint unsigned` | NO | 0 |  |
+| `expires_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `rider_attendance_qr_stations_logistics_profile_id_foreign` (logistics_profile_id) — index.
+- `rider_attendance_qr_stations_logistics_profile_id_unique` (logistics_profile_id) — unique.
+
+## `rider_attendance_scans` (added by `2026_11_07_000001_add_qr_rider_attendance_and_hourly_courier_pay`)
+
+Immutable successful QR redemption records. The generation is unique per station/Rider, allowing one check-in or check-out transition per code generation while the same provider station can serve multiple Riders. No raw token or QR payload is stored.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `station_id` | `bigint unsigned` | NO | — | MUL |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `rider_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `rider_shift_id` | `bigint unsigned` | NO | — | MUL |
+| `generation` | `bigint unsigned` | NO | — |  |
+| `scan_type` | `varchar(20)` | NO | — |  |
+| `scanned_at` | `timestamp` | NO | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `station_id` → `rider_attendance_qr_stations.id`; update NO ACTION, delete RESTRICT.
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete RESTRICT.
+- `rider_shift_id` → `rider_shifts.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `rider_attendance_scans_station_generation_rider_unique` (station_id,generation,rider_profile_id) — unique.
+- `rider_attendance_scans_rider_scanned_idx` (rider_profile_id,scanned_at) — index.
+- `rider_attendance_scans_shift_type_idx` (rider_shift_id,scan_type) — index.
+
+## `rider_attendance_absences` (added by `2026_11_07_000002_create_rider_attendance_absences`)
+
+Immutable manual absence audit for the owning Logistics provider's active, approved Local Rider/Courier roster. One row is allowed per Rider and PHT work date. Logistics can mark absent starting at 11:59 PM PHT only when there is no shift check-in for that date. The marking user and UTC action instant are retained; a later QR check-in is displayed as late and does not remove the absence.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `rider_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `work_date` | `date` | NO | — |  |
+| `marked_by_user_id` | `bigint unsigned` | NO | — | MUL |
+| `marked_at` | `timestamp` | NO | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete RESTRICT.
+- `marked_by_user_id` → `users.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `rider_attendance_absences_rider_date_unique` (rider_profile_id,work_date) — unique.
+- `rider_attendance_absences_provider_date_idx` (logistics_profile_id,work_date) — index.
+
+## `shipping_settlements`
+
+The `settlement_type` is `outbound` or `return`. Outbound rows use
+`original_shipping_fee_minor`; return rows use `return_shipping_fee_minor` and
+link the approved physical `return_request_id`. A nullable `settlement_mode`
+preserves legacy snapshots: new single-provider outbound rows store
+`single_provider`, and new outbound rows with one accepted inter-hub transfer
+store `inter_hub`. Inter-hub rows snapshot the origin provider and 10% origin
+share here; their separate L1 remittance is stored in
+`shipping_settlement_origin_remittances`, while the existing remittance fields
+record L2's 90%. The row is `partially_remitted` until both are recorded, and
+the Rider earning remains pending until then. Returns remain on their existing
+40/60 split even when transferred. Existing settlement rows are not backfilled
+or rewritten by the inter-hub migration.
+The additive `2026_10_30_000001_add_logistics_payout_destinations` migration adds a nullable verified payout-account link and masked remittance destination snapshots; legacy remittance rows remain null.
+For a consolidated outbound Shipment, the settlement header retains its legacy/primary `seller_order_id` and aggregate totals; `shipping_settlement_allocations` preserves each included Seller Order's immutable checkout shipping-fee, buyer-paid, platform-subsidy, funding-source, zone, and share snapshots. Return settlements continue to use the existing return workflow and do not receive outbound allocations.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `settlement_no` | `varchar(40)` | NO | — | UNI |
+| `settlement_type` | `varchar(24)` | NO | outbound |  |
+| `seller_order_id` | `bigint unsigned` | NO | — | MUL |
+| `shipment_id` | `bigint unsigned` | NO | — | UNI |
+| `return_request_id` | `bigint unsigned` | YES | — | UNI |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `rider_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `delivery_attempt_id` | `bigint unsigned` | NO | — | MUL |
+| `zone_level` | `tinyint unsigned` | NO | — |  |
+| `settlement_mode` | `varchar(24)` | YES | — |  |
+| `origin_logistics_profile_id` | `bigint unsigned` | YES | — | MUL |
+| `original_shipping_fee_minor` | `bigint unsigned` | NO | — |  |
+| `return_shipping_fee_minor` | `bigint unsigned` | YES | — |  |
+| `buyer_paid_shipping_fee_minor` | `bigint unsigned` | NO | — |  |
+| `platform_shipping_subsidy_minor` | `bigint unsigned` | NO | — |  |
+| `shipping_funding_source` | `varchar(40)` | NO | — |  |
+| `financially_responsible_party` | `varchar(20)` | YES | — |  |
+| `logistics_share_minor` | `bigint unsigned` | NO | — |  |
+| `origin_logistics_share_minor` | `bigint unsigned` | NO | 0 |  |
+| `rider_share_minor` | `bigint unsigned` | NO | — |  |
+| `status` | `varchar(24)` | NO | pending |  |
+| `eligible_at` | `timestamp` | NO | — |  |
+| `remitted_amount_minor` | `bigint unsigned` | YES | — |  |
+| `remittance_method` | `varchar(30)` | YES | — |  |
+| `remittance_reference` | `varchar(150)` | YES | — |  |
+| `remitted_on` | `date` | YES | — |  |
+| `remitted_at` | `timestamp` | YES | — |  |
+| `remitted_by` | `bigint unsigned` | YES | — | MUL |
+| `remittance_reason` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+| `logistics_payout_account_id` | `bigint unsigned` | YES | — | MUL |
+| `remitted_to_provider` | `varchar(120)` | YES | — |  |
+| `remitted_to_account_name` | `varchar(160)` | YES | — |  |
+| `remitted_to_last4` | `char(4)` | YES | — |  |
+
+**Foreign keys**
+
+- `delivery_attempt_id` → `delivery_attempts.id`; update NO ACTION, delete RESTRICT.
+- `financially_responsible_party` is a Seller/Platform snapshot for return rows; it has no FK.
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `origin_logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `logistics_payout_account_id` → `logistics_payout_accounts.id`; update NO ACTION, delete RESTRICT.
+- `remitted_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `return_request_id` → `return_requests.id`; update NO ACTION, delete RESTRICT.
+- `rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete RESTRICT.
+- `seller_order_id` → `seller_orders.id`; update NO ACTION, delete RESTRICT.
+- `shipment_id` → `shipments.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `shipping_settlement_provider_status_idx` (logistics_profile_id,status,eligible_at) — index.
+- `origin_logistics_profile_id` foreign-key index — index.
+- `shipping_settlements_logistics_payout_account_id_foreign` (logistics_payout_account_id) — index.
+- `shipping_settlement_type_status_idx` (settlement_type,status,eligible_at) — index.
+- `shipping_settlements_return_request_id_unique` (return_request_id) — unique.
+- `shipping_settlements_settlement_no_unique` (settlement_no) — unique.
+- `shipping_settlements_shipment_id_unique` (shipment_id) — unique.
+
+## `shipping_settlement_allocations` (added by `2026_11_07_000003_add_seller_order_shipment_consolidation`)
+
+One immutable outbound fee/share snapshot per Seller Order included in a shared shipment settlement. The migration backfills one allocation for each existing outbound settlement. Per-order original fee must equal buyer-paid shipping plus platform subsidy; fee and share columns sum to the settlement header's aggregate totals. Amounts are integer centavos.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `shipping_settlement_id` | `bigint unsigned` | NO | — | MUL |
+| `seller_order_id` | `bigint unsigned` | NO | — | MUL |
+| `original_shipping_fee_minor` | `bigint unsigned` | NO | — |  |
+| `buyer_paid_shipping_fee_minor` | `bigint unsigned` | NO | — |  |
+| `platform_shipping_subsidy_minor` | `bigint unsigned` | NO | — |  |
+| `shipping_funding_source` | `varchar(40)` | NO | — |  |
+| `zone_level` | `tinyint unsigned` | NO | — |  |
+| `origin_logistics_share_minor` | `bigint unsigned` | NO | 0 |  |
+| `logistics_share_minor` | `bigint unsigned` | NO | — |  |
+| `rider_share_minor` | `bigint unsigned` | NO | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `shipping_settlement_id` → `shipping_settlements.id`; `seller_order_id` → `seller_orders.id`; delete RESTRICT.
+
+**Indexes**
+
+- `shipping_settlement_allocations_pair_unique` (`shipping_settlement_id`,`seller_order_id`) — unique.
+- `shipping_settlement_allocations_order_idx` (`seller_order_id`,`shipping_settlement_id`) — index.
+
+## `shipping_settlement_origin_remittances`
+
+This table stores the independent Finance transfer of an inter-hub outbound
+shipment's 10% origin Logistics share. It is unique per settlement and
+snapshots its recipient, amount, payment reference/date/actor, verified
+destination link, and masked destination. It is created only for newly
+materialized inter-hub settlements; it does not backfill old settlements.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `shipping_settlement_id` | `bigint unsigned` | NO | — | UNI |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `amount_minor` | `bigint unsigned` | NO | — |  |
+| `status` | `varchar(24)` | NO | pending |  |
+| `logistics_payout_account_id` | `bigint unsigned` | YES | — | MUL |
+| `remittance_method` | `varchar(30)` | YES | — |  |
+| `remittance_reference` | `varchar(150)` | YES | — |  |
+| `remitted_on` | `date` | YES | — |  |
+| `remitted_at` | `timestamp` | YES | — |  |
+| `remitted_by` | `bigint unsigned` | YES | — | MUL |
+| `remittance_reason` | `text` | YES | — |  |
+| `remitted_to_provider` | `varchar(120)` | YES | — |  |
+| `remitted_to_account_name` | `varchar(160)` | YES | — |  |
+| `remitted_to_last4` | `char(4)` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `shipping_settlement_id` → `shipping_settlements.id`; update NO ACTION, delete RESTRICT.
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `logistics_payout_account_id` → `logistics_payout_accounts.id`; update NO ACTION, delete RESTRICT.
+- `remitted_by` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `ss_origin_remit_settlement_unique` (shipping_settlement_id) — unique.
+- `ss_origin_remittances_provider_status_idx` (logistics_profile_id,status) — index.
+
+## `rider_profiles`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `user_id` | `bigint unsigned` | NO | — | UNI |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `home_sorting_center_id` | `bigint unsigned` | YES | — | MUL |
+| `current_zone_id` | `bigint unsigned` | YES | — | MUL |
+| `vehicle_type` | `varchar(80)` | NO | — |  |
+| `vehicle_model` | `varchar(100)` | YES | — |  |
+| `plate_number` | `varchar(30)` | YES | — |  |
+| `parcel_capacity` | `smallint unsigned` | YES | — |  |
+| `emergency_contact_name` | `varchar(160)` | YES | — |  |
+| `emergency_contact_phone` | `varchar(30)` | YES | — |  |
+| `availability_status` | `varchar(30)` | NO | offline |  |
+| `verification_status` | `varchar(30)` | NO | pending |  |
+| `work_type` | `varchar(20)` | YES | — |  |
+| `specialization` | `varchar(20)` | NO | both | MUL |
+| `linehaul_parcel_capacity` | `smallint unsigned` | YES | — |  |
+| `courier_vehicle_verified_by` | `bigint unsigned` | YES | — | MUL |
+| `courier_vehicle_verified_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+| `deleted_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `current_zone_id` → `sorting_zones.id`; update NO ACTION, delete SET NULL.
+- `home_sorting_center_id` → `sorting_centers.id`; update NO ACTION, delete SET NULL.
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `courier_vehicle_verified_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `user_id` → `users.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `rider_profiles_current_zone_id_foreign` (current_zone_id) — index.
+- `rider_profiles_home_sorting_center_id_foreign` (home_sorting_center_id) — index.
+- `rider_profiles_logistics_profile_id_availability_status_index` (logistics_profile_id,availability_status) — index.
+- `rider_profiles_provider_specialization_idx` (logistics_profile_id,specialization) — index.
+- `rider_profiles_courier_vehicle_verified_by_foreign` (courier_vehicle_verified_by) — index.
+- `rider_profiles_plate_number_unique` (plate_number) — unique.
+- `rider_profiles_user_id_unique` (user_id) — unique.
+
+## `rider_locations` (added by `2026_11_02_000002_create_rider_locations_table`)
+
+Stores only the latest foreground local-Rider location. It is not a location
+history table; provider-scoped Logistics queries decide which eligible Riders
+may see the row. Rows older than three minutes are stale for recommendations.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `rider_profile_id` | `bigint unsigned` | NO | — | UNI |
+| `latitude` | `decimal(10,7)` | NO | — |  |
+| `longitude` | `decimal(10,7)` | NO | — |  |
+| `accuracy_meters` | `decimal(8,2)` | YES | — |  |
+| `last_seen_at` | `timestamp` | NO | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `rider_locations_last_seen_at_index` (last_seen_at) — index.
+- `rider_locations_rider_profile_id_unique` (rider_profile_id) — unique.
+
+## `logistics_locations` (added by `2026_11_08_000001_create_logistics_locations_table`)
+
+Stores only the latest explicitly shared foreground device location for a
+Logistics provider. This is not the Sorting Center address pin and is not a
+location-history table. The owning provider's internal Logistics maps may show
+fresh rows (180 seconds); coarse readings remain labeled approximate and are
+not used for distance, routing, or assignment.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | UNI |
+| `latitude` | `decimal(10,7)` | NO | — |  |
+| `longitude` | `decimal(10,7)` | NO | — |  |
+| `accuracy_meters` | `decimal(9,2)` | YES | — |  |
+| `last_seen_at` | `timestamp` | NO | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `logistics_locations_last_seen_at_index` (`last_seen_at`) — index.
+- `logistics_locations_logistics_profile_id_unique` (`logistics_profile_id`) — unique.
+
+## `rider_vehicle_change_requests` (added by `2026_11_01_000001_add_courier_linehaul_workflows`)
+
+Stores proposed vehicle/work-type values and private document metadata until the Rider's sponsoring Logistics provider reviews the request. Approval updates the active Rider profile; rejection retains the request and review record.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `rider_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `requested_work_type` | `varchar(20)` | NO | — |  |
+| `vehicle_type` | `varchar(80)` | NO | — |  |
+| `vehicle_model` | `varchar(160)` | YES | — |  |
+| `plate_number` | `varchar(30)` | NO | — |  |
+| `or_cr_disk` | `varchar(40)` | NO | local |  |
+| `or_cr_path` | `varchar(500)` | NO | — |  |
+| `or_cr_original_name` | `varchar(255)` | NO | — |  |
+| `or_cr_mime_type` | `varchar(100)` | NO | — |  |
+| `or_cr_size_bytes` | `bigint unsigned` | NO | — |  |
+| `driver_license_disk` | `varchar(40)` | NO | local |  |
+| `driver_license_path` | `varchar(500)` | NO | — |  |
+| `driver_license_original_name` | `varchar(255)` | NO | — |  |
+| `driver_license_mime_type` | `varchar(100)` | NO | — |  |
+| `driver_license_size_bytes` | `bigint unsigned` | NO | — |  |
+| `status` | `varchar(24)` | NO | pending |  |
+| `reviewed_by` | `bigint unsigned` | YES | — | MUL |
+| `reviewed_at` | `timestamp` | YES | — |  |
+| `review_notes` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete RESTRICT.
+- `reviewed_by` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `rider_vehicle_change_requests_rider_profile_id_foreign` (rider_profile_id) — index.
+- `rider_vehicle_change_requests_reviewed_by_foreign` (reviewed_by) — index.
+- `rider_vehicle_change_requests_rider_status_created_idx` (rider_profile_id,status,created_at) — index.
+
+## `role_user`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `role_id` | `bigint unsigned` | NO | — | PRI |
+| `user_id` | `bigint unsigned` | NO | — | PRI |
+| `assigned_by` | `bigint unsigned` | YES | — | MUL |
+| `assigned_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys**
+
+- `assigned_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `role_id` → `roles.id`; update NO ACTION, delete CASCADE.
+- `user_id` → `users.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `role_user_assigned_by_foreign` (assigned_by) — index.
+- `role_user_user_id_foreign` (user_id) — index.
+
+## `roles`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `name` | `varchar(40)` | NO | — | UNI |
+| `display_name` | `varchar(80)` | NO | — |  |
+| `description` | `varchar(255)` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Indexes**
+
+- `roles_name_unique` (name) — unique.
+
+## `seller_order_status_histories`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `seller_order_id` | `bigint unsigned` | NO | — | MUL |
+| `from_status` | `varchar(30)` | YES | — |  |
+| `to_status` | `varchar(30)` | NO | — |  |
+| `actor_user_id` | `bigint unsigned` | YES | — | MUL |
+| `reason` | `text` | YES | — |  |
+| `occurred_at` | `timestamp` | NO | — |  |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys**
+
+- `actor_user_id` → `users.id`; update NO ACTION, delete SET NULL.
+- `seller_order_id` → `seller_orders.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `seller_order_status_history_order_time_index` (seller_order_id,occurred_at) — index.
+- `seller_order_status_histories_actor_user_id_foreign` (actor_user_id) — index.
+
+## `seller_orders`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `seller_order_no` | `varchar(32)` | NO | — | UNI |
+| `order_id` | `bigint unsigned` | NO | — | MUL |
+| `store_id` | `bigint unsigned` | NO | — | MUL |
+| `status` | `varchar(30)` | NO | pending |  |
+| `subtotal_minor` | `bigint unsigned` | NO | — |  |
+| `discount_minor` | `bigint unsigned` | NO | 0 |  |
+| `shipping_fee_minor` | `bigint unsigned` | NO | 0 |  |
+| `total_minor` | `bigint unsigned` | NO | — |  |
+| `fulfillment_deadline_at` | `timestamp` | YES | — |  |
+| `confirmed_at` | `timestamp` | YES | — |  |
+| `preparing_at` | `timestamp` | YES | — |  |
+| `ready_at` | `timestamp` | YES | — |  |
+| `handed_over_at` | `timestamp` | YES | — |  |
+| `delivered_at` | `timestamp` | YES | — |  |
+| `completed_at` | `timestamp` | YES | — |  |
+| `cancelled_at` | `timestamp` | YES | — |  |
+| `seller_note` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+| `delivery_provider_key` | `varchar(50)` | YES | — |  |
+| `shipping_quote` | `json` | YES | — |  |
+
+**Foreign keys**
+
+- `order_id` → `orders.id`; update NO ACTION, delete RESTRICT.
+- `store_id` → `stores.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `seller_orders_order_id_store_id_unique` (order_id,store_id) — unique.
+- `seller_orders_seller_order_no_unique` (seller_order_no) — unique.
+- `seller_orders_store_id_status_created_at_index` (store_id,status,created_at) — index.
+
+## `seller_payouts`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `payout_no` | `varchar(40)` | NO | — | UNI |
+| `seller_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `period_start` | `date` | NO | — |  |
+| `period_end` | `date` | NO | — |  |
+| `gross_minor` | `bigint unsigned` | NO | — |  |
+| `commission_minor` | `bigint unsigned` | NO | — |  |
+| `adjustment_minor` | `bigint` | NO | 0 |  |
+| `net_minor` | `bigint unsigned` | NO | — |  |
+| `status` | `varchar(30)` | NO | pending |  |
+| `due_at` | `timestamp` | YES | — |  |
+| `paid_at` | `timestamp` | YES | — |  |
+| `reference` | `varchar(150)` | YES | — |  |
+| `receiving_bank_name` | `varchar(120)` | YES | — |  |
+| `external_method` | `varchar(40)` | YES | — |  |
+| `receipt_disk` | `varchar(32)` | YES | — |  |
+| `receipt_path` | `varchar(500)` | YES | — |  |
+| `receipt_mime_type` | `varchar(100)` | YES | — |  |
+| `receipt_original_name` | `varchar(255)` | YES | — |  |
+| `receipt_size_bytes` | `bigint unsigned` | YES | — |  |
+| `paid_by` | `bigint unsigned` | YES | — | MUL |
+| `payment_reason` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `seller_profile_id` → `seller_profiles.id`; update NO ACTION, delete RESTRICT.
+- `paid_by` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `seller_payouts_payout_no_unique` (payout_no) — unique.
+- `seller_payouts_seller_profile_id_foreign` (seller_profile_id) — index.
+- `seller_payouts_paid_by_foreign` (paid_by) — index.
+
+## `seller_payout_items` (added by `2026_10_11_000001_create_cod_cash_and_refund_cash_workflows`)
+
+Links each posted Seller sale transaction to at most one pending/external-paid settlement; payout creation does not itself transfer funds.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `seller_payout_id` | `bigint unsigned` | NO | — | MUL |
+| `seller_transaction_id` | `bigint unsigned` | NO | — | UNI |
+| `gross_minor` | `bigint unsigned` | NO | — |  |
+| `commission_minor` | `bigint unsigned` | NO | — |  |
+| `net_minor` | `bigint` | NO | — |  |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys**
+
+- `seller_payout_id` → `seller_payouts.id`; `seller_transaction_id` → `seller_transactions.id`; delete RESTRICT.
+
+**Indexes**
+
+- `seller_payout_items_seller_transaction_id_unique` (seller_transaction_id) — unique.
+- `seller_payout_items_batch_idx` (seller_payout_id,seller_transaction_id) — index.
+
+## Seller Wallet and withdrawals (added by `2026_10_15_000001_create_seller_wallet_and_withdrawal_tables`)
+
+Money columns are integer centavos. `seller_bank_accounts.account_number` and `logistics_payout_accounts.destination_value` are encrypted by the Eloquent encrypted cast; their `*_last4` fields are display snapshots. Wallet ledger rows are immutable and store signed bucket deltas plus post-movement balance snapshots. The migration backfills paid legacy payouts into `total_withdrawn_minor` and the ledger only; it does not credit their sale transactions again.
+
+### `seller_wallets`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `seller_profile_id` | `bigint unsigned` | NO | — | UNI |
+| `available_balance_minor` | `bigint unsigned` | NO | 0 |  |
+| `pending_balance_minor` | `bigint unsigned` | NO | 0 |  |
+| `reserved_balance_minor` | `bigint unsigned` | NO | 0 |  |
+| `total_withdrawn_minor` | `bigint unsigned` | NO | 0 |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys and indexes**
+
+- `seller_profile_id` → `seller_profiles.id`; update NO ACTION, delete RESTRICT.
+- `seller_wallets_seller_profile_id_unique` (seller_profile_id) — unique.
+
+### `seller_bank_accounts`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `seller_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `bank_name` | `varchar(120)` | NO | — |  |
+| `account_name` | `varchar(160)` | NO | — |  |
+| `account_number` | `text` | NO | — |  |
+| `account_number_last4` | `char(4)` | NO | — |  |
+| `status` | `varchar(20)` | NO | active |  |
+| `is_default` | `tinyint(1)` | NO | 0 |  |
+| `created_by` | `bigint unsigned` | YES | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys and indexes**
+
+- `seller_profile_id` → `seller_profiles.id`; update NO ACTION, delete RESTRICT.
+- `created_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `seller_bank_accounts_seller_profile_id_foreign` (seller_profile_id) — index.
+- `seller_bank_accounts_owner_status_idx` (seller_profile_id,status) — index.
+
+### `seller_withdrawals`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `withdrawal_no` | `varchar(40)` | NO | — | UNI |
+| `seller_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `seller_wallet_id` | `bigint unsigned` | NO | — | MUL |
+| `seller_bank_account_id` | `bigint unsigned` | NO | — | MUL |
+| `amount_minor` | `bigint unsigned` | NO | — |  |
+| `bank_name_snapshot` | `varchar(120)` | NO | — |  |
+| `account_name_snapshot` | `varchar(160)` | NO | — |  |
+| `account_number_last4` | `char(4)` | NO | — |  |
+| `status` | `varchar(30)` | NO | pending_review |  |
+| `idempotency_key` | `varchar(80)` | NO | — |  |
+| `requested_at` | `timestamp` | NO | — |  |
+| `reviewed_by` | `bigint unsigned` | YES | — | MUL |
+| `reviewed_at` | `timestamp` | YES | — |  |
+| `rejection_reason` | `text` | YES | — |  |
+| `processing_started_by` | `bigint unsigned` | YES | — | MUL |
+| `processing_started_at` | `timestamp` | YES | — |  |
+| `completed_at` | `timestamp` | YES | — |  |
+| `failed_at` | `timestamp` | YES | — |  |
+| `failure_reason` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys and indexes**
+
+- `seller_profile_id` → `seller_profiles.id`; `seller_wallet_id` → `seller_wallets.id`; `seller_bank_account_id` → `seller_bank_accounts.id`; delete RESTRICT.
+- `reviewed_by` / `processing_started_by` → `users.id`; delete SET NULL.
+- `seller_withdrawals_seller_idempotency_unique` (seller_profile_id,idempotency_key) — unique.
+- `seller_withdrawals_status_requested_idx` (status,requested_at) — index.
+- `seller_withdrawals_seller_created_idx` (seller_profile_id,created_at) — index.
+
+### `seller_wallet_transactions`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `transaction_no` | `varchar(40)` | NO | — | UNI |
+| `seller_wallet_id` | `bigint unsigned` | NO | — | MUL |
+| `seller_transaction_id` | `bigint unsigned` | YES | — | MUL |
+| `seller_withdrawal_id` | `bigint unsigned` | YES | — | MUL |
+| `seller_payout_id` | `bigint unsigned` | YES | — | MUL |
+| `type` | `varchar(40)` | NO | — |  |
+| `amount_minor` | `bigint unsigned` | NO | — |  |
+| `available_delta_minor` | `bigint` | NO | 0 |  |
+| `pending_delta_minor` | `bigint` | NO | 0 |  |
+| `reserved_delta_minor` | `bigint` | NO | 0 |  |
+| `withdrawn_delta_minor` | `bigint` | NO | 0 |  |
+| `available_balance_after_minor` | `bigint unsigned` | NO | — |  |
+| `pending_balance_after_minor` | `bigint unsigned` | NO | — |  |
+| `reserved_balance_after_minor` | `bigint unsigned` | NO | — |  |
+| `total_withdrawn_after_minor` | `bigint unsigned` | NO | — |  |
+| `reference` | `varchar(150)` | YES | — |  |
+| `description` | `varchar(255)` | YES | — |  |
+| `idempotency_key` | `varchar(120)` | YES | — | UNI |
+| `actor_user_id` | `bigint unsigned` | YES | — | MUL |
+| `metadata` | `json` | YES | — |  |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys and indexes**
+
+- `seller_wallet_id` → `seller_wallets.id`; delete RESTRICT.
+- `seller_transaction_id` → `seller_transactions.id`; `seller_withdrawal_id` → `seller_withdrawals.id`; `seller_payout_id` → `seller_payouts.id`; delete RESTRICT.
+- `actor_user_id` → `users.id`; delete SET NULL.
+- `seller_wallet_tx_source_type_unique` (seller_transaction_id,type) — unique.
+- `seller_wallet_tx_withdrawal_type_unique` (seller_withdrawal_id,type) — unique.
+- `seller_wallet_tx_legacy_payout_unique` (seller_payout_id) — unique.
+- `seller_wallet_transactions_idempotency_key_unique` (idempotency_key) — unique.
+- `seller_wallet_tx_wallet_time_idx` (seller_wallet_id,created_at) and `seller_wallet_tx_wallet_type_idx` (seller_wallet_id,type) — indexes.
+
+### `seller_withdrawal_status_histories`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `seller_withdrawal_id` | `bigint unsigned` | NO | — | MUL |
+| `from_status` | `varchar(30)` | YES | — |  |
+| `to_status` | `varchar(30)` | NO | — |  |
+| `actor_user_id` | `bigint unsigned` | YES | — | MUL |
+| `reason` | `text` | YES | — |  |
+| `metadata` | `json` | YES | — |  |
+| `occurred_at` | `timestamp` | NO | — |  |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys and indexes**
+
+- `seller_withdrawal_id` → `seller_withdrawals.id`; delete RESTRICT.
+- `actor_user_id` → `users.id`; delete SET NULL.
+- `seller_withdrawal_history_target_unique` (seller_withdrawal_id,to_status) — unique.
+- `seller_withdrawal_history_time_idx` (seller_withdrawal_id,occurred_at) — index.
+
+### `seller_withdrawal_transfers`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `transfer_no` | `varchar(40)` | NO | — | UNI |
+| `seller_withdrawal_id` | `bigint unsigned` | NO | — | UNI |
+| `amount_minor` | `bigint unsigned` | NO | — |  |
+| `bank_name` | `varchar(120)` | NO | — |  |
+| `account_number_last4` | `char(4)` | NO | — |  |
+| `bank_reference` | `varchar(150)` | YES | — |  |
+| `transfer_date` | `date` | NO | — |  |
+| `status` | `varchar(30)` | NO | pending_verification |  |
+| `proof_disk` | `varchar(32)` | YES | — |  |
+| `proof_path` | `varchar(500)` | YES | — |  |
+| `proof_mime_type` | `varchar(100)` | YES | — |  |
+| `proof_original_name` | `varchar(255)` | YES | — |  |
+| `proof_size_bytes` | `bigint unsigned` | YES | — |  |
+| `recorded_by` | `bigint unsigned` | NO | — | MUL |
+| `recorded_at` | `timestamp` | NO | — |  |
+| `verified_by` | `bigint unsigned` | YES | — | MUL |
+| `verified_at` | `timestamp` | YES | — |  |
+| `verification_note` | `text` | YES | — |  |
+| `failure_confirmed_by` | `bigint unsigned` | YES | — | MUL |
+| `failure_confirmed_at` | `timestamp` | YES | — |  |
+| `failure_reason` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys and indexes**
+
+- `seller_withdrawal_id` → `seller_withdrawals.id`; delete RESTRICT.
+- `recorded_by` → `users.id`; delete RESTRICT.
+- `verified_by` / `failure_confirmed_by` → `users.id`; delete SET NULL.
+- `seller_withdrawal_transfers_transfer_no_unique` (transfer_no) and `seller_withdrawal_transfers_seller_withdrawal_id_unique` (seller_withdrawal_id) — unique.
+- `bank_reference` is not globally unique; external bank references may collide across institutions and are not proof of payment.
+
+## `seller_profiles`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `user_id` | `bigint unsigned` | NO | — | UNI |
+| `application_id` | `bigint unsigned` | YES | — | MUL |
+| `legal_business_name` | `varchar(160)` | NO | — |  |
+| `approved_category_id` | `bigint unsigned` | YES | — | MUL |
+| `pickup_address_id` | `bigint unsigned` | YES | — | MUL |
+| `commission_rate_bps` | `smallint unsigned` | NO | 1000 |  |
+| `standing_status` | `varchar(30)` | NO | good_standing |  |
+| `warning_points` | `smallint unsigned` | NO | 0 |  |
+| `approved_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+| `deleted_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `application_id` → `account_applications.id`; update NO ACTION, delete SET NULL.
+- `approved_category_id` → `categories.id`; update NO ACTION, delete RESTRICT.
+- `pickup_address_id` → `addresses.id`; update NO ACTION, delete SET NULL.
+- `user_id` → `users.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `seller_profiles_application_id_foreign` (application_id) — index.
+- `seller_profiles_approved_category_id_foreign` (approved_category_id) — index.
+- `seller_profiles_pickup_address_id_foreign` (pickup_address_id) — index.
+- `seller_profiles_user_id_unique` (user_id) — unique.
+
+## `seller_refund_recoveries`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `refund_id` | `bigint unsigned` | NO | — | UNI |
+| `seller_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `amount_minor` | `bigint unsigned` | NO | — |  |
+| `recovered_amount_minor` | `bigint unsigned` | NO | 0 |  |
+| `refund_recovery_minor` | `bigint unsigned` | NO | 0 |  |
+| `refund_recovered_minor` | `bigint unsigned` | NO | 0 |  |
+| `refund_recovery_voided_minor` | `bigint unsigned` | NO | 0 |  |
+| `return_shipping_fee_minor` | `bigint unsigned` | NO | 0 |  |
+| `return_shipping_fee_recovered_minor` | `bigint unsigned` | NO | 0 |  |
+| `status` | `varchar(30)` | NO | pending |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `refund_id` → `refunds.id`; update NO ACTION, delete RESTRICT.
+- `seller_profile_id` → `seller_profiles.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `seller_refund_recoveries_refund_id_unique` (refund_id) — unique.
+- `seller_refund_recoveries_seller_profile_id_status_index` (seller_profile_id,status) — index.
+
+## `seller_refund_recovery_events`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `seller_refund_recovery_id` | `bigint unsigned` | NO | — | MUL |
+| `recorded_by` | `bigint unsigned` | YES | — | MUL |
+| `seller_payout_id` | `bigint unsigned` | YES | — | MUL |
+| `method` | `varchar(30)` | NO | — |  |
+| `component` | `varchar(30)` | NO | refund_recovery |  |
+| `amount_minor` | `bigint unsigned` | NO | — |  |
+| `external_reference` | `varchar(150)` | NO | — |  |
+| `recovered_on` | `date` | NO | — |  |
+| `note` | `text` | YES | — |  |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys**
+
+- `recorded_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `seller_payout_id` → `seller_payouts.id`; update NO ACTION, delete RESTRICT.
+- `seller_refund_recovery_id` → `seller_refund_recoveries.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `seller_refund_recovery_events_recorded_by_foreign` (recorded_by) — index.
+- `seller_refund_recovery_events_seller_payout_id_foreign` (seller_payout_id) — index.
+- `seller_refund_recovery_events_history_index` (seller_refund_recovery_id,created_at) — index.
+- `seller_refund_recovery_events_seller_refund_recovery_id_foreign` (seller_refund_recovery_id) — index.
+
+## `seller_transactions`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `transaction_no` | `varchar(40)` | NO | — | UNI |
+| `seller_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `seller_order_id` | `bigint unsigned` | YES | — | MUL |
+| `payment_id` | `bigint unsigned` | YES | — | MUL |
+| `refund_id` | `bigint unsigned` | YES | — | MUL |
+| `commission_id` | `bigint unsigned` | YES | — | MUL |
+| `type` | `varchar(40)` | NO | — |  |
+| `amount_minor` | `bigint` | NO | — |  |
+| `status` | `varchar(30)` | NO | pending |  |
+| `available_at` | `timestamp` | YES | — |  |
+| `posted_at` | `timestamp` | YES | — |  |
+| `description` | `varchar(255)` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `commission_id` → `platform_commissions.id`; update NO ACTION, delete SET NULL.
+- `payment_id` → `payments.id`; update NO ACTION, delete SET NULL.
+- `refund_id` → `refunds.id`; update NO ACTION, delete SET NULL.
+- `seller_order_id` → `seller_orders.id`; update NO ACTION, delete SET NULL.
+- `seller_profile_id` → `seller_profiles.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `seller_transactions_commission_id_foreign` (commission_id) — index.
+- `seller_transactions_payment_id_foreign` (payment_id) — index.
+- `seller_transactions_refund_id_foreign` (refund_id) — index.
+- `seller_transactions_seller_order_id_foreign` (seller_order_id) — index.
+- `seller_transactions_seller_profile_id_status_created_at_index` (seller_profile_id,status,created_at) — index.
+- `seller_transactions_transaction_no_unique` (transaction_no) — unique.
+
+## `seller_warnings`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `warning_no` | `varchar(32)` | NO | — | UNI |
+| `seller_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `violation_id` | `bigint unsigned` | YES | — | MUL |
+| `level` | `varchar(20)` | NO | — |  |
+| `points` | `smallint unsigned` | NO | 0 |  |
+| `reason` | `text` | NO | — |  |
+| `status` | `varchar(20)` | NO | active |  |
+| `issued_by` | `bigint unsigned` | YES | — | MUL |
+| `issued_at` | `timestamp` | NO | — |  |
+| `expires_at` | `timestamp` | YES | — |  |
+| `acknowledged_at` | `timestamp` | YES | — |  |
+| `revoked_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `issued_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `seller_profile_id` → `seller_profiles.id`; update NO ACTION, delete RESTRICT.
+- `violation_id` → `product_violations.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `seller_warnings_issued_by_foreign` (issued_by) — index.
+- `seller_warnings_seller_profile_id_foreign` (seller_profile_id) — index.
+- `seller_warnings_violation_id_foreign` (violation_id) — index.
+- `seller_warnings_warning_no_unique` (warning_no) — unique.
+
+## `shipment_events`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `shipment_id` | `bigint unsigned` | NO | — | MUL |
+| `parcel_id` | `bigint unsigned` | YES | — | MUL |
+| `event_type` | `varchar(50)` | NO | — |  |
+| `from_status` | `varchar(40)` | YES | — |  |
+| `to_status` | `varchar(40)` | NO | — |  |
+| `sorting_center_id` | `bigint unsigned` | YES | — | MUL |
+| `sorting_zone_id` | `bigint unsigned` | YES | — | MUL |
+| `actor_user_id` | `bigint unsigned` | YES | — | MUL |
+| `source` | `varchar(20)` | NO | system |  |
+| `scan_method` | `varchar(20)` | YES | — |  |
+| `notes` | `text` | YES | — |  |
+| `metadata` | `json` | YES | — |  |
+| `occurred_at` | `timestamp` | NO | — |  |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys**
+
+- `actor_user_id` → `users.id`; update NO ACTION, delete SET NULL.
+- `parcel_id` → `parcels.id`; update NO ACTION, delete RESTRICT.
+- `shipment_id` → `shipments.id`; update NO ACTION, delete RESTRICT.
+- `sorting_center_id` → `sorting_centers.id`; update NO ACTION, delete SET NULL.
+- `sorting_zone_id` → `sorting_zones.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `shipment_events_actor_user_id_foreign` (actor_user_id) — index.
+- `shipment_events_parcel_id_occurred_at_index` (parcel_id,occurred_at) — index.
+- `shipment_events_shipment_id_occurred_at_index` (shipment_id,occurred_at) — index.
+- `shipment_events_sorting_center_id_foreign` (sorting_center_id) — index.
+- `shipment_events_sorting_zone_id_foreign` (sorting_zone_id) — index.
+
+## `shipments`
+
+`shipments.seller_order_id` remains the legacy/primary Seller Order reference. For a consolidated outbound Shipment, use the complete `shipment_seller_orders` membership relation rather than treating this column as the complete set.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `shipment_no` | `varchar(32)` | NO | — | UNI |
+| `seller_order_id` | `bigint unsigned` | NO | — | MUL |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `origin_address_id` | `bigint unsigned` | YES | — | MUL |
+| `destination_address_id` | `bigint unsigned` | YES | — | MUL |
+| `origin_logistics_profile_id` | `bigint unsigned` | YES | — | MUL |
+| `destination_city_code` | `varchar(20)` | YES | — |  |
+| `destination_address_snapshot` | `json` | YES | — |  |
+| `return_shipping_quote` | `json` | YES | — |  |
+| `purpose` | `varchar(20)` | NO | outbound |  |
+| `status` | `varchar(40)` | NO | pending_waybill |  |
+| `shipping_fee_minor` | `bigint unsigned` | NO | 0 |  |
+| `cod_amount_minor` | `bigint unsigned` | NO | 0 |  |
+| `cod_collected_at` | `timestamp` | YES | — |  |
+| `estimated_delivery_at` | `timestamp` | YES | — |  |
+| `delivered_at` | `timestamp` | YES | — |  |
+| `returned_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `destination_address_id` → `addresses.id`; update NO ACTION, delete SET NULL.
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `origin_logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `origin_address_id` → `addresses.id`; update NO ACTION, delete SET NULL.
+- `seller_order_id` → `seller_orders.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `shipments_destination_address_id_foreign` (destination_address_id) — index.
+- `shipments_logistics_profile_id_status_index` (logistics_profile_id,status) — index.
+- `shipments_origin_logistics_profile_id_foreign` (origin_logistics_profile_id) — index.
+- `shipments_origin_address_id_foreign` (origin_address_id) — index.
+- `shipments_seller_order_id_status_index` (seller_order_id,status) — index.
+- `shipments_shipment_no_unique` (shipment_no) — unique.
+
+## `shipment_seller_orders` (added by `2026_11_07_000003_add_seller_order_shipment_consolidation`)
+
+Shipment membership for all Seller Orders fulfilled by the same physical outbound Shipment/Waybill. The migration backfills the current primary Seller Order for every existing Shipment; it does not rewrite shipments, Seller Orders, or financial snapshots. Application validation limits new consolidated outbound shipments to compatible Seller Orders from the same Store/Buyer and same Product family.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `shipment_id` | `bigint unsigned` | NO | — | MUL |
+| `seller_order_id` | `bigint unsigned` | NO | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `shipment_id` → `shipments.id`; `seller_order_id` → `seller_orders.id`; delete RESTRICT.
+
+**Indexes**
+
+- `shipment_seller_orders_pair_unique` (`shipment_id`,`seller_order_id`) — unique.
+- `shipment_seller_orders_order_idx` (`seller_order_id`,`shipment_id`) — index.
+
+## `shipment_transfers`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `shipment_id` | `bigint unsigned` | NO | — | UNI |
+| `from_logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `to_logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `from_sorting_center_id` | `bigint unsigned` | NO | — | MUL |
+| `to_sorting_center_id` | `bigint unsigned` | YES | — | MUL |
+| `status` | `varchar(20)` | NO | sent |  |
+| `sent_by` | `bigint unsigned` | YES | — | MUL |
+| `sent_at` | `timestamp` | NO | — |  |
+| `accepted_by` | `bigint unsigned` | YES | — | MUL |
+| `accepted_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `shipment_id` → `shipments.id`; update NO ACTION, delete RESTRICT.
+- `from_logistics_profile_id` / `to_logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `from_sorting_center_id` / `to_sorting_center_id` → `sorting_centers.id`; update NO ACTION, delete RESTRICT.
+- `sent_by` / `accepted_by` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `shipment_transfers_shipment_id_unique` (shipment_id) — unique.
+- `shipment_transfers_from_status_sent_index` (from_logistics_profile_id,status,sent_at) — index.
+- `shipment_transfers_to_status_sent_index` (to_logistics_profile_id,status,sent_at) — index.
+
+## `sorting_centers`
+
+Each Logistics profile has exactly one non-deleted Sorting Center. A dedicated migration preflights profiles with zero or multiple usable center records and adds a unique index on `logistics_profile_id`; it stops without changing center data when the preflight fails.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | UNI |
+| `address_id` | `bigint unsigned` | NO | — | MUL |
+| `name` | `varchar(160)` | NO | — |  |
+| `code` | `varchar(30)` | NO | — | UNI |
+| `contact_phone` | `varchar(30)` | YES | — |  |
+| `operating_hours` | `varchar(100)` | YES | — |  |
+| `daily_capacity` | `int unsigned` | YES | — |  |
+| `status` | `varchar(20)` | NO | active |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+| `deleted_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `address_id` → `addresses.id`; update NO ACTION, delete RESTRICT.
+- `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `sorting_centers_address_id_foreign` (address_id) — index.
+- `sorting_centers_code_unique` (code) — unique.
+- `sorting_centers_logistics_profile_id_unique` (logistics_profile_id) — unique.
+
+## `sorting_zones`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `sorting_center_id` | `bigint unsigned` | NO | — | MUL |
+| `code` | `varchar(30)` | NO | — |  |
+| `name` | `varchar(120)` | NO | — |  |
+| `destination_rules` | `json` | YES | — |  |
+| `status` | `varchar(20)` | NO | active |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+| `deleted_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `sorting_center_id` → `sorting_centers.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `sorting_zones_sorting_center_id_code_unique` (sorting_center_id,code) — unique.
+
+`destination_rules` is an application-managed JSON object with `province`, `city_municipality`, `psgc_city_code`, and a `barangays` string list. See the backend integration contract for matching and dispatch behavior.
+
+Zones use `deleted_at` for the archive/restore lifecycle. Permanent deletion is limited to archived zones without non-final parcel or active dispatch-batch use. Historical records remain; their nullable zone references are cleared.
+
+## `stores`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `seller_profile_id` | `bigint unsigned` | NO | — | UNI |
+| `name` | `varchar(160)` | NO | — |  |
+| `slug` | `varchar(180)` | NO | — | UNI |
+| `description` | `text` | YES | — |  |
+| `contact_email` | `varchar(255)` | YES | — |  |
+| `contact_phone` | `varchar(30)` | YES | — |  |
+| `logo_path` | `varchar(500)` | YES | — |  |
+| `banner_path` | `varchar(500)` | YES | — |  |
+| `publication_status` | `varchar(30)` | NO | draft |  |
+| `published_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+| `deleted_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `seller_profile_id` → `seller_profiles.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `stores_seller_profile_id_unique` (seller_profile_id) — unique.
+- `stores_slug_unique` (slug) — unique.
+
+## `store_promotion_products`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---:|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `store_promotion_id` | `bigint unsigned` | NO | — | MUL |
+| `product_id` | `bigint unsigned` | NO | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `product_id` → `products.id`; update NO ACTION, delete CASCADE.
+- `store_promotion_id` → `store_promotions.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `store_promotion_products_product_id_store_promotion_id_index` (product_id,store_promotion_id) — index.
+- `store_promotion_products_store_promotion_id_product_id_unique` (store_promotion_id,product_id) — unique.
+
+## `store_promotions`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---:|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `store_id` | `bigint unsigned` | NO | — | MUL |
+| `created_by` | `bigint unsigned` | YES | — | MUL |
+| `name` | `varchar(80)` | NO | — |  |
+| `type` | `varchar(32)` | NO | — |  |
+| `discount_percent` | `tinyint unsigned` | YES | — |  |
+| `voucher_amount_minor` | `bigint unsigned` | YES | — |  |
+| `starts_on` | `date` | NO | — |  |
+| `ends_on` | `date` | NO | — |  |
+| `starts_time` | `time` | NO | `00:00:00` |  |
+| `ends_time` | `time` | NO | `23:59:59` |  |
+| `buyer_campaign_name` | `varchar(80)` | YES | — |  |
+| `minimum_spend_minor` | `bigint unsigned` | NO | 0 |  |
+| `redemption_limit` | `int unsigned` | YES | — |  |
+| `per_buyer_limit` | `smallint unsigned` | NO | 1 |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `created_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `store_id` → `stores.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `store_promotions_created_by_foreign` (created_by) — index.
+- `store_promotions_store_id_starts_on_ends_on_index` (store_id,starts_on,ends_on) — index.
+
+## `store_subcategories`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `store_id` | `bigint unsigned` | NO | — | MUL |
+| `parent_category_id` | `bigint unsigned` | NO | — | MUL |
+| `name` | `varchar(120)` | NO | — |  |
+| `slug` | `varchar(140)` | NO | — |  |
+| `is_active` | `tinyint(1)` | NO | 1 |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `parent_category_id` → `categories.id`; update NO ACTION, delete CASCADE.
+- `store_id` → `stores.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `store_subcategories_parent_category_id_foreign` (parent_category_id) — index.
+- `store_subcategories_store_id_is_active_index` (store_id,is_active) — index.
+- `store_subcategories_store_parent_name_unique` (store_id,parent_category_id,name) — unique.
+- `store_subcategories_store_parent_slug_unique` (store_id,parent_category_id,slug) — unique.
+- `store_subcategories_store_id_foreign` (store_id) — index.
+
+## `support_tickets`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `ticket_no` | `varchar(32)` | NO | — | UNI |
+| `user_id` | `bigint unsigned` | YES | — | MUL |
+| `name` | `varchar(160)` | YES | — |  |
+| `email` | `varchar(255)` | YES | — |  |
+| `role_label` | `varchar(50)` | YES | — |  |
+| `topic` | `varchar(80)` | NO | — |  |
+| `subject` | `varchar(180)` | NO | — |  |
+| `message` | `text` | NO | — |  |
+| `reference` | `varchar(50)` | YES | — |  |
+| `status` | `varchar(30)` | NO | open |  |
+| `priority` | `varchar(20)` | NO | normal |  |
+| `assigned_to` | `bigint unsigned` | YES | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `assigned_to` → `users.id`; update NO ACTION, delete SET NULL.
+- `user_id` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `support_tickets_assigned_to_foreign` (assigned_to) — index.
+- `support_tickets_ticket_no_unique` (ticket_no) — unique.
+- `support_tickets_user_id_foreign` (user_id) — index.
+
+## `shipping_rates`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `provider_key` | `varchar(50)` | NO | bearly_logistics |  |
+| `route_tier` | `varchar(40)` | NO | — |  |
+| `first_kg_fee_minor` | `bigint unsigned` | NO | — |  |
+| `additional_kg_surcharge_minor` | `bigint unsigned` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Indexes**
+
+- `shipping_rates_provider_key_route_tier_unique` (provider_key,route_tier) — unique.
+
+These route-tier rows describe the former pricing configuration and are retained
+for compatibility/history; new checkout quotes do not read them. The current
+standard fee is one flat amount per Seller Order, stored in
+`system_settings.shipping.seller_order_fee_minor` when an Admin saves it, with a
+configuration default of 5000 centavos when no setting row exists. The
+volumetric divisor remains stored in `system_settings` under
+`shipping.volumetric_divisor`, with a configuration default of 5000 when no
+setting row exists; it affects package estimates, not the fee.
+
+## `system_settings`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `key` | `varchar(100)` | NO | — | UNI |
+| `value` | `json` | NO | — |  |
+| `value_type` | `varchar(20)` | NO | — |  |
+| `is_public` | `tinyint(1)` | NO | 0 |  |
+| `updated_by` | `bigint unsigned` | YES | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `updated_by` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `system_settings_key_unique` (key) — unique.
+- `system_settings_updated_by_foreign` (updated_by) — index.
+
+## `user_notification_preferences`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `user_id` | `bigint unsigned` | NO | — | MUL |
+| `event_key` | `varchar(80)` | NO | — |  |
+| `in_app` | `tinyint(1)` | NO | 1 |  |
+| `email` | `tinyint(1)` | NO | 0 |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `user_id` → `users.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `user_notification_preferences_user_id_event_key_unique` (user_id,event_key) — unique.
+
+## `users`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `name` | `varchar(255)` | YES | — |  |
+| `first_name` | `varchar(80)` | NO | — |  |
+| `middle_initial` | `varchar(5)` | YES | — |  |
+| `middle_name` | `varchar(80)` | YES | — |  |
+| `last_name` | `varchar(80)` | NO | — |  |
+| `sex` | `varchar(30)` | YES | — |  |
+| `birthday` | `date` | YES | — |  |
+| `birth_date` | `date` | YES | — |  |
+| `email` | `varchar(255)` | NO | — | UNI |
+| `phone` | `varchar(30)` | YES | — | MUL |
+| `contact_number` | `varchar(30)` | YES | — |  |
+| `role` | `varchar(32)` | YES | — | MUL |
+| `province` | `varchar(120)` | YES | — |  |
+| `city` | `varchar(120)` | YES | — |  |
+| `barangay` | `varchar(120)` | YES | — |  |
+| `region` | `varchar(160)` | YES | — |  |
+| `region_code` | `varchar(20)` | YES | — |  |
+| `street_address` | `varchar(255)` | YES | — |  |
+| `business_name` | `varchar(160)` | YES | — |  |
+| `business_category` | `varchar(120)` | YES | — |  |
+| `vehicle_type` | `varchar(80)` | YES | — |  |
+| `plate_number` | `varchar(30)` | YES | — |  |
+| `valid_id_path` | `varchar(500)` | YES | — |  |
+| `business_permit_path` | `varchar(500)` | YES | — |  |
+| `or_cr_path` | `varchar(500)` | YES | — |  |
+| `driver_license_path` | `varchar(500)` | YES | — |  |
+| `logistics_id` | `bigint unsigned` | YES | — | MUL |
+| `approved_by` | `bigint unsigned` | YES | — | MUL |
+| `approved_at` | `timestamp` | YES | — |  |
+| `rejection_reason` | `text` | YES | — |  |
+| `password` | `varchar(255)` | NO | — |  |
+| `status` | `varchar(32)` | NO | pending | MUL |
+| `email_verified_at` | `timestamp` | YES | — |  |
+| `last_login_at` | `timestamp` | YES | — |  |
+| `suspended_at` | `timestamp` | YES | — |  |
+| `deactivated_at` | `timestamp` | YES | — |  |
+| `banned_at` | `timestamp` | YES | — |  |
+| `status_reason` | `text` | YES | — |  |
+| `remember_token` | `varchar(100)` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+| `deleted_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `approved_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `logistics_id` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `users_approved_by_foreign` (approved_by) — index.
+- `users_email_unique` (email) — unique.
+- `users_logistics_id_foreign` (logistics_id) — index.
+- `users_contact_number_unique` (contact_number) — unique.
+- `users_phone_unique` (phone) — unique.
+- `users_role_index` (role) — index.
+- `users_role_plate_number_unique` (role,plate_number) — unique.
+- `users_status_index` (status) — index.
+
+## `violation_actions`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `violation_id` | `bigint unsigned` | NO | — | MUL |
+| `action_type` | `varchar(40)` | NO | — |  |
+| `from_status` | `varchar(30)` | YES | — |  |
+| `to_status` | `varchar(30)` | YES | — |  |
+| `actor_user_id` | `bigint unsigned` | YES | — | MUL |
+| `reason` | `text` | YES | — |  |
+| `metadata` | `json` | YES | — |  |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys**
+
+- `actor_user_id` → `users.id`; update NO ACTION, delete SET NULL.
+- `violation_id` → `product_violations.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `violation_actions_actor_user_id_foreign` (actor_user_id) — index.
+- `violation_actions_violation_id_foreign` (violation_id) — index.
+
+## `waybills`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `shipment_id` | `bigint unsigned` | NO | — | UNI |
+| `waybill_no` | `varchar(40)` | NO | — | UNI |
+| `scan_token` | `char(64)` | NO | — | UNI |
+| `barcode_value` | `varchar(120)` | NO | — | UNI |
+| `piece_count` | `smallint unsigned` | NO | 1 |  |
+| `total_weight_kg` | `decimal(10,3)` | NO | — |  |
+| `length_cm` | `decimal(10,2)` | YES | — |  |
+| `width_cm` | `decimal(10,2)` | YES | — |  |
+| `height_cm` | `decimal(10,2)` | YES | — |  |
+| `status` | `varchar(30)` | NO | generated |  |
+| `generated_by` | `bigint unsigned` | YES | — | MUL |
+| `generated_at` | `timestamp` | NO | — |  |
+| `printed_at` | `timestamp` | YES | — |  |
+| `print_count` | `smallint unsigned` | NO | 0 |  |
+| `voided_at` | `timestamp` | YES | — |  |
+| `void_reason` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `generated_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `shipment_id` → `shipments.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `waybills_barcode_value_unique` (barcode_value) — unique.
+- `waybills_generated_by_foreign` (generated_by) — index.
+- `waybills_scan_token_unique` (scan_token) — unique.
+- `waybills_shipment_id_unique` (shipment_id) — unique.
+- `waybills_waybill_no_unique` (waybill_no) — unique.
+
+## `wishlists`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `user_id` | `bigint unsigned` | YES | — | MUL |
+| `session_token` | `varchar(100)` | YES | — | MUL |
+| `product_id` | `bigint unsigned` | NO | — | MUL |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys**
+
+- `product_id` → `products.id`; update NO ACTION, delete CASCADE.
+- `user_id` → `users.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `wishlists_product_id_foreign` (product_id) — index.
+- `wishlists_session_token_product_id_index` (session_token,product_id) — index.
+- `wishlists_user_id_product_id_unique` (user_id,product_id) — unique.
+
+## Temporary form draft tables
+
+These tables are added by `2026_11_02_000001_create_form_draft_tables.php`.
+
+### `registration_drafts`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `flow` | `varchar(24)` | NO | — |  |
+| `browser_token_hash` | `char(64)` | NO | — | MUL |
+| `payload` | `longtext` | NO | — |  |
+| `step` | `tinyint unsigned` | NO | 1 |  |
+| `expires_at` | `timestamp` | NO | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Indexes**
+
+- `registration_drafts_browser_flow_unique` (browser_token_hash,flow) — unique.
+- `registration_drafts_expires_at_index` (expires_at) — index.
+
+### `seller_product_drafts`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `store_id` | `bigint unsigned` | NO | — | UNI |
+| `payload` | `longtext` | NO | — |  |
+| `expires_at` | `timestamp` | NO | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `store_id` → `stores.id`; update NO ACTION, delete CASCADE.
+
+### `seller_product_draft_images`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `seller_product_draft_id` | `bigint unsigned` | NO | — | MUL |
+| `purpose` | `varchar(24)` | NO | — |  |
+| `disk` | `varchar(40)` | NO | local |  |
+| `path` | `varchar(500)` | NO | — |  |
+| `original_name` | `varchar(255)` | NO | — |  |
+| `mime_type` | `varchar(100)` | NO | — |  |
+| `size_bytes` | `bigint unsigned` | NO | — |  |
+| `position` | `smallint unsigned` | NO | 0 |  |
+| `color` | `varchar(120)` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `seller_product_draft_id` → `seller_product_drafts.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `seller_product_draft_images_order_idx` (seller_product_draft_id,purpose,position) — index.

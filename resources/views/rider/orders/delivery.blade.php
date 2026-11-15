@@ -1,0 +1,781 @@
+@extends('rider.layouts.app')
+
+@section('title', 'Delivery '.$job['id'])
+@section('page-title', 'Delivery Assignment')
+
+@section('content')
+<div class="page-header">
+    <div>
+        <p class="page-kicker">
+            Delivery assignment · {{ $job['id'] }}
+        </p>
+
+        <h2>
+            {{ $job['purpose'] === 'return' ? 'Return parcel to ' : 'Deliver to ' }}{{ $job['customer'] }}
+        </h2>
+
+        <p>
+            @if($job['status'] === 'Assigned')
+                Review the shipment details before starting this delivery.
+            @elseif($job['status'] === 'Out for Delivery')
+                Confirm the handoff after the recipient has received the parcel.
+            @elseif($job['status'] === 'Delivered')
+                This handoff is complete. Delivery proof is recorded.
+            @elseif($job['status'] === 'Delivery Failed')
+                Review the previous attempt before retrying this delivery.
+            @else
+                Review the shipment, recipient, payment, and parcel manifest.
+            @endif
+        </p>
+    </div>
+
+    <div class="page-actions">
+        <a
+            class="button"
+            href="{{ route('rider.dashboard.deliveries') }}"
+        >
+            <i data-lucide="arrow-left"></i>
+            Back to route
+        </a>
+    </div>
+</div>
+
+<div class="workflow-steps">
+    <div
+        class="workflow-step
+        {{
+            $job['status'] === 'Assigned'
+                ? 'is-current'
+                : 'is-complete'
+        }}"
+    >
+        <span>
+            @if($job['status'] === 'Assigned')
+                1
+            @else
+                <i data-lucide="check"></i>
+            @endif
+        </span>
+
+        <strong>Assigned</strong>
+    </div>
+
+    <div
+        class="workflow-step
+        {{
+            $job['status'] === 'Out for Delivery'
+                ? 'is-current'
+                : (
+                    $job['status'] === 'Delivered'
+                        ? 'is-complete'
+                        : ''
+                )
+        }}"
+    >
+        <span>2</span>
+        <strong>Out for delivery</strong>
+    </div>
+
+    <div
+        class="workflow-step
+        {{
+            $job['status'] === 'Delivered'
+                ? 'is-complete'
+                : ''
+        }}"
+    >
+        <span>3</span>
+        <strong>{{ $job['purpose'] === 'return' ? 'Seller handoff' : 'Customer handoff' }}</strong>
+    </div>
+</div>
+
+<div class="route-layout delivery-detail-layout">
+    <section class="section-stack delivery-detail-main">
+        <article class="panel delivery-dispatch-panel">
+            <div class="panel-header">
+                <div>
+                    <h3>
+                        {{ $job['purpose'] === 'return' ? 'Seller return destination' : 'Buyer delivery destination' }}
+                    </h3>
+
+                    <p>
+                        {{ $job['purpose'] === 'return' ? 'Seller address recorded on the return shipment.' : 'Buyer address snapshot from the order.' }}
+                    </p>
+                </div>
+
+                <span
+                    class="status-badge"
+                    data-status="{{ $job['status'] }}"
+                >
+                    {{ $job['status'] }}
+                </span>
+            </div>
+
+            <div class="panel-body">
+                <div class="detail-list">
+                    <div class="detail-item">
+                        <small>Recipient</small>
+
+                        <strong>
+                            {{ $job['customer'] }}
+                        </strong>
+                    </div>
+
+                    <div class="detail-item">
+                        <small>Contact</small>
+
+                        <strong>
+                            {{ $job['contact'] ?: 'Not provided' }}
+                        </strong>
+                    </div>
+
+                    <div class="detail-item">
+                        <small>{{ $job['purpose'] === 'return' ? 'Seller address' : 'Delivery address' }}</small>
+
+                        <strong>
+                            {{ $job['address'] }}
+                        </strong>
+                    </div>
+
+                    <div class="detail-item">
+                        <small>Zone</small>
+
+                        <strong>
+                            {{ $job['zone'] }}
+                        </strong>
+                    </div>
+                </div>
+
+                @if($job['contact'])
+                    <div
+                        class="page-actions"
+                        style="margin-top:14px"
+                    >
+                        <a
+                            class="button"
+                            href="tel:{{ $job['contact'] }}"
+                        >
+                            <i data-lucide="phone"></i>
+                            {{ $job['purpose'] === 'return' ? 'Call seller' : 'Call recipient' }}
+                        </a>
+                    </div>
+                @endif
+            </div>
+        </article>
+
+        @if($job['status'] !== 'Delivered')
+            <article class="panel rider-delivery-map-panel">
+                <div class="panel-header">
+                    <div>
+                        <h3>Live delivery map</h3>
+                        <p>
+                            {{ $job['purpose'] === 'return'
+                                ? 'Your shared Rider GPS and the Seller destination for this return.'
+                                : 'Your shared Rider GPS and the Buyer destination saved with this order.' }}
+                            Buyer live GPS is not used.
+                        </p>
+                    </div>
+                    <a
+                        class="button button-small"
+                        data-rider-delivery-directions
+                        href="https://www.google.com/maps/dir/?api=1&amp;destination={{ rawurlencode($job['address']) }}&amp;travelmode=driving"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        <i data-lucide="navigation"></i>
+                        Open directions
+                    </a>
+                </div>
+                <div class="panel-body">
+                    <div
+                        class="rider-delivery-map-canvas"
+                        data-rider-delivery-map
+                        data-latitude="{{ $job['destination_latitude'] ?? '' }}"
+                        data-longitude="{{ $job['destination_longitude'] ?? '' }}"
+                        data-destination-label="{{ $job['purpose'] === 'return' ? 'Seller destination' : 'Buyer destination' }}"
+                        data-destination-source="{{ $job['purpose'] === 'return' ? 'return shipment' : 'order' }}"
+                        data-delivery-active="{{ $job['status'] === 'Out for Delivery' ? 'true' : 'false' }}"
+                        data-destination-address="{{ $job['address'] }}"
+                        data-map-tile-url="{{ config('maps.tile_url') }}"
+                        data-map-attribution="{{ config('maps.tile_attribution') }}"
+                        aria-label="Map of the saved delivery destination and your own shared Rider location"
+                    ></div>
+                    <div class="rider-delivery-map-meta">
+                        <p data-rider-delivery-map-status role="status" aria-live="polite">
+                            @if(is_numeric($job['destination_latitude'] ?? null) && is_numeric($job['destination_longitude'] ?? null))
+                                Destination pin uses the coordinates saved with this {{ $job['purpose'] === 'return' ? 'return shipment' : 'order' }}. Turn on Share live location in the header to show your Rider position.
+                            @else
+                                No destination pin was saved with this {{ $job['purpose'] === 'return' ? 'return shipment' : 'order' }}. Use the address above and Open directions; turn on Share live location to show your Rider position.
+                            @endif
+                        </p>
+                        <button class="button button-small" type="button" data-rider-delivery-center hidden>
+                            <i data-lucide="locate-fixed"></i>
+                            Center on my location
+                        </button>
+                    </div>
+                    <div class="rider-delivery-map-legend" aria-label="Map legend">
+                        <span>
+                            <i class="rider-delivery-map-key is-destination" aria-hidden="true">
+                                <svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7M5 9v12h14V9M9 21v-8h6v8"/></svg>
+                            </i>
+                            {{ $job['purpose'] === 'return' ? 'Seller destination' : 'Saved Buyer destination' }}
+                        </span>
+                        <span>
+                            <i class="rider-delivery-map-key is-rider" aria-hidden="true">
+                                <svg viewBox="0 0 24 24"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="m12 17.5 3-6-4-3-3 8m-2.5 1h5l3.5-6h-5"/></svg>
+                            </i>
+                            Your live Rider GPS
+                        </span>
+                        @if($job['status'] === 'Out for Delivery')
+                            <span><i class="rider-delivery-map-key is-trail" aria-hidden="true"></i>Movement trail · this page only</span>
+                            <span><i class="rider-delivery-map-key is-guide" aria-hidden="true"></i>Straight-line guide · not a road route</span>
+                        @endif
+                    </div>
+                </div>
+            </article>
+        @endif
+
+        <article class="panel">
+            <div class="panel-header">
+                <div>
+                    <h3>
+                        Dispatch assignment
+                    </h3>
+
+                    <p>
+                        Logistics release information.
+                    </p>
+                </div>
+            </div>
+
+            <div class="panel-body detail-list delivery-dispatch-grid">
+                <div class="detail-item">
+                    <small>Dispatch batch</small>
+
+                    <strong>
+                        {{ $job['batch_no'] }}
+                    </strong>
+                </div>
+
+                <div class="detail-item">
+                    <small>Shipment</small>
+
+                    <strong>
+                        {{ $job['id'] }}
+                    </strong>
+                </div>
+
+                <div class="detail-item">
+                    <small>Waybill</small>
+
+                    <strong>
+                        {{ $job['waybill'] }}
+                    </strong>
+                </div>
+
+                <div class="detail-item">
+                    <small>Released</small>
+
+                    <strong>
+                        {{
+                            $job['dispatched_at']
+                                ? $job['dispatched_at']
+                                    ->format(
+                                        'M j, Y g:i A'
+                                    )
+                                : 'Not recorded'
+                        }}
+                    </strong>
+                </div>
+            </div>
+        </article>
+    </section>
+
+    <aside class="section-stack delivery-detail-aside">
+        <section class="panel delivery-payment-panel">
+            <div class="panel-header">
+                <div>
+                    <h3>
+                        Payment & collection
+                    </h3>
+
+                    <p>
+                        Check the payment state and any cash due at handoff.
+                    </p>
+                </div>
+            </div>
+
+            <div class="delivery-payment-grid">
+                <div class="delivery-payment-state">
+                    <small>Payment status</small>
+
+                    <span
+                        class="status-badge"
+                        data-status="{{ $job['payment_status'] }}"
+                    >
+                        {{
+                            str($job['payment_status'])
+                                ->replace('_', ' ')
+                                ->title()
+                        }}
+                    </span>
+                </div>
+
+                <div class="delivery-cod-summary {{ $job['cod_minor'] > 0 ? 'is-cod' : '' }}">
+                    <small>
+                        {{ $job['cod_minor'] > 0 ? 'Collect from recipient' : 'Cash collection' }}
+                    </small>
+
+                    <strong>
+                        @if($job['cod_minor'] > 0)
+                            ₱{{ number_format($job['cod_minor'] / 100, 2) }}
+                        @else
+                            None due
+                        @endif
+                    </strong>
+
+                    <span>
+                        {{ $job['cod_minor'] > 0 ? 'Cash on delivery' : 'No COD for this shipment' }}
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel delivery-manifest-panel">
+            <div class="panel-header">
+                <div>
+                    <h3>
+                        Parcel manifest
+                    </h3>
+
+                    <p>
+                        {{ $job['parcel_count'] }}
+                        {{ Str::plural(
+                            'parcel',
+                            $job['parcel_count']
+                        ) }}
+                        assigned for this shipment.
+                    </p>
+                </div>
+            </div>
+
+            <div class="delivery-shipment-products">
+                <h4>Products in shipment</h4>
+                @include('partials.order-item-preview-list', ['items' => $job['products']])
+            </div>
+
+            <div class="delivery-parcel-list">
+                @foreach($job['parcels'] as $parcel)
+                    <div class="delivery-parcel-row">
+                        <span class="delivery-parcel-copy">
+                            <strong>{{ $parcel['parcel_no'] }}</strong>
+
+                            <small>
+                                {{ $parcel['size_class'] ?: 'Unclassified' }}
+
+                                @if($parcel['weight_kg'])
+                                    · {{ $parcel['weight_kg'] }} kg
+                                @endif
+                            </small>
+                        </span>
+
+                        <span
+                            class="status-badge"
+                            data-status="{{ $parcel['status'] }}"
+                        >
+                            {{
+                                str($parcel['status'])
+                                    ->replace('_', ' ')
+                                    ->title()
+                            }}
+                        </span>
+                    </div>
+                @endforeach
+            </div>
+        </section>
+
+        <section class="panel delivery-action-panel">
+            <div class="panel-header">
+                <div>
+                    <h3>
+                        @if($job['status'] === 'Assigned')
+                            Start this delivery
+                        @elseif($job['status'] === 'Out for Delivery')
+                            Complete delivery
+                        @elseif($job['status'] === 'Delivered')
+                            Delivery complete
+                        @elseif($job['status'] === 'Delivery Failed')
+                            Retry delivery
+                        @else
+                            Delivery action
+                        @endif
+                    </h3>
+
+                    <p>
+                        @if($job['status'] === 'Assigned')
+                            Begin the route when you are ready to travel.
+                        @elseif($job['status'] === 'Out for Delivery')
+                            Record who received the parcel and attach a handoff photo.
+                        @elseif($job['status'] === 'Delivered')
+                            This assignment is complete and read-only.
+                        @elseif($job['status'] === 'Delivery Failed')
+                            Review the previous attempt before retrying.
+                        @else
+                            Follow the current delivery status.
+                        @endif
+                    </p>
+                </div>
+            </div>
+
+            <div class="panel-body delivery-action-body">
+                @if($job['status'] === 'Assigned')
+                    <div class="delivery-action-note">
+                        <i data-lucide="navigation"></i>
+                        <span>
+                            <strong>Ready to head to the recipient?</strong>
+                            <small>Starting marks the assigned parcels as out for delivery.</small>
+                        </span>
+                    </div>
+
+                    <form
+                        method="POST"
+                        action="{{ route('rider.orders.delivery.start', $job['id']) }}"
+                    >
+                        @csrf
+
+                        <button
+                            class="button button-primary delivery-primary-action"
+                            type="submit"
+                        >
+                            <i data-lucide="bike"></i>
+                            Start delivery
+                        </button>
+                    </form>
+                @elseif($job['status'] === 'Out for Delivery')
+                    @if($job['cod_minor'] > 0)
+                        <div class="delivery-cod-callout" role="note">
+                            <i data-lucide="banknote"></i>
+                            <span>
+                                <strong>Collect ₱{{ number_format($job['cod_minor'] / 100, 2) }} in cash</strong>
+                                <small>Cash on delivery. Confirm the amount with the recipient at handoff.</small>
+                            </span>
+                        </div>
+                    @endif
+
+                    <form
+                        class="delivery-form"
+                        method="POST"
+                        action="{{ route('rider.orders.delivery.confirm', $job['id']) }}"
+                        enctype="multipart/form-data"
+                        data-rider-delivery-scan-form
+                        data-delivery-verify-url="{{ $job['verification_url'] }}"
+                        data-delivery-progress-url="{{ $job['verification_progress_url'] }}"
+                    >
+                        @csrf
+
+                        <section class="rider-waybill-verification rider-delivery-scan" aria-labelledby="delivery-parcel-scan-heading">
+                            <div class="rider-waybill-verification-heading">
+                                <i data-lucide="scan-line" aria-hidden="true"></i>
+                                <div>
+                                    <strong id="delivery-parcel-scan-heading">Verify every assigned Parcel</strong>
+                                    <p>Each successful scan is saved for this delivery and shown to Logistics. Scanning verifies the Parcels; it does not complete delivery.</p>
+                                </div>
+                            </div>
+
+                            <div class="rider-waybill-scan-field">
+                                <label for="delivery-parcel-barcode">Parcel barcode (Code 128)</label>
+                                <div class="waybill-scan-tools">
+                                    <input
+                                        id="delivery-parcel-barcode"
+                                        type="text"
+                                        maxlength="120"
+                                        placeholder="Scan or enter the exact Parcel code"
+                                        autocomplete="off"
+                                        autocapitalize="off"
+                                        spellcheck="false"
+                                        inputmode="text"
+                                        aria-describedby="delivery-parcel-scan-help"
+                                        data-delivery-barcode-input
+                                    >
+                                    <button class="button button-small" type="button" data-delivery-verify-code>Verify parcel</button>
+                                    <button class="waybill-camera-button" type="button" aria-controls="delivery-parcel-camera-panel" aria-pressed="false" data-delivery-camera-open>
+                                        <i data-lucide="camera" aria-hidden="true"></i>
+                                        <span data-delivery-camera-label>Scan with camera</span>
+                                    </button>
+                                </div>
+                                <small id="delivery-parcel-scan-help">Use the camera or a USB/Bluetooth scanner, then press Verify parcel or Enter. Manual entry must match the printed code exactly; no character substitutions are made.</small>
+                            </div>
+
+                            <div id="delivery-parcel-camera-panel" class="waybill-camera-panel rider-delivery-camera-panel" data-delivery-camera-panel hidden>
+                                <div class="waybill-camera-fallback" data-delivery-camera-fallback hidden></div>
+                                <video data-delivery-camera-video playsinline muted></video>
+                                <button class="button button-small" type="button" data-delivery-camera-close>Stop camera</button>
+                            </div>
+
+                            <p class="waybill-camera-status rider-delivery-scan-status" data-delivery-scan-status role="status" aria-live="polite" aria-atomic="true">Scan the exact barcode for each of the {{ $job['parcel_count'] }} assigned Parcel{{ $job['parcel_count'] === 1 ? '' : 's' }}. Saved scans sync to this delivery.</p>
+                            <p class="rider-delivery-scan-progress" data-delivery-scan-progress aria-live="polite">{{ $job['verified_count'] }} of {{ $job['parcel_count'] }} parcels verified</p>
+                            <ul class="rider-delivery-scan-list" data-delivery-scan-list aria-label="Parcel verification progress">
+                                @foreach($job['parcels'] as $parcel)
+                                    <li data-delivery-expected-parcel="{{ $parcel['parcel_no'] }}" data-delivery-verified="{{ $parcel['verified'] ? 'true' : 'false' }}">
+                                        <span>Parcel {{ $loop->iteration }}</span>
+                                        <span data-delivery-parcel-state>{{ $parcel['verified'] ? 'Verified · saved' : 'Awaiting scan' }}</span>
+                                    </li>
+                                @endforeach
+                            </ul>
+
+                            @error('parcel_verification')
+                                <small class="delivery-field-error" role="alert">{{ $message }}</small>
+                            @enderror
+                        </section>
+
+                        <div class="delivery-form-grid">
+                            @if($job['purpose'] === 'outbound' && $job['cod_minor'] > 0)
+                                <label class="delivery-form-field">
+                                    <span class="delivery-field-label">Cash actually collected <span class="delivery-required">Required</span></span>
+                                    <input
+                                        class="delivery-control"
+                                        id="delivery-cod-collected-amount"
+                                        type="number"
+                                        name="cod_collected_amount"
+                                        value="{{ old('cod_collected_amount') }}"
+                                        min="0"
+                                        step="0.01"
+                                        inputmode="decimal"
+                                        placeholder="{{ number_format($job['cod_minor'] / 100, 2, '.', '') }}"
+                                        aria-invalid="{{ $errors->has('cod_collected_amount') ? 'true' : 'false' }}"
+                                        aria-describedby="delivery-cod-help{{ $errors->has('cod_collected_amount') ? ' delivery-cod-error' : '' }}"
+                                        required
+                                    >
+                                    <small class="delivery-field-help" id="delivery-cod-help">Enter the cash received. It must match the ₱{{ number_format($job['cod_minor'] / 100, 2) }} COD amount exactly.</small>
+                                    @error('cod_collected_amount')
+                                        <small class="delivery-field-error" id="delivery-cod-error" role="alert">{{ $message }}</small>
+                                    @enderror
+                                </label>
+                            @endif
+
+                            <label class="delivery-form-field">
+                                <span class="delivery-field-label">
+                                    {{ $job['purpose'] === 'return' ? 'Seller / recipient name' : 'Received by' }} <span class="delivery-required">Required</span>
+                                </span>
+
+                                <input
+                                    class="delivery-control"
+                                    id="delivery-recipient-name"
+                                    type="text"
+                                    name="recipient_name"
+                                    value="{{ old('recipient_name') }}"
+                                    maxlength="160"
+                                    autocomplete="name"
+                                    aria-invalid="{{ $errors->has('recipient_name') ? 'true' : 'false' }}"
+                                    aria-describedby="delivery-recipient-help{{ $errors->has('recipient_name') ? ' delivery-recipient-error' : '' }}"
+                                    required
+                                >
+
+                                <small class="delivery-field-help" id="delivery-recipient-help">
+                                    {{ $job['purpose'] === 'return' ? 'Enter the Seller representative who accepted the returned parcel.' : 'Enter the name of the person who accepted the parcel.' }}
+                                </small>
+
+                                @error('recipient_name')
+                                    <small class="delivery-field-error" id="delivery-recipient-error" role="alert">{{ $message }}</small>
+                                @enderror
+                            </label>
+
+                            <label class="delivery-form-field">
+                                <span class="delivery-field-label">
+                                    Delivery proof photo <span class="delivery-required">Required</span>
+                                </span>
+
+                                <input
+                                    class="delivery-control delivery-file-control"
+                                    id="delivery-proof-photo"
+                                    type="file"
+                                    name="proof_photo"
+                                    accept="image/jpeg,image/png,image/webp"
+                                    aria-invalid="{{ $errors->has('proof_photo') ? 'true' : 'false' }}"
+                                    aria-describedby="delivery-proof-help{{ $errors->has('proof_photo') ? ' delivery-proof-error' : '' }}"
+                                    required
+                                >
+
+                                <small class="delivery-field-help" id="delivery-proof-help">
+                                    JPG, PNG, or WebP · up to 10 MB.
+                                </small>
+
+                                @error('proof_photo')
+                                    <small class="delivery-field-error" id="delivery-proof-error" role="alert">{{ $message }}</small>
+                                @enderror
+                            </label>
+
+                            <label class="delivery-form-field delivery-form-field-wide">
+                                <span class="delivery-field-label">
+                                    Handoff notes <span class="delivery-optional">Optional</span>
+                                </span>
+
+                                <textarea
+                                    class="delivery-control delivery-textarea"
+                                    id="delivery-notes"
+                                    name="notes"
+                                    rows="3"
+                                    maxlength="1000"
+                                    aria-invalid="{{ $errors->has('notes') ? 'true' : 'false' }}"
+                                    aria-describedby="delivery-notes-help{{ $errors->has('notes') ? ' delivery-notes-error' : '' }}"
+                                >{{ old('notes') }}</textarea>
+
+                                <small class="delivery-field-help" id="delivery-notes-help">
+                                    Add a short note only if it helps explain the handoff.
+                                </small>
+
+                                @error('notes')
+                                    <small class="delivery-field-error" id="delivery-notes-error" role="alert">{{ $message }}</small>
+                                @enderror
+                            </label>
+                        </div>
+
+                        <button
+                            class="button button-primary delivery-primary-action"
+                            type="submit"
+                        >
+                            <i data-lucide="circle-check"></i>
+                            <span data-delivery-submit-label>Confirm delivery</span>
+                        </button>
+                    </form>
+
+                    <details
+                        class="delivery-failure"
+                        @if($errors->has('failure_reason') || $errors->has('next_attempt_at')) open @endif
+                    >
+                        <summary>
+                            <span class="delivery-failure-heading">
+                                <i data-lucide="triangle-alert"></i>
+                                <span>
+                                    <strong>Report a failed attempt</strong>
+                                    <small>Use this only if the recipient could not accept the parcel.</small>
+                                </span>
+                            </span>
+                            <i class="delivery-failure-chevron" data-lucide="chevron-down"></i>
+                        </summary>
+
+                        <form
+                            class="delivery-form delivery-failure-form"
+                            method="POST"
+                            action="{{ route('rider.orders.delivery.fail', $job['id']) }}"
+                        >
+                            @csrf
+
+                            <label class="delivery-form-field">
+                                <span class="delivery-field-label">
+                                    Reason for unsuccessful attempt <span class="delivery-required">Required</span>
+                                </span>
+
+                                <textarea
+                                    class="delivery-control delivery-textarea"
+                                    id="delivery-failure-reason"
+                                    name="failure_reason"
+                                    rows="3"
+                                    maxlength="500"
+                                    aria-invalid="{{ $errors->has('failure_reason') ? 'true' : 'false' }}"
+                                    aria-describedby="delivery-failure-help{{ $errors->has('failure_reason') ? ' delivery-failure-error' : '' }}"
+                                    required
+                                >{{ old('failure_reason') }}</textarea>
+
+                                <small class="delivery-field-help" id="delivery-failure-help">
+                                    For example: recipient unavailable or address could not be located.
+                                </small>
+
+                                @error('failure_reason')
+                                    <small class="delivery-field-error" id="delivery-failure-error" role="alert">{{ $message }}</small>
+                                @enderror
+                            </label>
+
+                            <div class="delivery-form-grid">
+                                <label class="delivery-form-field">
+                                    <span class="delivery-field-label">
+                                        Retry schedule <span class="delivery-optional">Optional</span>
+                                    </span>
+
+                                    <input
+                                        class="delivery-control"
+                                        id="delivery-next-attempt"
+                                        type="datetime-local"
+                                        name="next_attempt_at"
+                                        value="{{ old('next_attempt_at') }}"
+                                        aria-invalid="{{ $errors->has('next_attempt_at') ? 'true' : 'false' }}"
+                                        aria-describedby="delivery-next-attempt-help{{ $errors->has('next_attempt_at') ? ' delivery-next-attempt-error' : '' }}"
+                                    >
+
+                                    <small class="delivery-field-help" id="delivery-next-attempt-help">
+                                        Leave blank if no retry time is scheduled.
+                                    </small>
+
+                                    @error('next_attempt_at')
+                                        <small class="delivery-field-error" id="delivery-next-attempt-error" role="alert">{{ $message }}</small>
+                                    @enderror
+                                </label>
+
+                                <label class="delivery-form-field">
+                                    <span class="delivery-field-label">
+                                        Additional notes <span class="delivery-optional">Optional</span>
+                                    </span>
+
+                                    <textarea
+                                        class="delivery-control delivery-textarea"
+                                        id="delivery-failure-notes"
+                                        name="notes"
+                                        rows="2"
+                                        maxlength="1000"
+                                        aria-describedby="delivery-failure-notes-help"
+                                    >{{ old('notes') }}</textarea>
+
+                                    <small class="delivery-field-help" id="delivery-failure-notes-help">
+                                        Up to 1,000 characters.
+                                    </small>
+                                </label>
+                            </div>
+
+                            <button class="button delivery-failure-submit" type="submit">
+                                <i data-lucide="triangle-alert"></i>
+                                Report failed delivery
+                            </button>
+                        </form>
+                    </details>
+                @elseif($job['status'] === 'Delivery Failed')
+                    <div class="delivery-action-note is-warning">
+                        <i data-lucide="rotate-ccw"></i>
+                        <span>
+                            <strong>Previous attempt was unsuccessful.</strong>
+                            <small>Review the route and retry when another attempt is appropriate.</small>
+                        </span>
+                    </div>
+
+                    <form
+                        method="POST"
+                        action="{{ route('rider.orders.delivery.retry', $job['id']) }}"
+                    >
+                        @csrf
+
+                        <button class="button button-primary delivery-primary-action" type="submit">
+                            <i data-lucide="rotate-ccw"></i>
+                            Retry delivery
+                        </button>
+                    </form>
+                @elseif($job['status'] === 'Delivered')
+                    <div class="delivery-action-note is-success" role="status">
+                        <i data-lucide="circle-check"></i>
+                        <span>
+                            <strong>Delivery completed.</strong>
+                            <small>The recipient handoff and proof have been recorded.</small>
+                        </span>
+                    </div>
+                @else
+                    <div class="delivery-action-note is-warning" role="status">
+                        <i data-lucide="triangle-alert"></i>
+                        <span>
+                            <strong>No action is available for this delivery.</strong>
+                            <small>Return to your delivery list or contact Logistics if this looks unexpected.</small>
+                        </span>
+                    </div>
+                @endif
+            </div>
+        </section>
+    </aside>
+</div>
+@endsection

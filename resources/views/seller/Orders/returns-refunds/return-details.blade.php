@@ -1,0 +1,465 @@
+@extends('layouts.seller')
+
+@section('title', $case['id'].' · Return Case')
+@section('page-title', 'Return or refund request')
+@section('content')
+@php
+    $status = $case['status_raw'];
+    $canRespond = $status === 'awaiting_seller';
+    $sellerEvidenceRequested = $status === 'awaiting_evidence'
+        && in_array($case['evidence_requested_from'], ['seller', 'both'], true)
+        && ! $case['seller_evidence_submitted'];
+    $canInspect = $status === 'awaiting_inspection' && $case['return_status'] === 'delivered';
+    $pendingQuarantineItems = array_values(array_filter(
+        $case['items'],
+        fn (array $item): bool => $item['quarantine_review_status'] === 'pending',
+    ));
+    $hasSellerAction = $canRespond || $sellerEvidenceRequested || $canInspect || $status === 'awaiting_inspection' || $pendingQuarantineItems !== [];
+    $isPhysicalReturn = $case['request'] === 'Return & Refund';
+    $showFinancialImpact = $case['commission_effect'] !== 'No finalized financial adjustment'
+        || $case['earnings_effect'] !== 'No finalized financial adjustment';
+    $refundTone = match ($case['refund']['status'] ?? null) {
+        'completed' => 'is-complete',
+        'pending', 'processing' => 'is-pending',
+        null => '',
+        default => 'is-attention',
+    };
+
+    [$stageTitle, $stageDescription, $stageLabel, $stageValue, $stageClass, $stageIcon] = match (true) {
+        $canRespond => [
+            'Your reply is needed',
+            'Reply with a short message and at least one photo or file.',
+            'Reply by',
+            $case['deadline'],
+            '',
+            'message-square-text',
+        ],
+        $sellerEvidenceRequested => [
+            'More information requested',
+            'Bearly needs a note or file from you.',
+            'Requested from',
+            $case['evidence_requested_from'] === 'both' ? 'You and the Buyer' : 'You',
+            '',
+            'file-plus-2',
+        ],
+        $status === 'under_review' && $case['seller_response_deadline_missed'] => [
+            'Response deadline passed',
+            'Admin review continues without your initial reply. Answer any additional evidence request sent to you.',
+            'Deadline',
+            $case['deadline'],
+            'is-review',
+            'clock-alert',
+        ],
+        $status === 'awaiting_evidence' && $case['seller_evidence_submitted'] => [
+            'Your files were received',
+            'Waiting for the Buyer to reply.',
+            'Status',
+            'Waiting for Buyer',
+            'is-review',
+            'hourglass',
+        ],
+        $status === 'awaiting_evidence' => [
+            'Waiting for the Buyer',
+            'No action is needed from you right now.',
+            'Status',
+            'Waiting for Buyer',
+            'is-review',
+            'hourglass',
+        ],
+        $status === 'under_review' => [
+            'Bearly is reviewing the request',
+            'No action is needed from you right now.',
+            'Status',
+            'In review',
+            'is-review',
+            'scan-search',
+        ],
+        $status === 'return_dropoff_pending' => [
+            'Buyer drop-off pending',
+            'The Buyer has three calendar days after Admin approval to hand the sealed parcel to the assigned city Sorting Center.',
+            'Drop-off by',
+            $case['dropoff_due_at'] ?? 'Deadline unavailable',
+            'is-shipping',
+            'package-check',
+        ],
+        in_array($status, ['return_pickup_requested', 'return_in_transit', 'awaiting_inspection'], true) => [
+            $canInspect
+                ? 'Awaiting Seller Inspection'
+                : ($status === 'return_pickup_requested' ? 'Pickup is being arranged' : 'Return delivery in progress'),
+            $canInspect
+                ? 'Check each item before Bearly processes the refund.'
+                : 'Logistics is moving the return parcel through the required handoffs to your pickup address.',
+            'Delivery status',
+            $case['return_status'] ? ucwords(str_replace('_', ' ', $case['return_status'])) : 'Being arranged',
+            'is-shipping',
+            $canInspect ? 'clipboard-check' : 'truck',
+        ],
+        $status === 'refund_pending' && ($case['refund']['status'] ?? null) === 'processing' => [
+            'Payout sent · awaiting Buyer confirmation',
+            'Admin recorded the successful external payout. The case stays open until the Buyer confirms receipt.',
+            'Refund status',
+            'Awaiting Buyer confirmation',
+            'is-review',
+            'hourglass',
+        ],
+        $status === 'refund_pending' => [
+            'Refund is being processed',
+            'Admin is arranging the approved refund through the appropriate payout workflow. The case stays open until that workflow’s required confirmation is complete.',
+            'Status',
+            'Processing',
+            'is-review',
+            'wallet-cards',
+        ],
+        $status === 'resolved' => [
+            'Request complete',
+            $case['resolution'],
+            'Status',
+            'Complete',
+            'is-complete',
+            'badge-check',
+        ],
+        $status === 'rejected' => [
+            $isPhysicalReturn ? 'Return request declined' : 'Refund request declined',
+            $case['resolution'],
+            'Status',
+            'Closed',
+            'is-review',
+            'circle-x',
+        ],
+        default => [
+            $case['status'],
+            $case['resolution'],
+            'Status',
+            $case['status'],
+            'is-review',
+            'clipboard-list',
+        ],
+    };
+
+@endphp
+
+<div class="returns-refined return-case-page">
+    <header class="page-heading case-page-heading">
+        <div>
+            <div class="case-title-row">
+                <h2>{{ $case['id'] }}</h2>
+            </div>
+            <p>Order {{ $case['order'] }} · Seller order {{ $case['seller_order'] }}</p>
+        </div>
+        <a class="seller-secondary-button" href="{{ route('seller.orders.returns') }}">
+            <i data-lucide="arrow-left" aria-hidden="true"></i>Back to cases
+        </a>
+    </header>
+
+    @if (session('success'))
+        <p class="seller-alert seller-alert-success" role="status">{{ session('success') }}</p>
+    @endif
+    @if ($errors->any())
+        <div class="seller-alert seller-alert-error" role="alert" aria-labelledby="return-case-errors-title">
+            <strong id="return-case-errors-title">Check the information below.</strong>
+            <ul>@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
+        </div>
+    @endif
+
+    @if ($showFinancialImpact)
+        <div class="case-financial-summary" aria-label="Current case financial impact">
+            <p><span>Platform fee change</span><strong>{{ $case['commission_effect'] }}</strong></p>
+            <p><span>Your earnings change</span><strong>{{ $case['earnings_effect'] }}</strong></p>
+        </div>
+    @endif
+
+    <section class="case-deadline-banner {{ $stageClass }}" aria-label="Current request status">
+        <span><i data-lucide="{{ $stageIcon }}" aria-hidden="true"></i></span>
+        <div><strong>{{ $stageTitle }}</strong><p>{{ $stageDescription }}</p></div>
+        <div><small>{{ $stageLabel }}</small><strong>{{ $stageValue }}</strong></div>
+    </section>
+
+    <div class="case-details-layout {{ $hasSellerAction ? 'has-action' : '' }}">
+        <main class="case-main-column">
+            <section class="case-panel case-main-panel">
+                <header class="case-panel-heading">
+                    <div><i data-lucide="package-search" aria-hidden="true"></i><span><strong>Request details</strong><small>{{ $case['customer'] }} · {{ str_replace('&', 'and', $case['request']) }} · {{ $case['reason'] }}</small></span></div>
+                    <span class="case-claim-amount"><small>Total refund requested</small><strong>{{ $case['amount'] }}</strong></span>
+                </header>
+                <div class="case-main-content">
+                    <div class="case-buyer-statement"><span>Buyer’s note</span><p>{{ $case['buyer_note'] }}</p></div>
+
+                    <section class="case-content-section" aria-labelledby="case-items-heading">
+                        <h3 id="case-items-heading">Items included in the request</h3>
+                        <ul class="case-item-list">
+                            @forelse ($case['items'] as $item)
+                                <li>
+                                    <span class="case-item-thumb" aria-hidden="true">
+                                        @if (!empty($item['image']))
+                                            <img src="{{ $item['image'] }}" alt="" loading="lazy" decoding="async">
+                                        @else
+                                            <i data-lucide="package" aria-hidden="true"></i>
+                                        @endif
+                                    </span>
+                                    <span class="case-item-copy">
+                                        <strong>{{ $item['name'] }}</strong>
+                                        <small>{{ $item['variant'] }} · Item code {{ $item['sku'] }}</small>
+                                        @if ($item['condition_code'])
+                                            <small>Seller inspection: {{ ucwords(str_replace('_', ' ', $item['condition_code'])) }} · {{ ucwords(str_replace('_', ' ', $item['resolution'] ?? 'not recorded')) }}</small>
+                                        @endif
+                                        @if ($item['resolution'] === 'quarantine')
+                                            @if ($item['quarantine_review_status'] === 'pending')
+                                                <small class="case-quarantine-state is-pending">Quarantined · awaiting review; excluded from sellable stock</small>
+                                            @elseif ($item['quarantine_review_status'] === 'completed')
+                                                <small class="case-quarantine-state is-complete">Final review: {{ ucwords(str_replace('_', ' ', $item['quarantine_final_condition_code'])) }} · {{ $item['quarantine_final_resolution'] === 'restock' ? 'Restocked' : 'Disposed / written off' }}</small>
+                                                <small>Reviewed by {{ $item['quarantine_reviewed_by'] ?: 'Seller' }} · {{ $item['quarantine_reviewed_at'] ?: 'Time unavailable' }}</small>
+                                                <small>Review note: {{ $item['quarantine_review_note'] }}</small>
+                                            @endif
+                                        @endif
+                                    </span>
+                                    <span class="case-item-metrics">
+                                        <span><small>Quantity requested</small><strong>{{ $item['quantity'] }} {{ $item['quantity'] === 1 ? 'item' : 'items' }}</strong></span>
+                                        <span><small>Refund for this item</small><strong>{{ $item['amount'] }}</strong></span>
+                                    </span>
+                                </li>
+                            @empty
+                                <li class="case-item-empty">No item details are available for this case.</li>
+                            @endforelse
+                        </ul>
+                    </section>
+
+                    <section class="case-content-section" aria-labelledby="case-evidence-heading">
+                        <h3 id="case-evidence-heading">Photos and files <span>{{ $case['evidence'] }}</span></h3>
+                        @if (count($case['evidence_files']))
+                            <ul class="case-evidence-list">
+                                @foreach ($case['evidence_files'] as $evidence)
+                                    <li>
+                                        @if ($evidence['is_image'])
+                                            <button class="case-evidence-preview" type="button" data-case-image-preview data-preview-url="{{ $evidence['view_url'] }}" data-preview-name="{{ $evidence['name'] }}" aria-label="Preview {{ $evidence['name'] }}">
+                                                <img src="{{ $evidence['view_url'] }}" alt="" loading="lazy" decoding="async">
+                                            </button>
+                                        @else
+                                            <i data-lucide="file-text" aria-hidden="true"></i>
+                                        @endif
+                                        <span><strong>{{ $evidence['name'] }}</strong><small>{{ ucwords(str_replace('_', ' ', $evidence['type'])) }} · {{ number_format($evidence['size'] / 1024, 1) }} KB</small></span>
+                                        @if ($evidence['is_image'])
+                                            <button class="case-evidence-open" type="button" data-case-image-preview data-preview-url="{{ $evidence['view_url'] }}" data-preview-name="{{ $evidence['name'] }}" aria-label="Preview {{ $evidence['name'] }}">Preview</button>
+                                        @else
+                                            <a href="{{ $evidence['view_url'] }}" target="_blank" rel="noopener noreferrer" aria-label="View file {{ $evidence['name'] }}">View file</a>
+                                        @endif
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @else
+                            <p class="case-empty-note">No photos or files have been added yet.</p>
+                        @endif
+                        <dialog class="case-image-preview-dialog" data-case-image-dialog aria-labelledby="case-image-preview-title">
+                            <header>
+                                <h3 id="case-image-preview-title" data-case-image-title>Image preview</h3>
+                                <button type="button" data-case-image-close aria-label="Close image preview"><i data-lucide="x" aria-hidden="true"></i></button>
+                            </header>
+                            <div><img data-case-image-full alt=""></div>
+                        </dialog>
+                    </section>
+
+                    @if ($status !== 'awaiting_seller' && $case['seller_response'] !== 'No Seller response submitted yet.')
+                        <section class="case-content-section">
+                            <h3>Your reply <span class="case-locked-label"><i data-lucide="lock" aria-hidden="true"></i>Sent</span></h3>
+                            <p class="case-saved-response">{{ $case['seller_response'] }}</p>
+                        </section>
+                    @endif
+
+                    @if ($isPhysicalReturn && $case['tracking'] !== 'Awaiting Admin approval')
+                        <section class="case-content-section" aria-labelledby="case-shipment-heading">
+                            <h3 id="case-shipment-heading">Return delivery</h3>
+                            <p class="case-shipment-summary"><span><strong>{{ $case['tracking'] }}</strong><small>Tracking number · Original shipment’s Logistics provider</small></span><span><strong>{{ $case['return_status'] ? ucfirst(str_replace('_', ' ', $case['return_status'])) : 'Not yet assigned' }}</strong><small>Delivery status · Return-delivery fee handled separately</small></span></p>
+                            @if (count($case['shipment_events']))
+                                <ol class="case-shipment-events">
+                                    @foreach (array_reverse($case['shipment_events']) as $event)
+                                        <li><span><strong>{{ $event['label'] }}</strong>@if ($event['note'])<small>{{ $event['note'] }}</small>@endif</span><time>{{ $event['at'] }}</time></li>
+                                    @endforeach
+                                </ol>
+                            @endif
+                        </section>
+                    @endif
+
+                    @if (in_array($status, ['refund_pending', 'resolved', 'rejected'], true)
+                        && $case['resolution'] !== 'No final resolution has been recorded.')
+                        <section class="case-content-section">
+                            <h3>Decision</h3>
+                            <p class="case-saved-response">{{ $case['resolution'] }}</p>
+                        </section>
+                    @endif
+
+                    @if ($case['refund'])
+                        <section class="case-content-section">
+                            <h3>Refund and financial responsibility</h3>
+                            <p class="case-refund-summary {{ $refundTone }}">{{ in_array($case['refund']['status'], ['processing', 'completed'], true) ? ($case['refund']['payout_amount'] ?? $case['refund']['amount']).' sent' : $case['refund']['amount'].' approved' }} · {{ $case['refund']['status'] === 'processing' ? 'Awaiting Buyer confirmation' : ucwords(str_replace('_', ' ', $case['refund']['status'])) }}</p>
+                            <dl class="case-refund-details">
+                                <div><dt>Financially responsible</dt><dd>{{ $case['refund']['financially_responsible_party'] ? ucfirst($case['refund']['financially_responsible_party']) : 'Not recorded' }}</dd></div>
+                                @if ($case['return_shipping_fee_minor'] !== null)<div><dt>Return delivery fee</dt><dd>₱{{ number_format((int) $case['return_shipping_fee_minor'] / 100, 2) }} · covered by {{ ucfirst((string) $case['return_shipping_fee_payer']) }}; not deducted from the Buyer refund</dd></div>@endif
+                                @if ($case['refund']['financial_responsibility_reason'])<div><dt>Admin’s reason</dt><dd>{{ $case['refund']['financial_responsibility_reason'] }}</dd></div>@endif
+                                @if (in_array($case['refund']['status'], ['processing', 'completed'], true))
+                                    <div><dt>External payout recorded by Admin</dt><dd>{{ ucfirst(str_replace('_', ' ', $case['refund']['method'])) }} · {{ $case['refund']['paid_on'] ?? 'Date unavailable' }}</dd></div>
+                                    <div><dt>Buyer payout reference</dt><dd>{{ $case['refund']['reference'] ?: 'Not recorded' }}</dd></div>
+                                    @if ($case['refund']['status'] === 'processing')<div><dt>Receipt confirmation</dt><dd>Waiting for the Buyer; this case is still open</dd></div>@endif
+                                @else
+                                    <div><dt>Buyer payout</dt><dd>Not yet recorded as paid</dd></div>
+                                @endif
+                            </dl>
+                            @if ($case['refund']['seller_recovery'])
+                                <div class="case-recovery-details">
+                                    <strong>Recoverable Seller balance</strong>
+                                    <p>Refund proceeds: ₱{{ number_format($case['refund']['seller_recovery']['refund_recovery_minor'] / 100, 2) }} · Return delivery: ₱{{ number_format($case['refund']['seller_recovery']['return_shipping_fee_minor'] / 100, 2) }} · ₱{{ number_format($case['refund']['seller_recovery']['outstanding_minor'] / 100, 2) }} total outstanding.</p>
+                                    <small>Eligible refund-proceeds recovery may be adjusted from Seller Wallet when funds are available and any remaining refund-proceeds balance blocks withdrawals. Return-delivery fees require separate verified recovery and neither block nor automatically deduct Seller Wallet withdrawals.</small>
+                                    @if (count($case['refund']['seller_recovery']['events']))
+                                        <ul>
+                                            @foreach ($case['refund']['seller_recovery']['events'] as $recoveryEvent)
+                                                <li>{{ ucfirst(str_replace('_', ' ', $recoveryEvent['component'])) }} · {{ ucfirst(str_replace('_', ' ', $recoveryEvent['method'])) }} · ₱{{ number_format($recoveryEvent['amount_minor'] / 100, 2) }} · {{ $recoveryEvent['recovered_on'] }} · {{ $recoveryEvent['reference'] }}@if ($recoveryEvent['payout_no']) · {{ $recoveryEvent['payout_no'] }}@endif</li>
+                                            @endforeach
+                                        </ul>
+                                    @endif
+                                </div>
+                            @elseif (in_array($case['refund']['status'], ['processing', 'completed'], true) && $case['refund']['financially_responsible_party'] === 'platform')
+                                <p class="case-recovery-details">Platform responsibility recorded. No Seller recovery balance was created.</p>
+                            @endif
+                        </section>
+                    @endif
+
+                    @if (count($case['events']))
+                        <section class="case-content-section case-activity-section" aria-labelledby="case-activity-heading">
+                            <h3 id="case-activity-heading">Updates</h3>
+                            <ol class="return-timeline case-timeline">
+                                @foreach (array_reverse($case['events']) as $event)
+                                    <li><span aria-hidden="true"></span><div><strong>{{ $event['type'] }} · {{ $event['actor'] }}</strong><small>{{ $event['at'] }}@if ($event['note']) · {{ $event['note'] }}@endif</small></div></li>
+                                @endforeach
+                            </ol>
+                        </section>
+                    @endif
+                </div>
+            </section>
+        </main>
+
+        @if ($hasSellerAction)
+            <aside class="case-side-column">
+            @if ($pendingQuarantineItems !== [])
+                <section class="case-panel case-action-panel" aria-labelledby="seller-quarantine-heading">
+                    <header class="case-panel-heading"><div><i data-lucide="package-search" aria-hidden="true"></i><span><strong id="seller-quarantine-heading">Review quarantined items</strong></span></div></header>
+                    <div class="case-response-form">
+                        <p class="case-quarantine-refund-note">This Seller-owned stock review does not delay, change, or approve the Buyer refund. Admin’s payout and the Buyer confirmation workflow continue independently.</p>
+                        @foreach ($pendingQuarantineItems as $item)
+                            <form method="POST" action="{{ route('seller.orders.returns.quarantine-review', $item['id']) }}" class="case-quarantine-review-form">
+                                @csrf
+                                <fieldset class="case-inspection-item">
+                                    <legend>{{ $item['name'] }} · {{ $item['variant'] }} · {{ $item['quantity'] }} {{ $item['quantity'] === 1 ? 'item' : 'items' }}</legend>
+                                    <p class="case-form-note">Original inspection: {{ ucwords(str_replace('_', ' ', $item['condition_code'] ?: 'not recorded')) }} · Hold for review. This quantity is still excluded from sellable stock.</p>
+                                    <label>
+                                        <span>Final item condition <b>Required</b></span>
+                                        <select name="final_condition_code" required aria-describedby="quarantine-guidance-{{ $item['id'] }}">
+                                            <option value="">Select final condition</option>
+                                            <option value="sellable" @selected(old('final_condition_code') === 'sellable')>Sellable</option>
+                                            <option value="damaged" @selected(old('final_condition_code') === 'damaged')>Damaged</option>
+                                            <option value="opened" @selected(old('final_condition_code') === 'opened')>Opened</option>
+                                            <option value="missing_parts" @selected(old('final_condition_code') === 'missing_parts')>Missing parts</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <span>Final disposition <b>Required</b></span>
+                                        <select name="final_resolution" required>
+                                            <option value="">Select outcome</option>
+                                            <option value="restock" @selected(old('final_resolution') === 'restock')>Restock as sellable</option>
+                                            <option value="dispose" @selected(old('final_resolution') === 'dispose')>Dispose / write off</option>
+                                        </select>
+                                    </label>
+                                    <small class="case-inspection-guidance" id="quarantine-guidance-{{ $item['id'] }}">Only a final Sellable condition can be restocked. A non-sellable item must be disposed / written off.</small>
+                                    <label class="case-response-field">
+                                        <span>Review note <b>Required</b></span>
+                                        <textarea name="note" rows="3" minlength="5" maxlength="1000" required placeholder="Record what you found and why you chose this outcome.">{{ old('note') }}</textarea>
+                                    </label>
+                                    <button class="seller-primary-button" type="submit"><i data-lucide="clipboard-check" aria-hidden="true"></i>Save final review</button>
+                                </fieldset>
+                            </form>
+                        @endforeach
+                    </div>
+                </section>
+            @endif
+            @if ($canRespond)
+                <section class="case-panel case-action-panel" aria-labelledby="seller-response-heading">
+                    <header class="case-panel-heading"><div><i data-lucide="reply" aria-hidden="true"></i><span><strong id="seller-response-heading">Your reply</strong></span></div></header>
+                    <form method="POST" action="{{ route('seller.orders.returns.respond', $case['database_id']) }}" enctype="multipart/form-data" class="case-response-form">
+                        @csrf
+                        <label class="case-response-field">
+                            <span>Your reply <b>Required</b></span>
+                            <textarea name="response" rows="5" minlength="5" maxlength="2000" required placeholder="Tell us how you handled the Buyer’s concern." data-case-response>{{ old('response') }}</textarea>
+                            <small><span data-case-character-count>{{ strlen(old('response', '')) }}</span>/2000 characters</small>
+                        </label>
+                        <label class="case-upload">
+                            <input type="file" name="evidence[]" multiple required accept="image/jpeg,image/png,image/webp,application/pdf,video/mp4,video/quicktime" data-case-evidence-input>
+                            <i data-lucide="upload-cloud" aria-hidden="true"></i>
+                            <span>
+                                <strong>Add photos or files <b>Required</b></strong>
+                                <small class="case-upload-help">Add 1–5 files that support your reply, such as item/packing photos or dispatch records. JPG, PNG, WebP, PDF, MP4, or MOV · max 10 MB each.</small>
+                                <small data-case-evidence-name aria-live="polite"></small>
+                            </span>
+                        </label>
+                        <button class="seller-primary-button" type="submit"><i data-lucide="send" aria-hidden="true"></i>Send reply</button>
+                        <p class="case-form-note">Bearly reviews the request and decides whether a refund is approved.</p>
+                    </form>
+                </section>
+            @elseif ($sellerEvidenceRequested)
+                <section class="case-panel case-action-panel" aria-labelledby="seller-evidence-heading">
+                    <header class="case-panel-heading"><div><i data-lucide="file-plus-2" aria-hidden="true"></i><span><strong id="seller-evidence-heading">Send the requested information</strong></span></div></header>
+                    <form method="POST" action="{{ route('seller.orders.returns.evidence.store', $case['database_id']) }}" enctype="multipart/form-data" class="case-response-form">
+                        @csrf
+                        <label class="case-response-field">
+                            <span>Message <small>Optional if you attach a file</small></span>
+                            <textarea name="note" rows="4" maxlength="1000" placeholder="Add a short message for Bearly.">{{ old('note') }}</textarea>
+                        </label>
+                        <label class="case-upload">
+                            <input type="file" name="evidence[]" multiple accept="image/jpeg,image/png,image/webp,application/pdf,video/mp4,video/quicktime" data-case-evidence-input>
+                            <i data-lucide="upload-cloud" aria-hidden="true"></i>
+                            <span>
+                                <strong>Add photos or files</strong>
+                                <small class="case-upload-help">Send the files Bearly requested. JPG, PNG, WebP, PDF, MP4, or MOV · up to 5 files, 10 MB each.</small>
+                                <small data-case-evidence-name aria-live="polite"></small>
+                            </span>
+                        </label>
+                        <button class="seller-primary-button" type="submit"><i data-lucide="send" aria-hidden="true"></i>Send to Bearly</button>
+                        <p class="case-form-note">Send a message, files, or both. Review continues after everyone replies.</p>
+                    </form>
+                </section>
+            @elseif ($canInspect)
+                <section class="case-panel case-action-panel" aria-labelledby="seller-inspection-heading">
+                    <header class="case-panel-heading"><div><i data-lucide="clipboard-check" aria-hidden="true"></i><span><strong id="seller-inspection-heading">Check returned items</strong></span></div></header>
+                    <form method="POST" action="{{ route('seller.orders.returns.inspect', $case['database_id']) }}" class="case-response-form case-inspection-form">
+                        @csrf
+                        @foreach ($case['items'] as $item)
+                            <fieldset class="case-inspection-item">
+                                <legend>{{ $item['name'] }} · {{ $item['variant'] }} · {{ $item['quantity'] }} {{ $item['quantity'] === 1 ? 'item' : 'items' }}</legend>
+                                <label><span>Item condition</span>
+                                    <select name="items[{{ $item['id'] }}][condition_code]" required data-inspection-condition>
+                                        <option value="">Select condition</option>
+                                        <option value="sellable" @selected(old('items.'.$item['id'].'.condition_code') === 'sellable')>Can be sold</option>
+                                        <option value="damaged" @selected(old('items.'.$item['id'].'.condition_code') === 'damaged')>Damaged</option>
+                                        <option value="opened" @selected(old('items.'.$item['id'].'.condition_code') === 'opened')>Opened</option>
+                                        <option value="missing_parts" @selected(old('items.'.$item['id'].'.condition_code') === 'missing_parts')>Missing parts</option>
+                                    </select>
+                                </label>
+                                <label><span>What should happen next?</span>
+                                    <select name="items[{{ $item['id'] }}][resolution]" required data-inspection-resolution aria-describedby="inspection-guidance-{{ $item['id'] }}">
+                                        <option value="">Select disposition</option>
+                                        <option value="restock" @selected(old('items.'.$item['id'].'.resolution') === 'restock')>Put back in stock</option>
+                                        <option value="quarantine" @selected(old('items.'.$item['id'].'.resolution') === 'quarantine')>Hold for review</option>
+                                        <option value="dispose" @selected(old('items.'.$item['id'].'.resolution') === 'dispose')>Discard</option>
+                                    </select>
+                                </label>
+                                <small class="case-inspection-guidance" id="inspection-guidance-{{ $item['id'] }}" data-inspection-guidance role="status" aria-live="polite">Choose an item condition first.</small>
+                            </fieldset>
+                        @endforeach
+                        <p class="case-form-note">Sellable items must be restocked. Damaged, opened, or incomplete items must be held for review or discarded.</p>
+                        <button class="seller-primary-button" type="submit"><i data-lucide="clipboard-check" aria-hidden="true"></i>Save item checks</button>
+                    </form>
+                </section>
+            @elseif ($status === 'awaiting_inspection')
+                <p class="case-help-inline"><i data-lucide="truck" aria-hidden="true"></i><span><strong>Waiting for the return</strong><small>You can check the items after the assigned Logistics provider delivers them.</small></span></p>
+            @endif
+            </aside>
+        @endif
+    </div>
+</div>
+@endsection

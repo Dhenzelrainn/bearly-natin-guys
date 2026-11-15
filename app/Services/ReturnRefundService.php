@@ -1,0 +1,3196 @@
+<?php
+
+namespace App\Services;
+
+use App\Enums\ReturnRequestStatus;
+use App\Enums\ReturnDeliveryMethod;
+use App\Enums\ShipmentStatus;
+use App\Enums\UserRole;
+use App\Events\SellerReturnStatusUpdated;
+use App\Models\Address;
+use App\Models\InventoryMovement;
+use App\Models\LogisticsProfile;
+use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\Parcel;
+use App\Models\Payment;
+use App\Models\PickupRequest;
+use App\Models\PlatformCommission;
+use App\Models\ProductVariant;
+use App\Models\PromotionRedemption;
+use App\Models\Refund;
+use App\Models\RefundCashPayout;
+use App\Models\RefundCashPayoutEvent;
+use App\Models\ReturnEvent;
+use App\Models\ReturnEvidence;
+use App\Models\ReturnItem;
+use App\Models\ReturnRequest;
+use App\Models\SellerOrder;
+use App\Models\SellerPayout;
+use App\Models\SellerRefundRecovery;
+use App\Models\SellerRefundRecoveryEvent;
+use App\Models\ShippingSettlement;
+use App\Models\SortingCenter;
+use App\Models\Shipment;
+use App\Models\ShipmentEvent;
+use App\Models\Store;
+use App\Models\User;
+use App\Models\Waybill;
+use App\Notifications\WorkflowNotification;
+use Carbon\CarbonImmutable;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use Throwable;
+
+class ReturnRefundService
+{
+    public const RETURN_WINDOW_DAYS = 3;
+
+    private const NON_REFUND_STATUSES = ['failed', 'cancelled'];
+
+    public function __construct(
+        private readonly AuditService $audit,
+        private readonly CommissionLedgerService $commissionLedger,
+        private readonly NotificationService $notifications,
+        private readonly SellerWalletService $wallets,
+        private readonly PromotionService $promotions,
+        private readonly ShippingQuoteService $shippingQuotes,
+    ) {}
+
+    /** @return array<string, mixed> */
+    public function buyerWorkspace(User $buyer, int $sellerOrderId): array
+    {
+        $sellerOrder = SellerOrder::query()
+            ->whereKey($sellerOrderId)
+            ->whereHas('order', fn ($query) => $query->where('buyer_id', $buyer->id))
+            ->with(['order.payments', 'store', 'items'])
+            ->firstOrFail();
+
+        $eligible = $this->eligibleForRequest($sellerOrder);
+        $returnable = $eligible
+            ? $this->returnableQuantities($sellerOrder->items)
+            : [];
+        $items = $sellerOrder->items->map(function (OrderItem $item) use ($returnable): array {
+            $quantity = max(1, (int) $item->quantity);
+            $buyerLineTotalMinor = max(0, (int) $item->subtotal_minor
+                - (int) ($item->discount_minor ?? 0)
+                - (int) ($item->platform_discount_minor ?? 0)
+                - (int) ($item->campaign_platform_discount_minor ?? 0));
+
+            return [
+                'id' => (int) $item->id,
+                'name' => (string) $item->product_name,
+                'variant' => (string) ($item->variant_name ?: 'Standard'),
+                'sku' => (string) $item->sku,
+                'quantity' => (int) $item->quantity,
+                'returnable_quantity' => (int) ($returnable[$item->id] ?? 0),
+                'unit_price_minor' => intdiv($buyerLineTotalMinor + intdiv($quantity, 2), $quantity),
+                'image_url' => $this->orderItemImageUrl($item),
+            ];
+        })->values()->all();
+
+        $cases = ReturnRequest::query()
+            ->where('seller_order_id', $sellerOrder->id)
+            ->with(['refunds', 'returnShipment.waybill'])
+            ->latest('submitted_at')
+            ->get();
+
+        return [
+            'seller_order' => $sellerOrder,
+            'items' => $items,
+            'cases' => $cases,
+            'can_request' => $eligible && collect($returnable)->contains(fn (int $quantity): bool => $quantity > 0),
+            'deadline' => $sellerOrder->completed_at
+                ? CarbonImmutable::parse($sellerOrder->completed_at)->addDays(self::RETURN_WINDOW_DAYS)->endOfDay()
+                : null,
+            'reason_codes' => [
+                'item_arrived_damaged' => 'Item arrived damaged',
+                'wrong_item_received' => 'Wrong item received',
+                'item_not_as_described' => 'Item not as described',
+                'missing_item' => 'Item missing from the parcel',
+                'other' => 'Other issue',
+            ],
+            'dropoff_center' => $this->activeBuyerDropoffCenter($sellerOrder->order),
+        ];
+    }
+
+    private function activeBuyerDropoffCenter(Order $order, bool $lock = false): ?SortingCenter
+    {
+        $cityCode = trim((string) $order->psgc_city_code);
+        if (! preg_match('/^\d{10}$/D', $cityCode)
+            || ! app(PostalCodeLookup::class)->findByCanonicalCityCode($cityCode)) {
+            $cityCode = app(PostalCodeLookup::class)->canonicalCityCode(
+                null,
+                (string) $order->province,
+                (string) $order->city_municipality,
+            ) ?? '';
+        }
+        if (! preg_match('/^\d{10}$/D', $cityCode)
+            || ! app(PostalCodeLookup::class)->findByCanonicalCityCode($cityCode)) {
+            return null;
+        }
+
+        $providerQuery = LogisticsProfile::query()
+            ->where('psgc_city_code', $cityCode)
+            ->where('status', 'active')
+            ->whereHas('sortingCenters', fn ($query) => $query
+                ->where('status', 'active')
+                ->whereHas('address', fn ($address) => $address->where('psgc_city_code', $cityCode)))
+            ->whereHas('user', fn ($query) => $query
+                ->where('status', 'active')
+                ->where(fn ($roles) => $roles
+                    ->where('role', UserRole::Logistics->value)
+                    ->orWhereHas('roles', fn ($roleQuery) => $roleQuery
+                        ->where('roles.name', UserRole::Logistics->value))))
+            ->orderBy('id');
+        if ($lock) {
+            $providerQuery->lockForUpdate();
+        }
+        $provider = $providerQuery->first();
+        if (! $provider) {
+            return null;
+        }
+
+        $centerQuery = SortingCenter::query()
+            ->where('logistics_profile_id', $provider->id)
+            ->where('status', 'active')
+            ->whereHas('address', fn ($query) => $query->where('psgc_city_code', $cityCode))
+            ->with('address');
+        if ($lock) {
+            $centerQuery->lockForUpdate();
+        }
+        $center = $centerQuery->orderBy('id')->first();
+        if (! $center?->address || trim((string) $center->address->psgc_city_code) !== $cityCode) {
+            return null;
+        }
+
+        return $center;
+    }
+
+    public function canRequest(User $buyer, SellerOrder $sellerOrder): bool
+    {
+        $owned = SellerOrder::query()
+            ->whereKey($sellerOrder->id)
+            ->whereHas('order', fn ($query) => $query->where('buyer_id', $buyer->id))
+            ->with(['order.payments', 'items'])
+            ->first();
+
+        if (! $owned || ! $this->eligibleForRequest($owned)) {
+            return false;
+        }
+
+        return collect($this->returnableQuantities($owned->items))
+            ->contains(fn (int $quantity): bool => $quantity > 0);
+    }
+
+    /**
+     * Escalate unanswered Seller cases after their response deadline. The
+     * status check under the same Order/ReturnRequest locks makes scheduler
+     * retries idempotent and serializes them against a Seller response.
+     */
+    public function escalateOverdueSellerResponses(): int
+    {
+        $now = CarbonImmutable::now(config('app.timezone'));
+        $legacyCutoff = $now->subDays(2);
+        $escalatedCount = 0;
+
+        ReturnRequest::query()
+            ->where('status', ReturnRequestStatus::AwaitingSeller->value)
+            ->whereNull('seller_responded_at')
+            ->where(function ($query) use ($now, $legacyCutoff): void {
+                $query->where('response_due_at', '<=', $now)
+                    ->orWhere(function ($legacy) use ($legacyCutoff): void {
+                        $legacy->whereNull('response_due_at')
+                            ->where(function ($submitted) use ($legacyCutoff): void {
+                                $submitted->where('submitted_at', '<=', $legacyCutoff)
+                                    ->orWhere(function ($created) use ($legacyCutoff): void {
+                                        $created->whereNull('submitted_at')
+                                            ->where('created_at', '<=', $legacyCutoff);
+                                    });
+                            });
+                    });
+            })
+            ->select('id')
+            ->orderBy('id')
+            ->chunkById(100, function ($cases) use ($now, &$escalatedCount): void {
+                foreach ($cases as $candidate) {
+                    $escalated = DB::transaction(function () use ($candidate, $now): bool {
+                        $stub = ReturnRequest::query()->whereKey($candidate->id)->first();
+                        if (! $stub) {
+                            return false;
+                        }
+
+                        Order::query()->whereKey($stub->order_id)->lockForUpdate()->firstOrFail();
+                        $returnRequest = ReturnRequest::query()
+                            ->whereKey($stub->id)
+                            ->lockForUpdate()
+                            ->firstOrFail();
+
+                        if ($returnRequest->status !== ReturnRequestStatus::AwaitingSeller->value
+                            || $returnRequest->seller_responded_at !== null
+                            || filled($returnRequest->seller_response)) {
+                            return false;
+                        }
+
+                        $deadline = $this->sellerResponseDeadline($returnRequest);
+                        if (! $deadline || $deadline->greaterThan($now)) {
+                            return false;
+                        }
+
+                        $this->escalateSellerResponseDeadline($returnRequest, $deadline);
+
+                        return true;
+                    }, attempts: 3);
+
+                    if ($escalated) {
+                        $escalatedCount++;
+                    }
+                }
+            }, column: 'id');
+
+        return $escalatedCount;
+    }
+
+    /** @param array<int|string, int|string> $itemQuantities
+     * @param  array<int, UploadedFile>  $evidenceFiles
+     */
+    public function createBuyerRequest(
+        User $buyer,
+        int $sellerOrderId,
+        array $itemQuantities,
+        string $requestType,
+        string $reasonCode,
+        ?string $buyerNote,
+        array $evidenceFiles,
+        ?string $returnDeliveryMethod = null,
+    ): ReturnRequest {
+        $storedPaths = [];
+
+        try {
+            return DB::transaction(function () use (
+                $buyer,
+                $sellerOrderId,
+                $itemQuantities,
+                $requestType,
+                $reasonCode,
+                $buyerNote,
+                $evidenceFiles,
+                $returnDeliveryMethod,
+                &$storedPaths,
+            ): ReturnRequest {
+                $sellerOrderStub = SellerOrder::query()
+                    ->whereKey($sellerOrderId)
+                    ->whereHas('order', fn ($query) => $query->where('buyer_id', $buyer->id))
+                    ->firstOrFail();
+
+                $order = Order::query()
+                    ->whereKey($sellerOrderStub->order_id)
+                    ->where('buyer_id', $buyer->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+                $sellerOrder = SellerOrder::query()
+                    ->whereKey($sellerOrderId)
+                    ->where('order_id', $order->id)
+                    ->lockForUpdate()
+                    ->with('items')
+                    ->firstOrFail();
+
+                if (! $this->eligibleForRequest($sellerOrder)) {
+                    throw ValidationException::withMessages([
+                        'return' => 'This Seller Order is outside the 3-day return window or is not completed.',
+                    ]);
+                }
+
+                if (! in_array($requestType, ['return_refund', 'refund_only'], true)) {
+                    throw ValidationException::withMessages(['request_type' => 'Choose a valid request type.']);
+                }
+
+                if ($requestType === 'return_refund') {
+                    $returnDeliveryMethod = $returnDeliveryMethod ?: ReturnDeliveryMethod::RiderPickup->value;
+                    if (! in_array($returnDeliveryMethod, array_map(
+                        static fn (ReturnDeliveryMethod $method): string => $method->value,
+                        ReturnDeliveryMethod::cases(),
+                    ), true)) {
+                        throw ValidationException::withMessages(['return_delivery_method' => 'Choose Rider pickup or Buyer drop-off.']);
+                    }
+                    if ($returnDeliveryMethod === ReturnDeliveryMethod::BuyerDropoff->value
+                        && ! $this->activeBuyerDropoffCenter($order)) {
+                        throw ValidationException::withMessages([
+                            'return_delivery_method' => 'Buyer drop-off is unavailable because there is no active Logistics Sorting Center in the order city. Choose Rider pickup instead.',
+                        ]);
+                    }
+                } else {
+                    if (filled($returnDeliveryMethod)) {
+                        throw ValidationException::withMessages(['return_delivery_method' => 'A delivery method is only available for a physical return.']);
+                    }
+                    $returnDeliveryMethod = null;
+                }
+
+                if (! in_array($reasonCode, [
+                    'item_arrived_damaged',
+                    'wrong_item_received',
+                    'item_not_as_described',
+                    'missing_item',
+                    'other',
+                ], true)) {
+                    throw ValidationException::withMessages(['reason_code' => 'Choose a valid reason.']);
+                }
+
+                $returnable = $this->returnableQuantities($sellerOrder->items);
+                $quantities = [];
+                foreach ($itemQuantities as $itemId => $quantity) {
+                    if (! is_numeric($itemId) || ! is_numeric($quantity) || (int) $quantity < 0) {
+                        throw ValidationException::withMessages(['item_quantities' => 'Enter valid item quantities.']);
+                    }
+
+                    $quantity = (int) $quantity;
+                    if ($quantity === 0) {
+                        continue;
+                    }
+
+                    $itemId = (int) $itemId;
+                    if (! isset($returnable[$itemId]) || $quantity > $returnable[$itemId]) {
+                        throw ValidationException::withMessages([
+                            'item_quantities' => 'One or more requested quantities are no longer eligible for return.',
+                        ]);
+                    }
+                    $quantities[$itemId] = $quantity;
+                }
+
+                if ($quantities === []) {
+                    throw ValidationException::withMessages(['item_quantities' => 'Select at least one item quantity.']);
+                }
+
+                $captured = $this->capturedAmountMinor($order);
+                if ($captured < 1) {
+                    throw ValidationException::withMessages([
+                        'return' => 'A recorded paid order is required before requesting a refund.',
+                    ]);
+                }
+
+                $amountMinor = 0;
+                $itemAmounts = [];
+                $lineDiscountTotal = (int) $sellerOrder->items->sum(fn (OrderItem $item): int => (int) $item->discount_minor);
+                $allItemNet = max(1, (int) $sellerOrder->items->sum(fn (OrderItem $item): int => max(
+                    0,
+                    ((int) $item->unit_price_minor * (int) $item->quantity) - (int) $item->discount_minor,
+                )));
+
+                foreach ($sellerOrder->items as $item) {
+                    if (! isset($quantities[$item->id])) {
+                        continue;
+                    }
+                    $quantity = $quantities[$item->id];
+                    $itemQuantity = max(1, (int) $item->quantity);
+                    $selectedGross = (int) $item->unit_price_minor * $quantity;
+                    $selectedLineDiscount = intdiv((int) $item->discount_minor * $quantity, $itemQuantity);
+                    $selectedNet = max(0, $selectedGross - $selectedLineDiscount);
+                    $sellerDiscountShare = $lineDiscountTotal < 1
+                        ? intdiv((int) $sellerOrder->discount_minor * $selectedNet, $allItemNet)
+                        : 0;
+                    $platformDiscountShare = intdiv(
+                        ((int) ($item->platform_discount_minor ?? 0)
+                            + (int) ($item->campaign_platform_discount_minor ?? 0)) * $quantity,
+                        $itemQuantity,
+                    );
+                    $refundMinor = max(0, $selectedNet - $sellerDiscountShare - $platformDiscountShare);
+
+                    $itemAmounts[$item->id] = [$quantity, $refundMinor];
+                    $amountMinor += $refundMinor;
+                }
+
+                if ($amountMinor < 1) {
+                    throw ValidationException::withMessages(['item_quantities' => 'The selected items have no refundable value.']);
+                }
+
+                $this->assertRefundCapacity($order, $amountMinor, null, $sellerOrder->id);
+
+                $now = now();
+                $returnRequest = ReturnRequest::query()->create([
+                    'return_no' => 'RR-'.Str::upper((string) Str::ulid()),
+                    'order_id' => $order->id,
+                    'seller_order_id' => $sellerOrder->id,
+                    'buyer_id' => $buyer->id,
+                    'store_id' => $sellerOrder->store_id,
+                    'request_type' => $requestType,
+                    'return_delivery_method' => $returnDeliveryMethod,
+                    'reason_code' => $reasonCode,
+                    'buyer_note' => filled($buyerNote) ? trim((string) $buyerNote) : null,
+                    'status' => ReturnRequestStatus::AwaitingSeller->value,
+                    'requested_amount_minor' => $amountMinor,
+                    'response_due_at' => $now->copy()->addDays(2),
+                    'submitted_at' => $now,
+                ]);
+
+                foreach ($itemAmounts as $itemId => [$quantity, $refundMinor]) {
+                    ReturnItem::query()->create([
+                        'return_request_id' => $returnRequest->id,
+                        'order_item_id' => $itemId,
+                        'quantity' => $quantity,
+                        'refund_amount_minor' => $refundMinor,
+                        'resolution' => $requestType === 'return_refund' ? 'return_required' : 'refund_only',
+                    ]);
+                }
+
+                $this->storeEvidence($returnRequest, $buyer, $evidenceFiles, 'buyer', $storedPaths);
+                $this->event($returnRequest, $buyer, 'request_submitted', null, ReturnRequestStatus::AwaitingSeller->value, $buyerNote);
+                $this->notifyAdminsOfReturn($returnRequest, $order);
+                $this->notifySellerOfReturn($returnRequest, $order, $sellerOrder, $buyer);
+
+                return $returnRequest->fresh(['items.orderItem', 'evidence', 'events']);
+            }, attempts: 3);
+        } catch (Throwable $exception) {
+            if ($storedPaths !== []) {
+                Storage::disk('local')->delete($storedPaths);
+            }
+            throw $exception;
+        }
+    }
+
+    /** @param array<int, UploadedFile> $evidenceFiles */
+    public function sellerRespond(
+        User $seller,
+        int $returnRequestId,
+        string $response,
+        array $evidenceFiles,
+    ): ReturnRequest {
+        $storeId = $seller->sellerProfile?->store?->id;
+        abort_unless($storeId, 404, 'Seller Store not found.');
+        $storedPaths = [];
+
+        try {
+            [$returnRequest, $deadlineMissed] = DB::transaction(function () use ($seller, $storeId, $returnRequestId, $response, $evidenceFiles, &$storedPaths): array {
+                $stub = ReturnRequest::query()->whereKey($returnRequestId)->where('store_id', $storeId)->firstOrFail();
+                Order::query()->whereKey($stub->order_id)->lockForUpdate()->firstOrFail();
+                $returnRequest = ReturnRequest::query()->whereKey($stub->id)->where('store_id', $storeId)->lockForUpdate()->firstOrFail();
+
+                if ($returnRequest->status !== ReturnRequestStatus::AwaitingSeller->value) {
+                    throw ValidationException::withMessages(['return' => 'This case is no longer awaiting a Seller response.']);
+                }
+                $deadline = $this->sellerResponseDeadline($returnRequest);
+                if ($returnRequest->seller_responded_at === null
+                    && blank($returnRequest->seller_response)
+                    && $deadline
+                    && $deadline->lessThanOrEqualTo(CarbonImmutable::now(config('app.timezone')))) {
+                    $this->escalateSellerResponseDeadline($returnRequest, $deadline);
+
+                    return [$returnRequest->fresh(['items.orderItem', 'evidence', 'events']), true];
+                }
+                if ($evidenceFiles === []) {
+                    throw ValidationException::withMessages([
+                        'evidence' => 'Attach at least one supporting evidence file with the Seller response.',
+                    ]);
+                }
+
+                $fromStatus = $returnRequest->status;
+                $returnRequest->update([
+                    'seller_response' => trim($response),
+                    'seller_responded_at' => now(),
+                    'status' => ReturnRequestStatus::UnderReview->value,
+                ]);
+                $this->storeEvidence($returnRequest, $seller, $evidenceFiles, 'seller', $storedPaths);
+                $this->event($returnRequest, $seller, 'seller_response_submitted', $fromStatus, ReturnRequestStatus::UnderReview->value, trim($response));
+
+                return [$returnRequest->fresh(['items.orderItem', 'evidence', 'events']), false];
+            }, attempts: 3);
+
+            if ($deadlineMissed) {
+                throw ValidationException::withMessages([
+                    'return' => 'The response deadline passed and this case was escalated to Admin review. You may still reply to an additional evidence request from Admin.',
+                ]);
+            }
+
+            return $returnRequest;
+        } catch (Throwable $exception) {
+            if ($storedPaths !== []) {
+                Storage::disk('local')->delete($storedPaths);
+            }
+            throw $exception;
+        }
+    }
+
+    /** @param array<int, UploadedFile> $evidenceFiles */
+    public function addBuyerEvidence(
+        User $buyer,
+        int $returnRequestId,
+        ?string $note,
+        array $evidenceFiles,
+    ): ReturnRequest {
+        $storedPaths = [];
+
+        try {
+            return DB::transaction(function () use ($buyer, $returnRequestId, $note, $evidenceFiles, &$storedPaths): ReturnRequest {
+                $stub = ReturnRequest::query()->whereKey($returnRequestId)->where('buyer_id', $buyer->id)->firstOrFail();
+                Order::query()->whereKey($stub->order_id)->lockForUpdate()->firstOrFail();
+                $returnRequest = ReturnRequest::query()->whereKey($stub->id)->where('buyer_id', $buyer->id)->lockForUpdate()->firstOrFail();
+
+                if ($returnRequest->status !== ReturnRequestStatus::AwaitingEvidence->value) {
+                    throw ValidationException::withMessages(['return' => 'This case is not awaiting additional evidence.']);
+                }
+                if (! in_array($this->evidenceRequestedFrom($returnRequest), ['buyer', 'both'], true)) {
+                    throw ValidationException::withMessages(['return' => 'The current evidence request is not assigned to the Buyer.']);
+                }
+                $this->assertAdditionalEvidenceProvided($note, $evidenceFiles);
+                if ($this->hasEvidenceResponseSinceLatestRequest($returnRequest, 'buyer')) {
+                    throw ValidationException::withMessages(['return' => 'Buyer evidence has already been submitted for the current request.']);
+                }
+
+                $this->storeEvidence($returnRequest, $buyer, $evidenceFiles, 'buyer_additional', $storedPaths);
+                $fromStatus = $returnRequest->status;
+                $newStatus = $this->allRequestedEvidenceSubmitted($returnRequest, 'buyer')
+                    ? ReturnRequestStatus::UnderReview->value
+                    : ReturnRequestStatus::AwaitingEvidence->value;
+                $returnRequest->update(['status' => $newStatus]);
+                $this->event($returnRequest, $buyer, 'buyer_evidence_submitted', $fromStatus, $newStatus, $note);
+
+                return $returnRequest->fresh(['items.orderItem', 'evidence', 'events']);
+            }, attempts: 3);
+        } catch (Throwable $exception) {
+            if ($storedPaths !== []) {
+                Storage::disk('local')->delete($storedPaths);
+            }
+            throw $exception;
+        }
+    }
+
+    /** @param array<int, UploadedFile> $evidenceFiles */
+    public function addSellerEvidence(
+        User $seller,
+        int $returnRequestId,
+        ?string $note,
+        array $evidenceFiles,
+    ): ReturnRequest {
+        $storeId = $seller->sellerProfile?->store?->id;
+        abort_unless($storeId, 404, 'Seller Store not found.');
+        $storedPaths = [];
+
+        try {
+            return DB::transaction(function () use ($seller, $storeId, $returnRequestId, $note, $evidenceFiles, &$storedPaths): ReturnRequest {
+                $stub = ReturnRequest::query()->whereKey($returnRequestId)->where('store_id', $storeId)->firstOrFail();
+                Order::query()->whereKey($stub->order_id)->lockForUpdate()->firstOrFail();
+                $returnRequest = ReturnRequest::query()->whereKey($stub->id)->where('store_id', $storeId)->lockForUpdate()->firstOrFail();
+
+                if ($returnRequest->status !== ReturnRequestStatus::AwaitingEvidence->value
+                    || ! in_array($this->evidenceRequestedFrom($returnRequest), ['seller', 'both'], true)) {
+                    throw ValidationException::withMessages(['return' => 'This case is not awaiting additional Seller evidence.']);
+                }
+                $this->assertAdditionalEvidenceProvided($note, $evidenceFiles);
+                if ($this->hasEvidenceResponseSinceLatestRequest($returnRequest, 'seller')) {
+                    throw ValidationException::withMessages(['return' => 'Seller evidence has already been submitted for the current request.']);
+                }
+
+                $this->storeEvidence($returnRequest, $seller, $evidenceFiles, 'seller_additional', $storedPaths);
+                $fromStatus = $returnRequest->status;
+                $newStatus = $this->allRequestedEvidenceSubmitted($returnRequest, 'seller')
+                    ? ReturnRequestStatus::UnderReview->value
+                    : ReturnRequestStatus::AwaitingEvidence->value;
+                $returnRequest->update(['status' => $newStatus]);
+                $this->event($returnRequest, $seller, 'seller_evidence_submitted', $fromStatus, $newStatus, $note);
+
+                return $returnRequest->fresh(['items.orderItem', 'evidence', 'events']);
+            }, attempts: 3);
+        } catch (Throwable $exception) {
+            if ($storedPaths !== []) {
+                Storage::disk('local')->delete($storedPaths);
+            }
+            throw $exception;
+        }
+    }
+
+    public function adminApprove(
+        User $admin,
+        int $returnRequestId,
+        string $financiallyResponsibleParty,
+        string $financialResponsibilityReason,
+        Request $request,
+    ): ReturnRequest {
+        if (! in_array($financiallyResponsibleParty, ['seller', 'platform'], true)) {
+            throw ValidationException::withMessages(['financially_responsible_party' => 'Choose whether the Seller or Platform is financially responsible.']);
+        }
+        if (mb_strlen(trim($financialResponsibilityReason)) < 5) {
+            throw ValidationException::withMessages(['financial_responsibility_reason' => 'Explain why this party is financially responsible.']);
+        }
+
+        return DB::transaction(function () use ($admin, $returnRequestId, $financiallyResponsibleParty, $financialResponsibilityReason, $request): ReturnRequest {
+            $stub = ReturnRequest::query()->findOrFail($returnRequestId);
+            $order = Order::query()->whereKey($stub->order_id)->lockForUpdate()->firstOrFail();
+            $returnRequest = ReturnRequest::query()->whereKey($stub->id)->lockForUpdate()->with(['sellerOrder.items', 'store.sellerProfile.pickupAddress'])->firstOrFail();
+
+            if ($returnRequest->status !== ReturnRequestStatus::UnderReview->value) {
+                throw ValidationException::withMessages(['return' => 'This case is not ready for an Admin decision.']);
+            }
+
+            if (Refund::query()->where('return_request_id', $returnRequest->id)->exists()) {
+                throw ValidationException::withMessages(['return' => 'A refund has already been created for this case.']);
+            }
+
+            $payment = Payment::query()
+                ->where('order_id', $order->id)
+                ->where('method', 'cod')
+                ->whereIn('status', ['paid', 'partially_refunded'])
+                ->whereNotNull('paid_at')
+                ->orderByDesc('paid_at')
+                ->lockForUpdate()
+                ->first();
+
+            if (! $payment) {
+                throw ValidationException::withMessages(['return' => 'A recorded paid COD payment is required before approving a refund.']);
+            }
+
+            $this->assertRefundCapacity($order, (int) $returnRequest->requested_amount_minor, $returnRequest->id, $returnRequest->seller_order_id);
+            if ($payment->status === 'paid' && ! PlatformCommission::query()
+                ->where('seller_order_id', $returnRequest->seller_order_id)
+                ->whereNull('refund_id')
+                ->where('type', 'sale')
+                ->exists()) {
+                $this->commissionLedger->finalize($payment);
+            }
+
+            $refund = Refund::query()->create([
+                'refund_no' => 'RFD-'.Str::upper((string) Str::ulid()),
+                'return_request_id' => $returnRequest->id,
+                'payment_id' => $payment->id,
+                'order_id' => $order->id,
+                'amount_minor' => (int) $returnRequest->requested_amount_minor,
+                'status' => 'pending',
+                'method' => 'manual',
+                'financially_responsible_party' => $financiallyResponsibleParty,
+                'financial_responsibility_reason' => trim($financialResponsibilityReason),
+                'approved_by' => $admin->id,
+                'approved_at' => now(),
+            ]);
+
+            $oldStatus = $returnRequest->status;
+            $dropoffDueAt = null;
+            $dropoffCenterId = null;
+            if ($returnRequest->request_type === 'return_refund') {
+                $fulfillment = $this->createReturnShipment($returnRequest, $order, $admin);
+                $pickupRequest = $fulfillment['pickup_request'];
+                $method = $fulfillment['method'];
+                $dropoffCenterId = $fulfillment['dropoff_center']?->id;
+                $dropoffDueAt = $method === ReturnDeliveryMethod::BuyerDropoff->value
+                    ? CarbonImmutable::now(config('app.timezone'))->addDays(3)->endOfDay()
+                    : null;
+                $newStatus = $method === ReturnDeliveryMethod::BuyerDropoff->value
+                    ? ReturnRequestStatus::ReturnDropoffPending->value
+                    : ReturnRequestStatus::ReturnPickupRequested->value;
+                $resolution = $method === ReturnDeliveryMethod::BuyerDropoff->value
+                    ? 'Admin approved the physical return and refund. Drop off the sealed parcel at the active Logistics Sorting Center in the Buyer’s city by '.$dropoffDueAt->format('M j, Y').'; if missed, switch to Rider pickup. The reverse route then follows the current city-handoff and Seller delivery flow. Seller inspection is still required before the Buyer refund. '
+                        .ucfirst($financiallyResponsibleParty).' is financially responsible for the refund and return-delivery fee; Finance remits the return fee separately and it is not deducted from the Buyer refund.'
+                    : 'Admin approved the physical return and refund. The Buyer-city Logistics provider will arrange Rider pickup; a cross-city return is handed to the Seller-address city provider before final delivery. Seller inspection is still required before the Buyer refund. '
+                        .ucfirst($financiallyResponsibleParty).' is financially responsible for the refund and return-delivery fee; Finance remits the return fee separately and it is not deducted from the Buyer refund.';
+                $metadata = [
+                    'refund_id' => $refund->id,
+                    'pickup_request_id' => $pickupRequest?->id,
+                    'shipment_id' => $returnRequest->return_shipment_id,
+                    'return_delivery_method' => $method,
+                    'dropoff_due_at' => $dropoffDueAt?->toIso8601String(),
+                    'return_shipping_fee_minor' => (int) $fulfillment['shipment']->shipping_fee_minor,
+                    'return_shipping_quote' => $fulfillment['shipment']->return_shipping_quote,
+                    'financially_responsible_party' => $financiallyResponsibleParty,
+                    'financial_responsibility_reason' => trim($financialResponsibilityReason),
+                ];
+            } else {
+                $newStatus = ReturnRequestStatus::RefundPending->value;
+                $resolution = 'Admin approved the refund. Admin records the external payout after it is sent. '.ucfirst($financiallyResponsibleParty).' is financially responsible for the approved refund.';
+                $metadata = [
+                    'refund_id' => $refund->id,
+                    'financially_responsible_party' => $financiallyResponsibleParty,
+                    'financial_responsibility_reason' => trim($financialResponsibilityReason),
+                ];
+            }
+
+            $returnRequest->update([
+                'status' => $newStatus,
+                'reviewed_by' => $admin->id,
+                'reviewed_at' => now(),
+                'resolved_at' => null,
+                'resolution' => $resolution,
+                'dropoff_due_at' => $dropoffDueAt,
+                'dropoff_sorting_center_id' => $dropoffCenterId,
+            ]);
+            $this->event($returnRequest, $admin, 'admin_approved', $oldStatus, $newStatus, $resolution, $metadata);
+            $this->audit->record(
+                action: 'return.refund_approved',
+                module: 'Returns & Refunds',
+                subject: $returnRequest,
+                description: "{$returnRequest->return_no} was approved for an externally paid refund.",
+                oldValues: ['status' => $oldStatus],
+                newValues: [
+                    'status' => $newStatus,
+                    'refund_id' => $refund->id,
+                    'refund_amount_minor' => $refund->amount_minor,
+                    'financially_responsible_party' => $financiallyResponsibleParty,
+                    'financial_responsibility_reason' => trim($financialResponsibilityReason),
+                ],
+                severity: 'warning',
+                request: $request,
+            );
+
+            $this->notifyBuyerOfReturnUpdate(
+                $returnRequest,
+                'Return approved',
+                $returnRequest->request_type === 'return_refund'
+                    ? ($returnRequest->return_delivery_method === ReturnDeliveryMethod::BuyerDropoff->value
+                        ? "Your return {$returnRequest->return_no} was approved. Drop off the parcel at the assigned Logistics center within 3 calendar days."
+                        : "Your return {$returnRequest->return_no} was approved. Logistics will arrange Rider pickup.")
+                    : "Your refund {$returnRequest->return_no} was approved.",
+                'success',
+            );
+
+            return $returnRequest->fresh(['refunds', 'returnShipment.waybill', 'returnShipment.logisticsProfile.sortingCenters.address', 'events']);
+        }, attempts: 3);
+    }
+
+    public function recordLegacyRefundResponsibility(
+        User $admin,
+        int $refundId,
+        string $financiallyResponsibleParty,
+        string $financialResponsibilityReason,
+        Request $request,
+    ): Refund {
+        if (! in_array($financiallyResponsibleParty, ['seller', 'platform'], true)) {
+            throw ValidationException::withMessages(['financially_responsible_party' => 'Choose whether the Seller or Platform is financially responsible.']);
+        }
+        if (mb_strlen(trim($financialResponsibilityReason)) < 5) {
+            throw ValidationException::withMessages(['financial_responsibility_reason' => 'Explain why this party is financially responsible.']);
+        }
+
+        return DB::transaction(function () use ($admin, $refundId, $financiallyResponsibleParty, $financialResponsibilityReason, $request): Refund {
+            $stub = Refund::query()->findOrFail($refundId);
+            Order::query()->whereKey($stub->order_id)->lockForUpdate()->firstOrFail();
+            $refund = Refund::query()->whereKey($stub->id)->lockForUpdate()->firstOrFail();
+            $returnRequest = $refund->return_request_id
+                ? ReturnRequest::query()->whereKey($refund->return_request_id)->lockForUpdate()->firstOrFail()
+                : null;
+
+            if ($refund->status !== 'pending'
+                || ! $returnRequest
+                || $returnRequest->status !== ReturnRequestStatus::RefundPending->value
+                || filled($refund->financially_responsible_party)) {
+                throw ValidationException::withMessages(['refund' => 'Financial responsibility is already recorded or this refund is no longer awaiting payout.']);
+            }
+
+            $refund->update([
+                'financially_responsible_party' => $financiallyResponsibleParty,
+                'financial_responsibility_reason' => trim($financialResponsibilityReason),
+            ]);
+            $this->event(
+                $returnRequest,
+                $admin,
+                'refund_responsibility_recorded',
+                $returnRequest->status,
+                $returnRequest->status,
+                'Admin recorded who is financially responsible before any payout or Seller recovery.',
+                [
+                    'refund_id' => $refund->id,
+                    'financially_responsible_party' => $financiallyResponsibleParty,
+                    'financial_responsibility_reason' => trim($financialResponsibilityReason),
+                ],
+            );
+            $this->audit->record(
+                action: 'refund.financial_responsibility_recorded',
+                module: 'Returns & Refunds',
+                subject: $refund,
+                description: "Financial responsibility was recorded for {$refund->refund_no}.",
+                oldValues: ['financially_responsible_party' => null],
+                newValues: [
+                    'financially_responsible_party' => $financiallyResponsibleParty,
+                    'financial_responsibility_reason' => trim($financialResponsibilityReason),
+                ],
+                severity: 'warning',
+                request: $request,
+            );
+
+            return $refund->fresh(['returnRequest', 'sellerRecovery']);
+        }, attempts: 3);
+    }
+
+    public function adminReject(User $admin, int $returnRequestId, string $reason, Request $request): ReturnRequest
+    {
+        return DB::transaction(function () use ($admin, $returnRequestId, $reason, $request): ReturnRequest {
+            $stub = ReturnRequest::query()->findOrFail($returnRequestId);
+            Order::query()->whereKey($stub->order_id)->lockForUpdate()->firstOrFail();
+            $returnRequest = ReturnRequest::query()->whereKey($stub->id)->lockForUpdate()->firstOrFail();
+            $this->assertAdminReviewable($returnRequest);
+
+            $fromStatus = $returnRequest->status;
+            $returnRequest->update([
+                'status' => ReturnRequestStatus::Rejected->value,
+                'reviewed_by' => $admin->id,
+                'reviewed_at' => now(),
+                'resolved_at' => now(),
+                'resolution' => trim($reason),
+            ]);
+            $this->event($returnRequest, $admin, 'admin_rejected', $fromStatus, ReturnRequestStatus::Rejected->value, trim($reason));
+            $this->audit->record(
+                action: 'return.request_rejected',
+                module: 'Returns & Refunds',
+                subject: $returnRequest,
+                description: "{$returnRequest->return_no} was rejected by the administrator.",
+                oldValues: ['status' => $fromStatus],
+                newValues: ['status' => ReturnRequestStatus::Rejected->value, 'reason' => trim($reason)],
+                severity: 'warning',
+                request: $request,
+            );
+
+            $this->notifyBuyerOfReturnUpdate(
+                $returnRequest,
+                'Return request rejected',
+                "Your return {$returnRequest->return_no} was rejected. Reason: ".trim($reason).'.',
+                'warning',
+            );
+
+            return $returnRequest->fresh(['events']);
+        }, attempts: 3);
+    }
+
+    private function notifyBuyerOfReturnUpdate(ReturnRequest $returnRequest, string $title, string $body, string $type = 'info'): void
+    {
+        $buyer = $returnRequest->buyer;
+
+        if (! $buyer) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($buyer, new WorkflowNotification(
+            eventKey: 'buyer_return_updates',
+            title: $title,
+            body: $body,
+            actionUrl: route('buyer.returns.show', $returnRequest->id),
+            type: $type,
+            meta: ['return_request_id' => (int) $returnRequest->id],
+        ));
+    }
+
+    private function notifySellerOfMissedResponseDeadline(ReturnRequest $returnRequest): void
+    {
+        $this->notifySellerOfReturnUpdate(
+            $returnRequest,
+            'Seller response deadline passed',
+            "The response deadline for {$returnRequest->return_no} passed. Admin review can continue without your initial response; you may still answer a later evidence request.",
+            'warning',
+        );
+    }
+
+    private function notifySellerOfReturnUpdate(ReturnRequest $returnRequest, string $title, string $body, string $type = 'info'): void
+    {
+        $seller = $returnRequest->store?->sellerProfile?->user;
+        if (! $seller) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($seller, new WorkflowNotification(
+            eventKey: 'seller_return_updates',
+            title: $title,
+            body: $body,
+            actionUrl: route('seller.orders.returns.show', ['caseId' => $returnRequest->return_no]),
+            type: $type,
+            meta: ['return_request_id' => (int) $returnRequest->id],
+        ));
+    }
+
+    private function notifyAdminsOfReturnInspectionComplete(ReturnRequest $returnRequest): void
+    {
+        $this->notifications->sendManyAfterCommit(
+            $this->notifications->admins(),
+            new WorkflowNotification(
+                eventKey: 'admin_return_ready_for_refund',
+                title: 'Return ready for refund review',
+                body: "Seller inspection for {$returnRequest->return_no} is complete. The case is ready for Admin refund review.",
+                actionUrl: route('admin.compliance.returns-refunds'),
+                type: 'info',
+                meta: ['return_request_id' => (int) $returnRequest->id],
+            ),
+        );
+    }
+
+    private function notifyLogisticsOfReturnDelivery(ReturnRequest $returnRequest, User $actor): void
+    {
+        $shipment = $returnRequest->returnShipment;
+        $providerUser = $shipment?->logisticsProfile?->user;
+
+        if (! $providerUser || ! $shipment) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($providerUser, new WorkflowNotification(
+            eventKey: 'logistics_return_delivery_completed',
+            title: 'Return delivered to Seller',
+            body: "Rider {$actor->name} delivered return {$returnRequest->return_no} to the Seller. Seller inspection is now pending.",
+            actionUrl: route('logistics.dispatch.monitoring'),
+            type: 'info',
+            meta: [
+                'return_request_id' => (int) $returnRequest->id,
+                'shipment_id' => (int) $shipment->id,
+                'shipment_no' => (string) $shipment->shipment_no,
+            ],
+        ));
+    }
+
+    private function notifyAdminsOfMissedResponseDeadline(ReturnRequest $returnRequest): void
+    {
+        $this->notifications->sendManyAfterCommit(
+            $this->notifications->admins(),
+            new WorkflowNotification(
+                eventKey: 'admin_return_response_overdue',
+                title: 'Seller response deadline missed',
+                body: "Seller did not respond to {$returnRequest->return_no} by the deadline. The case is ready for Admin review without Seller evidence.",
+                actionUrl: route('admin.compliance.returns-refunds'),
+                type: 'warning',
+                meta: ['return_request_id' => (int) $returnRequest->id],
+            ),
+        );
+    }
+
+    private function sellerResponseDeadline(ReturnRequest $returnRequest): ?CarbonImmutable
+    {
+        if ($returnRequest->response_due_at) {
+            return CarbonImmutable::parse($returnRequest->response_due_at);
+        }
+
+        $submittedAt = $returnRequest->submitted_at ?? $returnRequest->created_at;
+
+        return $submittedAt
+            ? CarbonImmutable::parse($submittedAt)->addDays(2)
+            : null;
+    }
+
+    private function escalateSellerResponseDeadline(ReturnRequest $returnRequest, CarbonImmutable $deadline): void
+    {
+        $fromStatus = $returnRequest->status;
+        $note = 'Seller did not respond by the 48-hour deadline. The case was escalated to Admin review without Seller evidence.';
+
+        $returnRequest->update(['status' => ReturnRequestStatus::UnderReview->value]);
+        $this->event(
+            $returnRequest,
+            null,
+            'seller_response_deadline_missed',
+            $fromStatus,
+            ReturnRequestStatus::UnderReview->value,
+            $note,
+            ['response_due_at' => $deadline->toIso8601String()],
+        );
+        $this->audit->record(
+            action: 'return.seller_response_deadline_missed',
+            module: 'Returns & Refunds',
+            subject: $returnRequest,
+            description: "{$returnRequest->return_no} was escalated to Admin review after the Seller response deadline passed.",
+            oldValues: ['status' => $fromStatus],
+            newValues: [
+                'status' => ReturnRequestStatus::UnderReview->value,
+                'response_due_at' => $deadline->toIso8601String(),
+                'seller_response_received' => false,
+            ],
+            severity: 'warning',
+            systemActor: true,
+        );
+
+        $this->notifyBuyerOfReturnUpdate(
+            $returnRequest,
+            'Your case moved to Admin review',
+            "The Seller did not respond to {$returnRequest->return_no} by the deadline. Admin review will continue without a Seller response.",
+            'info',
+        );
+        $this->notifySellerOfMissedResponseDeadline($returnRequest);
+        $this->notifyAdminsOfMissedResponseDeadline($returnRequest);
+    }
+
+    public function adminRequestEvidence(User $admin, int $returnRequestId, string $note, string $requestedFrom, Request $request): ReturnRequest
+    {
+        return DB::transaction(function () use ($admin, $returnRequestId, $note, $requestedFrom, $request): ReturnRequest {
+            $stub = ReturnRequest::query()->findOrFail($returnRequestId);
+            Order::query()->whereKey($stub->order_id)->lockForUpdate()->firstOrFail();
+            $returnRequest = ReturnRequest::query()->whereKey($stub->id)->lockForUpdate()->firstOrFail();
+            $this->assertAdminReviewable($returnRequest);
+            if (! in_array($requestedFrom, ['buyer', 'seller', 'both'], true)) {
+                throw ValidationException::withMessages(['request_from' => 'Choose who should provide additional evidence.']);
+            }
+
+            $fromStatus = $returnRequest->status;
+            $returnRequest->update([
+                'status' => ReturnRequestStatus::AwaitingEvidence->value,
+                'reviewed_by' => $admin->id,
+                'reviewed_at' => now(),
+                'resolution' => trim($note),
+            ]);
+            $this->event($returnRequest, $admin, 'additional_evidence_requested', $fromStatus, ReturnRequestStatus::AwaitingEvidence->value, trim($note), ['requested_from' => $requestedFrom]);
+            $this->audit->record(
+                action: 'return.evidence_requested',
+                module: 'Returns & Refunds',
+                subject: $returnRequest,
+                description: "Additional evidence was requested for {$returnRequest->return_no}.",
+                oldValues: ['status' => $fromStatus],
+                newValues: ['status' => ReturnRequestStatus::AwaitingEvidence->value, 'note' => trim($note), 'requested_from' => $requestedFrom],
+                severity: 'info',
+                request: $request,
+            );
+
+            return $returnRequest->fresh(['events']);
+        }, attempts: 3);
+    }
+
+    public function recordReturnPickedUp(int $returnRequestId, User $actor, int $shipmentId): void
+    {
+        $returnRequest = ReturnRequest::query()->whereKey($returnRequestId)->lockForUpdate()->first();
+        if (! $returnRequest || (int) $returnRequest->return_shipment_id !== $shipmentId) {
+            return;
+        }
+
+        if ($returnRequest->status !== ReturnRequestStatus::ReturnPickupRequested->value) {
+            return;
+        }
+
+        $fromStatus = $returnRequest->status;
+        $returnRequest->update(['status' => ReturnRequestStatus::ReturnInTransit->value]);
+        $this->event($returnRequest, $actor, 'return_picked_up', $fromStatus, ReturnRequestStatus::ReturnInTransit->value, 'The Logistics provider assigned to the original shipment collected the return parcel.');
+
+        $this->notifyBuyerOfReturnUpdate(
+            $returnRequest,
+            'Return parcel collected',
+            "The Rider collected your return parcel for {$returnRequest->return_no}.",
+        );
+    }
+
+    public function recordReturnDelivered(int $shipmentId, User $actor): void
+    {
+        $returnRequest = ReturnRequest::query()
+            ->with(['buyer', 'store.sellerProfile.user', 'returnShipment.logisticsProfile.user'])
+            ->where('return_shipment_id', $shipmentId)
+            ->lockForUpdate()
+            ->first();
+        if (! $returnRequest || $returnRequest->status !== ReturnRequestStatus::ReturnInTransit->value) {
+            return;
+        }
+
+        $fromStatus = $returnRequest->status;
+        $returnRequest->update([
+            'status' => ReturnRequestStatus::AwaitingInspection->value,
+            'resolution' => 'Return parcel was delivered to the Seller. Seller inspection is required before the Buyer refund; return-delivery settlement is handled separately.',
+        ]);
+        $this->event($returnRequest, $actor, 'return_delivered_to_seller', $fromStatus, ReturnRequestStatus::AwaitingInspection->value, 'Rider recorded delivery to the Seller.');
+
+        $this->notifyBuyerOfReturnUpdate(
+            $returnRequest,
+            'Return delivered to Seller',
+            "{$returnRequest->return_no} was delivered to the Seller for inspection.",
+        );
+        $this->notifySellerOfReturnUpdate(
+            $returnRequest,
+            'Return delivered for inspection',
+            "Return {$returnRequest->return_no} was delivered to your Store. Inspect the returned items to move the case to Admin refund review.",
+            'warning',
+        );
+        $this->notifyLogisticsOfReturnDelivery($returnRequest, $actor);
+    }
+
+    /** @param array<int, array{condition_code: string, resolution: string}> $dispositions */
+    public function inspectReturn(User $seller, int $returnRequestId, array $dispositions): ReturnRequest
+    {
+        $storeId = $seller->sellerProfile?->store?->id;
+        abort_unless($storeId, 404, 'Seller Store not found.');
+
+        return DB::transaction(function () use ($seller, $storeId, $returnRequestId, $dispositions): ReturnRequest {
+            $stub = ReturnRequest::query()->whereKey($returnRequestId)->where('store_id', $storeId)->firstOrFail();
+            Order::query()->whereKey($stub->order_id)->lockForUpdate()->firstOrFail();
+            $returnRequest = ReturnRequest::query()->whereKey($stub->id)->where('store_id', $storeId)->lockForUpdate()->with('items.orderItem')->firstOrFail();
+
+            if ($returnRequest->status !== ReturnRequestStatus::AwaitingInspection->value) {
+                throw ValidationException::withMessages(['return' => 'This return is not ready for Seller inspection.']);
+            }
+            $shipmentDelivered = Shipment::query()
+                ->whereKey($returnRequest->return_shipment_id)
+                ->where('purpose', 'return')
+                ->where('status', 'delivered')
+                ->exists();
+            if (! $shipmentDelivered) {
+                throw ValidationException::withMessages(['return' => 'Logistics must record delivery to the Seller before inspection.']);
+            }
+
+            $items = $returnRequest->items->keyBy('id');
+            if (count($dispositions) !== $items->count()) {
+                throw ValidationException::withMessages(['items' => 'Inspect every returned item before saving.']);
+            }
+
+            $variantIds = $items->map(fn (ReturnItem $item) => $item->orderItem?->product_variant_id)->filter()->unique()->sort()->values();
+            $variants = ProductVariant::query()
+                ->whereIn('id', $variantIds)
+                ->whereHas('product', fn ($query) => $query->where('store_id', $storeId))
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+            $now = now();
+
+            foreach ($items as $item) {
+                $input = $dispositions[$item->id] ?? null;
+                if (! is_array($input)) {
+                    throw ValidationException::withMessages(['items' => 'Choose an inspection result for every item.']);
+                }
+                $condition = $input['condition_code'] ?? null;
+                $resolution = $input['resolution'] ?? null;
+                if (! in_array($condition, ['sellable', 'damaged', 'opened', 'missing_parts'], true)
+                    || ! in_array($resolution, ['restock', 'quarantine', 'dispose'], true)
+                    || ($resolution === 'restock' && $condition !== 'sellable')
+                    || ($condition === 'sellable' && $resolution !== 'restock')) {
+                    throw ValidationException::withMessages(['items' => 'Sellable items must be restocked; damaged or unsellable items must be quarantined or disposed.']);
+                }
+
+                $item->update([
+                    'condition_code' => $condition,
+                    'resolution' => $resolution,
+                    'quarantine_review_status' => $resolution === 'quarantine' ? 'pending' : null,
+                ]);
+
+                if ($resolution === 'quarantine') {
+                    $this->event(
+                        $returnRequest,
+                        $seller,
+                        'seller_quarantine_review_requested',
+                        $returnRequest->status,
+                        $returnRequest->status,
+                        'Returned item was held out of sellable stock for Seller review.',
+                        [
+                            'return_item_id' => (int) $item->id,
+                            'condition_code' => $condition,
+                            'quantity' => (int) $item->quantity,
+                        ],
+                    );
+                }
+
+                if ($resolution !== 'restock') {
+                    continue;
+                }
+
+                $variantId = $item->orderItem?->product_variant_id;
+                $variant = $variantId ? $variants->get($variantId) : null;
+                if (! $variant) {
+                    throw ValidationException::withMessages(['items' => 'A returned item can only be restocked while its original Seller variant still exists.']);
+                }
+                $newBalance = (int) $variant->stock_on_hand + (int) $item->quantity;
+                if ($newBalance > 4_294_967_295) {
+                    throw ValidationException::withMessages(['items' => 'Restocking this item exceeds the supported stock balance.']);
+                }
+                $variant->update(['stock_on_hand' => $newBalance]);
+                InventoryMovement::query()->create([
+                    'variant_id' => $variant->id,
+                    'type' => 'return_restock',
+                    'quantity_delta' => (int) $item->quantity,
+                    'balance_after' => $newBalance,
+                    'reference_type' => ReturnRequest::class,
+                    'reference_id' => $returnRequest->id,
+                    'reason' => "Inspected resalable return {$returnRequest->return_no}",
+                    'created_by' => $seller->id,
+                    'occurred_at' => $now,
+                ]);
+            }
+
+            $fromStatus = $returnRequest->status;
+            $returnRequest->update([
+                'status' => ReturnRequestStatus::RefundPending->value,
+                'resolution' => 'Seller inspection recorded. Admin may now make the approved manual refund payout.',
+            ]);
+            $this->event($returnRequest, $seller, 'seller_inspection_completed', $fromStatus, ReturnRequestStatus::RefundPending->value, 'Seller recorded condition and disposition for every returned item.');
+            $this->notifyBuyerOfReturnUpdate(
+                $returnRequest,
+                'Seller inspection completed',
+                "Seller inspection for {$returnRequest->return_no} is complete. The case is ready for Admin refund review.",
+            );
+            $this->notifyAdminsOfReturnInspectionComplete($returnRequest);
+
+            return $returnRequest->fresh(['items.orderItem', 'events']);
+        }, attempts: 3);
+    }
+
+    public function finalizeQuarantineReview(
+        User $seller,
+        int $returnItemId,
+        string $finalCondition,
+        string $finalResolution,
+        string $note,
+    ): ReturnRequest {
+        $storeId = $seller->sellerProfile?->store?->id;
+        abort_unless($storeId, 404, 'Seller Store not found.');
+
+        $note = trim($note);
+        if (mb_strlen($note) < 5) {
+            throw ValidationException::withMessages(['note' => 'Add a meaningful review note of at least 5 characters.']);
+        }
+
+        if (! in_array($finalCondition, ['sellable', 'damaged', 'opened', 'missing_parts'], true)
+            || ! in_array($finalResolution, ['restock', 'dispose'], true)
+            || ($finalResolution === 'restock' && $finalCondition !== 'sellable')
+            || ($finalResolution === 'dispose' && $finalCondition === 'sellable')) {
+            throw ValidationException::withMessages([
+                'final_condition_code' => 'Only a sellable item may be restocked. Dispose of items whose final condition is not sellable.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($seller, $storeId, $returnItemId, $finalCondition, $finalResolution, $note): ReturnRequest {
+            $itemStub = ReturnItem::query()
+                ->whereKey($returnItemId)
+                ->whereHas('returnRequest', fn ($query) => $query->where('store_id', $storeId))
+                ->firstOrFail();
+            $caseStub = ReturnRequest::query()
+                ->whereKey($itemStub->return_request_id)
+                ->where('store_id', $storeId)
+                ->firstOrFail();
+
+            Order::query()->whereKey($caseStub->order_id)->lockForUpdate()->firstOrFail();
+            $returnRequest = ReturnRequest::query()
+                ->whereKey($caseStub->id)
+                ->where('store_id', $storeId)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $item = ReturnItem::query()
+                ->whereKey($itemStub->id)
+                ->where('return_request_id', $returnRequest->id)
+                ->lockForUpdate()
+                ->with('orderItem')
+                ->firstOrFail();
+
+            if ($item->quarantine_review_status === 'completed') {
+                if ($item->quarantine_final_condition_code === $finalCondition
+                    && $item->quarantine_final_resolution === $finalResolution
+                    && $item->quarantine_review_note === $note) {
+                    return $returnRequest->fresh(['items.orderItem', 'events']);
+                }
+
+                throw ValidationException::withMessages(['return_item' => 'This quarantine review has already been completed.']);
+            }
+
+            if ($item->resolution !== 'quarantine' || $item->quarantine_review_status !== 'pending') {
+                throw ValidationException::withMessages(['return_item' => 'This item is not awaiting quarantine review.']);
+            }
+
+            $variant = null;
+            if ($finalResolution === 'restock') {
+                $variantId = $item->orderItem?->product_variant_id;
+                $variant = $variantId
+                    ? ProductVariant::query()
+                        ->whereKey($variantId)
+                        ->whereHas('product', fn ($query) => $query->where('store_id', $storeId))
+                        ->lockForUpdate()
+                        ->first()
+                    : null;
+
+                if (! $variant) {
+                    throw ValidationException::withMessages([
+                        'return_item' => 'This item cannot be restocked because its original Seller variant is no longer available.',
+                    ]);
+                }
+
+                $newBalance = (int) $variant->stock_on_hand + (int) $item->quantity;
+                if ($newBalance > 4_294_967_295) {
+                    throw ValidationException::withMessages(['return_item' => 'Restocking this item exceeds the supported stock balance.']);
+                }
+
+                $variant->update(['stock_on_hand' => $newBalance]);
+            }
+
+            $reviewedAt = now();
+            $item->update([
+                'quarantine_review_status' => 'completed',
+                'quarantine_final_condition_code' => $finalCondition,
+                'quarantine_final_resolution' => $finalResolution,
+                'quarantine_review_note' => $note,
+                'quarantine_reviewed_by' => $seller->id,
+                'quarantine_reviewed_at' => $reviewedAt,
+            ]);
+
+            if ($variant) {
+                InventoryMovement::query()->create([
+                    'variant_id' => $variant->id,
+                    'type' => 'return_restock',
+                    'quantity_delta' => (int) $item->quantity,
+                    'balance_after' => (int) $variant->stock_on_hand,
+                    'reference_type' => ReturnItem::class,
+                    'reference_id' => $item->id,
+                    'reason' => "Quarantine review restocked item from {$returnRequest->return_no}",
+                    'created_by' => $seller->id,
+                    'occurred_at' => $reviewedAt,
+                ]);
+            }
+
+            $this->event(
+                $returnRequest,
+                $seller,
+                'seller_quarantine_review_completed',
+                $returnRequest->status,
+                $returnRequest->status,
+                $note,
+                [
+                    'return_item_id' => (int) $item->id,
+                    'original_condition_code' => $item->condition_code,
+                    'original_resolution' => $item->resolution,
+                    'final_condition_code' => $finalCondition,
+                    'final_resolution' => $finalResolution,
+                    'quantity' => (int) $item->quantity,
+                ],
+            );
+            $returnRequest->touch();
+
+            return $returnRequest->fresh(['items.orderItem', 'events']);
+        }, attempts: 3);
+    }
+
+    public function recordExternalPayoutSent(
+        User $admin,
+        int $refundId,
+        string $method,
+        string $reference,
+        string $externalPaidOn,
+        UploadedFile $receipt,
+        Request $request,
+    ): Refund {
+        if (! in_array($method, ['gcash', 'bank_transfer', 'other'], true)) {
+            throw ValidationException::withMessages([
+                'method' => 'Choose GCash, bank transfer, or other. Cash refunds must use the Finance-to-Logistics cash custody workflow.',
+            ]);
+        }
+        if (trim($reference) === '') {
+            throw ValidationException::withMessages(['provider_reference' => 'Enter the successful external payout reference.']);
+        }
+        if (! $request->boolean('payout_sent_confirmed')) {
+            throw ValidationException::withMessages([
+                'payout_sent_confirmed' => 'Confirm that the external provider shows this payout as successfully sent.',
+            ]);
+        }
+        if (! $receipt->isValid() || ! in_array($receipt->getMimeType(), ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'], true)) {
+            throw ValidationException::withMessages(['receipt' => 'Upload a valid JPG, PNG, WebP, or PDF payout receipt.']);
+        }
+
+        $stub = Refund::query()->findOrFail($refundId);
+        $receiptPath = $receipt->store('refund-payout-receipts/'.$stub->refund_no, 'local');
+        if (! $receiptPath) {
+            throw ValidationException::withMessages(['receipt' => 'The payout receipt could not be stored. Please try again.']);
+        }
+
+        try {
+            $recorded = DB::transaction(function () use ($admin, $refundId, $method, $reference, $externalPaidOn, $receipt, $receiptPath, $request): Refund {
+                $stub = Refund::query()->findOrFail($refundId);
+                $order = Order::query()->whereKey($stub->order_id)->lockForUpdate()->firstOrFail();
+                $refund = Refund::query()->whereKey($stub->id)->lockForUpdate()->firstOrFail();
+                $returnRequest = ReturnRequest::query()
+                    ->whereKey($refund->return_request_id)
+                    ->lockForUpdate()
+                    ->with(['buyer', 'store.sellerProfile.user'])
+                    ->firstOrFail();
+
+                if (RefundCashPayout::query()->where('refund_id', $refund->id)->lockForUpdate()->exists()) {
+                    throw ValidationException::withMessages(['refund' => 'This refund is assigned to the separate cash-custody workflow.']);
+                }
+                if ($refund->status !== 'pending' || $returnRequest->status !== ReturnRequestStatus::RefundPending->value) {
+                    throw ValidationException::withMessages(['refund' => 'This refund is not waiting for an external payout to be recorded.']);
+                }
+                if (! in_array($refund->financially_responsible_party, ['seller', 'platform'], true)) {
+                    throw ValidationException::withMessages(['refund' => 'Record who is financially responsible before recording the external payout.']);
+                }
+                if ($returnRequest->request_type === 'return_refund' && $returnRequest->items()
+                    ->where(function ($query): void {
+                        $query->whereNull('condition_code')
+                            ->orWhereNotIn('resolution', ['restock', 'quarantine', 'dispose']);
+                    })
+                    ->exists()) {
+                    throw ValidationException::withMessages(['refund' => 'Seller inspection must be complete before recording this return refund.']);
+                }
+
+                try {
+                    $paidOn = CarbonImmutable::createFromFormat('!Y-m-d', $externalPaidOn, config('app.timezone'));
+                } catch (Throwable) {
+                    $paidOn = null;
+                }
+                if (! $paidOn || $paidOn->greaterThan(CarbonImmutable::today(config('app.timezone')))) {
+                    throw ValidationException::withMessages(['external_paid_on' => 'Enter the actual payout date; future dates are not allowed.']);
+                }
+
+                $payment = Payment::query()->whereKey($refund->payment_id)->where('order_id', $order->id)->lockForUpdate()->firstOrFail();
+                if ($payment->method !== 'cod' || ! in_array($payment->status, ['paid', 'partially_refunded'], true) || ! $payment->paid_at) {
+                    throw ValidationException::withMessages(['refund' => 'The original order does not have a recorded paid COD payment.']);
+                }
+
+                $priorRefundedMinor = (int) Refund::query()
+                    ->where('order_id', $order->id)
+                    ->where('id', '!=', $refund->id)
+                    ->payoutSent()
+                    ->sum('amount_minor');
+                $capturedMinor = $this->capturedAmountMinor($order);
+                if ($priorRefundedMinor + (int) $refund->amount_minor > $capturedMinor) {
+                    throw ValidationException::withMessages(['refund' => 'The payout would exceed the remaining captured order amount.']);
+                }
+
+                $financialEffect = $this->postRefundLedger($refund, $returnRequest, $payment);
+                $processedAt = now();
+                $refund->update([
+                    'status' => 'processing',
+                    'payout_amount_minor' => (int) $refund->amount_minor,
+                    'method' => $method,
+                    'provider_reference' => trim($reference),
+                    'external_paid_on' => $paidOn->toDateString(),
+                    'payout_receipt_disk' => 'local',
+                    'payout_receipt_path' => $receiptPath,
+                    'payout_receipt_mime_type' => $receipt->getMimeType(),
+                    'payout_receipt_original_name' => $this->safeOriginalName($receipt->getClientOriginalName()),
+                    'payout_receipt_size_bytes' => $receipt->getSize(),
+                    'processed_by' => $admin->id,
+                    'processed_at' => $processedAt,
+                    'completed_at' => null,
+                    'failed_at' => null,
+                    'failure_reason' => null,
+                ]);
+
+                $refundedTotal = $priorRefundedMinor + (int) $refund->amount_minor;
+                $paymentStatus = $refundedTotal >= $capturedMinor ? 'refunded' : 'partially_refunded';
+                $payment->update([
+                    'status' => $paymentStatus,
+                    'refunded_at' => $paymentStatus === 'refunded' ? $processedAt : $payment->refunded_at,
+                ]);
+                $order->update(['payment_status' => $paymentStatus]);
+                if ($paymentStatus === 'refunded' || $this->orderItemsFullyRefunded($order)) {
+                    $this->promotions->releaseForOrder($order, PromotionRedemption::STATUS_REFUNDED);
+                }
+
+                // Seller case polling versions include ReturnRequest.updated_at;
+                // the case status remains refund_pending, but the payout stage changed.
+                $returnRequest->touch();
+                $note = 'Admin recorded a successful external payout. The case remains open until the Buyer confirms receipt; Bearly did not transfer funds.';
+                $this->event($returnRequest, $admin, 'external_refund_payout_sent', ReturnRequestStatus::RefundPending->value, ReturnRequestStatus::RefundPending->value, $note, [
+                    'refund_id' => (int) $refund->id,
+                    'refund_no' => (string) $refund->refund_no,
+                    'method' => $method,
+                    'reference' => trim($reference),
+                    'external_paid_on' => $paidOn->toDateString(),
+                    'amount_minor' => (int) $refund->amount_minor,
+                    'payout_amount_minor' => (int) $refund->payout_amount_minor,
+                ]);
+                $this->audit->record(
+                    action: 'refund.external_payout_sent_recorded',
+                    module: 'Returns & Refunds',
+                    subject: $refund,
+                    description: "External refund payout {$refund->refund_no} was recorded as sent; Buyer receipt confirmation is still pending.",
+                    oldValues: ['status' => 'pending', 'return_status' => ReturnRequestStatus::RefundPending->value],
+                    newValues: [
+                        'status' => 'processing',
+                        'return_status' => ReturnRequestStatus::RefundPending->value,
+                        'method' => $method,
+                        'reference' => trim($reference),
+                        'external_paid_on' => $paidOn->toDateString(),
+                        'amount_minor' => (int) $refund->amount_minor,
+                        'payout_amount_minor' => (int) $refund->payout_amount_minor,
+                        'financially_responsible_party' => $refund->financially_responsible_party,
+                        'seller_recovery_amount_minor' => $financialEffect['seller_recovery_minor'],
+                        'receipt_original_name' => $refund->payout_receipt_original_name,
+                        'receipt_size_bytes' => $refund->payout_receipt_size_bytes,
+                        'processed_by' => $admin->id,
+                        'payment_status' => $paymentStatus,
+                        'buyer_confirmation_pending' => true,
+                    ],
+                    severity: 'warning',
+                    request: $request,
+                );
+
+                $this->notifyBuyerOfReturnUpdate(
+                    $returnRequest,
+                    'Refund payout sent — please confirm receipt',
+                    'Admin recorded your ₱'.number_format((int) $refund->payout_amount_minor / 100, 2).' refund as sent via '.str_replace('_', ' ', $method).'. Open your case to confirm when the full amount reaches you, or report a problem.',
+                    'info',
+                );
+                $this->notifySellerOfReturnUpdate(
+                    $returnRequest,
+                    'External refund payout recorded',
+                    "Admin recorded the payout for {$returnRequest->return_no}. The case remains open while the Buyer confirms receipt.",
+                );
+
+                return $refund->fresh(['returnRequest', 'payment', 'sellerTransactions', 'commissions', 'sellerRecovery.events.sellerPayout']);
+            }, attempts: 3);
+        } catch (Throwable $exception) {
+            Storage::disk('local')->delete($receiptPath);
+            throw $exception;
+        }
+
+        try {
+            $this->wallets->recordRefundAdjustment($recorded, $admin);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+
+        return $recorded;
+    }
+
+    public function confirmExternalRefundReceipt(User $buyer, int $returnRequestId, Request $request): bool
+    {
+        if (! $request->boolean('buyer_received_confirmed')) {
+            throw ValidationException::withMessages([
+                'buyer_received_confirmed' => 'Confirm that you received the full approved refund amount.',
+            ]);
+        }
+
+        $stub = ReturnRequest::query()
+            ->whereKey($returnRequestId)
+            ->where('buyer_id', $buyer->id)
+            ->firstOrFail();
+
+        return DB::transaction(function () use ($buyer, $stub, $request): bool {
+            Order::query()->whereKey($stub->order_id)->where('buyer_id', $buyer->id)->lockForUpdate()->firstOrFail();
+            $returnRequest = ReturnRequest::query()
+                ->whereKey($stub->id)
+                ->where('buyer_id', $buyer->id)
+                ->lockForUpdate()
+                ->with('buyer')
+                ->firstOrFail();
+            $refund = Refund::query()->where('return_request_id', $returnRequest->id)->orderByDesc('id')->lockForUpdate()->firstOrFail();
+
+            if ($refund->status === 'completed' && $returnRequest->status === ReturnRequestStatus::Resolved->value) {
+                return false;
+            }
+            if ($refund->status !== 'processing'
+                || $returnRequest->status !== ReturnRequestStatus::RefundPending->value
+                || ! in_array($refund->method, ['gcash', 'bank_transfer', 'other'], true)
+                || ! $refund->isPayoutSent()
+                || (int) $refund->payout_amount_minor !== (int) $refund->amount_minor
+                || RefundCashPayout::query()->where('refund_id', $refund->id)->exists()) {
+                throw ValidationException::withMessages(['refund' => 'This external payout is not awaiting Buyer receipt confirmation.']);
+            }
+
+            $confirmedAt = now();
+            $refund->update([
+                'status' => 'completed',
+                'completed_at' => $confirmedAt,
+            ]);
+            $returnRequest->update([
+                'status' => ReturnRequestStatus::Resolved->value,
+                'resolved_at' => $confirmedAt,
+                'resolution' => 'Buyer confirmed receipt of the full external refund of ₱'.number_format((int) $refund->payout_amount_minor / 100, 2).'. Admin recorded the external transfer; Bearly did not transfer funds.',
+            ]);
+            $this->event($returnRequest, $buyer, 'buyer_refund_receipt_confirmed', ReturnRequestStatus::RefundPending->value, ReturnRequestStatus::Resolved->value, 'Buyer confirmed receiving the full approved external refund.', [
+                'refund_id' => (int) $refund->id,
+                'refund_no' => (string) $refund->refund_no,
+                'amount_minor' => (int) $refund->payout_amount_minor,
+                'method' => $refund->method,
+                'reference' => $refund->provider_reference,
+                'external_paid_on' => $refund->external_paid_on?->toDateString(),
+                'buyer_confirmed_at' => $confirmedAt->toIso8601String(),
+            ]);
+            $this->audit->record(
+                action: 'refund.buyer_receipt_confirmed',
+                module: 'Returns & Refunds',
+                subject: $refund,
+                description: "Buyer confirmed receipt of external refund {$refund->refund_no}.",
+                oldValues: ['refund_status' => 'processing', 'return_status' => ReturnRequestStatus::RefundPending->value],
+                newValues: [
+                    'refund_status' => 'completed',
+                    'return_status' => ReturnRequestStatus::Resolved->value,
+                    'amount_minor' => (int) $refund->payout_amount_minor,
+                    'buyer_id' => (int) $buyer->id,
+                    'buyer_confirmed_at' => $confirmedAt->toIso8601String(),
+                ],
+                severity: 'info',
+                request: $request,
+            );
+            $this->notifyAdminsOfBuyerRefundAction(
+                $returnRequest,
+                'Buyer confirmed refund receipt',
+                "Buyer confirmed receiving the full payout for {$returnRequest->return_no}. The case is now resolved.",
+                'success',
+            );
+
+            return true;
+        }, attempts: 3);
+    }
+
+    public function reportExternalRefundNotReceived(User $buyer, int $returnRequestId, string $note, Request $request): bool
+    {
+        $note = trim($note);
+        if (mb_strlen($note) < 5 || mb_strlen($note) > 1000) {
+            throw ValidationException::withMessages(['note' => 'Explain the payout issue in 5 to 1,000 characters.']);
+        }
+
+        $stub = ReturnRequest::query()
+            ->whereKey($returnRequestId)
+            ->where('buyer_id', $buyer->id)
+            ->firstOrFail();
+
+        return DB::transaction(function () use ($buyer, $stub, $note, $request): bool {
+            Order::query()->whereKey($stub->order_id)->where('buyer_id', $buyer->id)->lockForUpdate()->firstOrFail();
+            $returnRequest = ReturnRequest::query()
+                ->whereKey($stub->id)
+                ->where('buyer_id', $buyer->id)
+                ->lockForUpdate()
+                ->with('buyer')
+                ->firstOrFail();
+            $refund = Refund::query()->where('return_request_id', $returnRequest->id)->orderByDesc('id')->lockForUpdate()->firstOrFail();
+
+            if ($refund->status !== 'processing'
+                || $returnRequest->status !== ReturnRequestStatus::RefundPending->value
+                || ! in_array($refund->method, ['gcash', 'bank_transfer', 'other'], true)
+                || ! $refund->isPayoutSent()
+                || RefundCashPayout::query()->where('refund_id', $refund->id)->exists()) {
+                throw ValidationException::withMessages(['refund' => 'This external payout cannot be reported as awaiting Buyer confirmation.']);
+            }
+
+            if (ReturnEvent::query()
+                ->where('return_request_id', $returnRequest->id)
+                ->where('actor_user_id', $buyer->id)
+                ->where('event_type', 'buyer_refund_receipt_not_received')
+                ->exists()) {
+                return false;
+            }
+
+            $this->event($returnRequest, $buyer, 'buyer_refund_receipt_not_received', ReturnRequestStatus::RefundPending->value, ReturnRequestStatus::RefundPending->value, $note, [
+                'refund_id' => (int) $refund->id,
+                'refund_no' => (string) $refund->refund_no,
+                'amount_minor' => (int) $refund->payout_amount_minor,
+                'method' => $refund->method,
+                'reference' => $refund->provider_reference,
+            ]);
+            $this->audit->record(
+                action: 'refund.buyer_reported_not_received',
+                module: 'Returns & Refunds',
+                subject: $refund,
+                description: "Buyer reported not receiving external refund {$refund->refund_no}.",
+                oldValues: ['refund_status' => 'processing', 'return_status' => ReturnRequestStatus::RefundPending->value],
+                newValues: [
+                    'refund_status' => 'processing',
+                    'return_status' => ReturnRequestStatus::RefundPending->value,
+                    'buyer_id' => (int) $buyer->id,
+                    'note' => $note,
+                    'admin_follow_up_required' => true,
+                ],
+                severity: 'warning',
+                request: $request,
+            );
+            $this->notifyAdminsOfBuyerRefundAction(
+                $returnRequest,
+                'Buyer reports refund not received',
+                "Buyer reported a problem receiving {$returnRequest->return_no}. Review the case and payout reference; the case remains open.",
+                'warning',
+            );
+
+            return true;
+        }, attempts: 3);
+    }
+
+    private function notifyAdminsOfBuyerRefundAction(ReturnRequest $returnRequest, string $title, string $body, string $type): void
+    {
+        $this->notifications->sendManyAfterCommit(
+            $this->notifications->admins(),
+            new WorkflowNotification(
+                eventKey: 'admin_return_buyer_refund_updates',
+                title: $title,
+                body: $body,
+                actionUrl: route('admin.compliance.returns-refunds'),
+                type: $type,
+                meta: ['return_request_id' => (int) $returnRequest->id],
+            ),
+        );
+    }
+
+    public function recordManualPayout(
+        User $admin,
+        int $refundId,
+        string $method,
+        string $reference,
+        string $externalPaidOn,
+        UploadedFile $receipt,
+        Request $request,
+        ?int $cashPayoutId = null,
+        ?string $completionReason = null,
+    ): Refund {
+        $isCustodyCashCompletion = $method === 'cash' && $cashPayoutId !== null;
+        if (! $isCustodyCashCompletion) {
+            throw ValidationException::withMessages([
+                'method' => 'Cash refunds must be completed through the verified Finance-to-Logistics cash custody workflow. External payouts use the Buyer-confirmation flow.',
+            ]);
+        }
+        if (trim($reference) === '') {
+            throw ValidationException::withMessages(['provider_reference' => 'Enter the external payout reference or receipt or acknowledgment number.']);
+        }
+        if (! $request->boolean('external_payout_confirmed')) {
+            throw ValidationException::withMessages([
+                'external_payout_confirmed' => 'Finance must complete the cash refund only after Logistics verifies the Buyer acknowledgment.',
+            ]);
+        }
+        if (! $receipt->isValid() || ! in_array($receipt->getMimeType(), ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'], true)) {
+            throw ValidationException::withMessages(['receipt' => 'Upload a valid JPG, PNG, WebP, or PDF payout receipt.']);
+        }
+
+        $stub = Refund::query()->findOrFail($refundId);
+        $receiptPath = $receipt->store('refund-payout-receipts/'.$stub->refund_no, 'local');
+        if (! $receiptPath) {
+            throw ValidationException::withMessages(['receipt' => 'The payout receipt could not be stored. Please try again.']);
+        }
+
+        try {
+            $completed = DB::transaction(function () use ($admin, $refundId, $method, $reference, $externalPaidOn, $receipt, $receiptPath, $request, $cashPayoutId, $completionReason): Refund {
+                $stub = Refund::query()->findOrFail($refundId);
+                $order = Order::query()->whereKey($stub->order_id)->lockForUpdate()->firstOrFail();
+                $refund = Refund::query()->whereKey($stub->id)->lockForUpdate()->firstOrFail();
+                $returnRequest = $refund->return_request_id
+                    ? ReturnRequest::query()->whereKey($refund->return_request_id)->lockForUpdate()->firstOrFail()
+                    : null;
+
+                $cashPayout = RefundCashPayout::query()
+                    ->where('refund_id', $refund->id)
+                    ->lockForUpdate()
+                    ->first();
+                if ($cashPayoutId !== null) {
+                    if (! $cashPayout
+                        || (int) $cashPayout->id !== $cashPayoutId
+                        || $cashPayout->status !== 'awaiting_finance_completion'
+                        || $method !== 'cash'
+                        || (int) $cashPayout->amount_minor !== (int) $refund->amount_minor
+                        || ! $cashPayout->logistics_verified_at
+                        || ! filled($completionReason)
+                        || mb_strlen(trim((string) $completionReason)) < 5) {
+                        throw ValidationException::withMessages(['refund' => 'The assigned cash payout requires Logistics verification and a Finance completion reason.']);
+                    }
+                } elseif ($cashPayout && $cashPayout->status !== 'completed') {
+                    throw ValidationException::withMessages(['refund' => 'This refund is assigned to the Rider cash-custody workflow and cannot be completed through a separate payout action.']);
+                }
+
+                if ($refund->status !== 'pending' || ! $returnRequest || $returnRequest->status !== ReturnRequestStatus::RefundPending->value) {
+                    throw ValidationException::withMessages(['refund' => 'This refund is not ready for manual payout recording.']);
+                }
+                if (! in_array($refund->financially_responsible_party, ['seller', 'platform'], true)) {
+                    throw ValidationException::withMessages(['refund' => 'Record who is financially responsible before recording the external payout.']);
+                }
+                if ($returnRequest->request_type === 'return_refund' && $returnRequest->items()
+                    ->where(function ($query): void {
+                        $query->whereNull('condition_code')
+                            ->orWhereNotIn('resolution', ['restock', 'quarantine', 'dispose']);
+                    })
+                    ->exists()) {
+                    throw ValidationException::withMessages(['refund' => 'Seller inspection must be complete before recording this return refund.']);
+                }
+
+                try {
+                    $paidOn = CarbonImmutable::createFromFormat('!Y-m-d', $externalPaidOn, config('app.timezone'));
+                } catch (Throwable) {
+                    $paidOn = null;
+                }
+                if (! $paidOn || $paidOn->greaterThan(CarbonImmutable::today(config('app.timezone')))) {
+                    throw ValidationException::withMessages(['external_paid_on' => 'Enter the actual payout date; future dates are not allowed.']);
+                }
+
+                $payment = Payment::query()->whereKey($refund->payment_id)->where('order_id', $order->id)->lockForUpdate()->firstOrFail();
+                if ($payment->method !== 'cod' || ! in_array($payment->status, ['paid', 'partially_refunded'], true) || ! $payment->paid_at) {
+                    throw ValidationException::withMessages(['refund' => 'The original order does not have a recorded paid COD payment.']);
+                }
+
+                $priorRefundedMinor = (int) Refund::query()
+                    ->where('order_id', $order->id)
+                    ->payoutSent()
+                    ->where('id', '!=', $refund->id)
+                    ->sum('amount_minor');
+                $capturedMinor = $this->capturedAmountMinor($order);
+                if ($priorRefundedMinor + (int) $refund->amount_minor > $capturedMinor) {
+                    throw ValidationException::withMessages(['refund' => 'The payout would exceed the remaining captured order amount.']);
+                }
+
+                $financialEffect = $this->postRefundLedger($refund, $returnRequest, $payment);
+                $processedAt = now();
+                $refund->update([
+                    'status' => 'completed',
+                    'payout_amount_minor' => (int) $refund->amount_minor,
+                    'method' => $method,
+                    'provider_reference' => trim($reference),
+                    'external_paid_on' => $paidOn->toDateString(),
+                    'payout_receipt_disk' => 'local',
+                    'payout_receipt_path' => $receiptPath,
+                    'payout_receipt_mime_type' => $receipt->getMimeType(),
+                    'payout_receipt_original_name' => $this->safeOriginalName($receipt->getClientOriginalName()),
+                    'payout_receipt_size_bytes' => $receipt->getSize(),
+                    'processed_by' => $admin->id,
+                    'processed_at' => $processedAt,
+                    'completed_at' => $processedAt,
+                    'failed_at' => null,
+                    'failure_reason' => null,
+                ]);
+
+                if ($cashPayoutId !== null && $cashPayout) {
+                    $cashPayout->update([
+                        'status' => 'completed',
+                        'completed_at' => $processedAt,
+                        'completed_by' => $admin->id,
+                    ]);
+                    RefundCashPayoutEvent::query()->create([
+                        'refund_cash_payout_id' => $cashPayout->id,
+                        'event_type' => 'cash_refund_completed_by_finance',
+                        'from_status' => 'awaiting_finance_completion',
+                        'to_status' => 'completed',
+                        'actor_user_id' => $admin->id,
+                        'amount_minor' => (int) $cashPayout->amount_minor,
+                        'reference' => $cashPayout->acknowledgment_reference,
+                        'note' => trim((string) $completionReason),
+                        'occurred_at' => $processedAt,
+                    ]);
+                }
+
+                $returnRequest->update([
+                    'status' => ReturnRequestStatus::Resolved->value,
+                    'resolved_at' => $processedAt,
+                    'resolution' => 'Cash refund of ₱'.number_format((int) $refund->amount_minor / 100, 2).' completed by Finance after Logistics verified the Buyer acknowledgment on '.$paidOn->format('M j, Y').'. '.ucfirst($refund->financially_responsible_party).' is financially responsible. Bearly did not transfer funds.',
+                ]);
+                $this->event($returnRequest, $admin, 'manual_refund_recorded', ReturnRequestStatus::RefundPending->value, ReturnRequestStatus::Resolved->value, 'Finance completed the cash refund after Logistics verified the Buyer acknowledgment. Bearly did not transfer funds.', [
+                    'refund_id' => $refund->id,
+                    'method' => $method,
+                    'reference' => trim($reference),
+                    'external_paid_on' => $paidOn->toDateString(),
+                    'amount_minor' => (int) $refund->amount_minor,
+                    'payout_amount_minor' => (int) $refund->amount_minor,
+                    'financially_responsible_party' => $refund->financially_responsible_party,
+                    'seller_recovery_amount_minor' => $financialEffect['seller_recovery_minor'],
+                ]);
+
+                $refundedTotal = $priorRefundedMinor + (int) $refund->amount_minor;
+                $paymentStatus = $refundedTotal >= $capturedMinor ? 'refunded' : 'partially_refunded';
+                $payment->update([
+                    'status' => $paymentStatus,
+                    'refunded_at' => $paymentStatus === 'refunded' ? $processedAt : $payment->refunded_at,
+                ]);
+                $order->update(['payment_status' => $paymentStatus]);
+
+                if ($paymentStatus === 'refunded' || $this->orderItemsFullyRefunded($order)) {
+                    $this->promotions->releaseForOrder($order, PromotionRedemption::STATUS_REFUNDED);
+                }
+
+                $this->audit->record(
+                    action: 'refund.manual_payout_recorded',
+                    module: 'Returns & Refunds',
+                    subject: $refund,
+                    description: "Manual refund payout {$refund->refund_no} was recorded; no transfer was initiated by Bearly.",
+                    oldValues: ['status' => 'pending', 'method' => $refund->getOriginal('method')],
+                    newValues: [
+                        'status' => 'completed',
+                        'method' => $method,
+                        'reference' => trim($reference),
+                        'external_paid_on' => $paidOn->toDateString(),
+                        'amount_minor' => (int) $refund->amount_minor,
+                        'payout_amount_minor' => (int) $refund->payout_amount_minor,
+                        'financially_responsible_party' => $refund->financially_responsible_party,
+                        'seller_recovery_amount_minor' => $financialEffect['seller_recovery_minor'],
+                        'receipt_original_name' => $refund->payout_receipt_original_name,
+                        'receipt_size_bytes' => $refund->payout_receipt_size_bytes,
+                        'processed_by' => $admin->id,
+                        'payment_status' => $paymentStatus,
+                        'external_payout_confirmed' => true,
+                        'cash_payout_id' => $cashPayoutId,
+                        'completion_reason' => $completionReason ? trim($completionReason) : null,
+                    ],
+                    severity: 'warning',
+                    request: $request,
+                );
+
+                if ($refund->returnRequest) {
+                    $this->notifyBuyerOfReturnUpdate(
+                        $refund->returnRequest,
+                        $cashPayoutId !== null ? 'Cash refund completed' : 'Refund sent',
+                        $cashPayoutId !== null
+                            ? "Finance completed cash refund {$refund->refund_no} after Logistics verified the signed Buyer receipt."
+                            : "Refund {$refund->refund_no} was recorded as paid via {$method}.",
+                        'success',
+                    );
+                }
+
+                return $refund->fresh(['returnRequest', 'payment', 'sellerTransactions', 'commissions', 'sellerRecovery.events.sellerPayout']);
+            }, attempts: 3);
+        } catch (Throwable $exception) {
+            Storage::disk('local')->delete($receiptPath);
+            throw $exception;
+        }
+
+        try {
+            // The refund is already committed at this point. Wallet catch-up
+            // also runs on refreshForSeller(), so a transient failure here
+            // must not turn a completed refund into an error response.
+            $this->wallets->recordRefundAdjustment($completed, $admin);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+
+        return $completed;
+    }
+
+    public function recordSellerRecovery(
+        User $admin,
+        int $refundId,
+        int $amountMinor,
+        string $method,
+        string $reference,
+        string $recoveredOn,
+        string $note,
+        ?int $sellerPayoutId,
+        Request $request,
+        string $component = 'refund_recovery',
+    ): SellerRefundRecovery {
+        if ($amountMinor <= 0) {
+            throw ValidationException::withMessages(['amount' => 'Enter a recovery amount greater than zero.']);
+        }
+        if (! in_array($method, ['external_collection', 'seller_payout_offset'], true)) {
+            throw ValidationException::withMessages(['method' => 'Choose a valid Seller recovery method.']);
+        }
+        if (! in_array($component, ['refund_recovery', 'return_shipping_fee'], true)) {
+            throw ValidationException::withMessages(['component' => 'Choose a valid Seller recovery component.']);
+        }
+        if (trim($reference) === '' || mb_strlen(trim($note)) < 5) {
+            throw ValidationException::withMessages(['external_reference' => 'Enter the verified collection or payout reference and a short note.']);
+        }
+
+        return DB::transaction(function () use ($admin, $refundId, $amountMinor, $method, $reference, $recoveredOn, $note, $sellerPayoutId, $request, $component): SellerRefundRecovery {
+            $stub = Refund::query()->findOrFail($refundId);
+            Order::query()->whereKey($stub->order_id)->lockForUpdate()->firstOrFail();
+            $refund = Refund::query()->whereKey($stub->id)->lockForUpdate()->firstOrFail();
+            $returnRequest = $refund->return_request_id
+                ? ReturnRequest::query()->whereKey($refund->return_request_id)->lockForUpdate()->firstOrFail()
+                : null;
+            $recovery = SellerRefundRecovery::query()->where('refund_id', $refund->id)->lockForUpdate()->first();
+
+            $returnShippingSettlement = $component === 'return_shipping_fee' && $returnRequest
+                ? ShippingSettlement::query()
+                    ->where('return_request_id', $returnRequest->id)
+                    ->where('settlement_type', 'return')
+                    ->where('status', 'remitted')
+                    ->lockForUpdate()
+                    ->first()
+                : null;
+            $componentOutstandingMinor = $component === 'return_shipping_fee'
+                ? ($recovery?->returnShippingOutstandingMinor() ?? 0)
+                : ($recovery?->refundOutstandingMinor() ?? 0);
+
+            if ($refund->financially_responsible_party !== 'seller'
+                || ! $returnRequest
+                || ! $recovery
+                || $recovery->status === 'voided'
+                || ($component === 'refund_recovery' && ! $refund->isPayoutSent())
+                || ($component === 'return_shipping_fee' && ! $returnShippingSettlement)
+                || $componentOutstandingMinor < 1) {
+                throw ValidationException::withMessages(['refund' => 'There is no outstanding Seller recovery to record for this refund.']);
+            }
+
+            try {
+                $recoveredDate = CarbonImmutable::createFromFormat('!Y-m-d', $recoveredOn, config('app.timezone'));
+            } catch (Throwable) {
+                $recoveredDate = null;
+            }
+            if (! $recoveredDate || $recoveredDate->greaterThan(CarbonImmutable::today(config('app.timezone')))) {
+                throw ValidationException::withMessages(['recovered_on' => 'Enter the actual recovery date; future dates are not allowed.']);
+            }
+
+            $sellerPayout = null;
+            if ($method === 'seller_payout_offset') {
+                if (! $sellerPayoutId) {
+                    throw ValidationException::withMessages(['seller_payout_id' => 'Select the Seller payout where the offset was already applied.']);
+                }
+                $sellerPayout = SellerPayout::query()
+                    ->whereKey($sellerPayoutId)
+                    ->where('seller_profile_id', $recovery->seller_profile_id)
+                    ->whereIn('status', ['paid', 'completed'])
+                    ->whereNotNull('paid_at')
+                    ->lockForUpdate()
+                    ->first();
+                if (! $sellerPayout) {
+                    throw ValidationException::withMessages(['seller_payout_id' => 'Choose a paid Seller payout belonging to this Seller.']);
+                }
+            } elseif ($sellerPayoutId) {
+                throw ValidationException::withMessages(['seller_payout_id' => 'A Seller payout may only be selected when recording an applied payout offset.']);
+            }
+
+            if ($amountMinor > $componentOutstandingMinor) {
+                throw ValidationException::withMessages(['amount' => 'The recovery amount cannot exceed this component’s outstanding Seller balance of ₱'.number_format($componentOutstandingMinor / 100, 2).'.']);
+            }
+            if (SellerRefundRecoveryEvent::query()
+                ->where('seller_refund_recovery_id', $recovery->id)
+                ->where('component', $component)
+                ->where('method', $method)
+                ->where('external_reference', trim($reference))
+                ->exists()) {
+                throw ValidationException::withMessages(['external_reference' => 'This collection or settlement reference has already been recorded for the refund.']);
+            }
+
+            $previouslyRecoveredMinor = (int) $recovery->recovered_amount_minor;
+            $newRefundRecoveredMinor = (int) $recovery->refund_recovered_minor;
+            $newReturnShippingRecoveredMinor = (int) $recovery->return_shipping_fee_recovered_minor;
+            if ($component === 'return_shipping_fee') {
+                $newReturnShippingRecoveredMinor += $amountMinor;
+            } else {
+                $newRefundRecoveredMinor += $amountMinor;
+            }
+            $newRecoveredMinor = $newRefundRecoveredMinor + $newReturnShippingRecoveredMinor;
+            $refundOutstandingMinor = max(
+                0,
+                (int) $recovery->refund_recovery_minor
+                    - $newRefundRecoveredMinor
+                    - (int) $recovery->refund_recovery_voided_minor,
+            );
+            $returnShippingOutstandingMinor = max(
+                0,
+                (int) $recovery->return_shipping_fee_minor - $newReturnShippingRecoveredMinor,
+            );
+            $newStatus = ($refundOutstandingMinor + $returnShippingOutstandingMinor) < 1
+                ? 'recovered'
+                : ($newRecoveredMinor > 0 ? 'partially_recovered' : 'pending');
+            SellerRefundRecoveryEvent::query()->create([
+                'seller_refund_recovery_id' => $recovery->id,
+                'recorded_by' => $admin->id,
+                'seller_payout_id' => $sellerPayout?->id,
+                'component' => $component,
+                'method' => $method,
+                'amount_minor' => $amountMinor,
+                'external_reference' => trim($reference),
+                'recovered_on' => $recoveredDate->toDateString(),
+                'note' => trim($note),
+                'created_at' => now(),
+            ]);
+            $recovery->update([
+                'refund_recovered_minor' => $newRefundRecoveredMinor,
+                'return_shipping_fee_recovered_minor' => $newReturnShippingRecoveredMinor,
+                'recovered_amount_minor' => $newRecoveredMinor,
+                'status' => $newStatus,
+            ]);
+
+            $remainingMinor = $refundOutstandingMinor + $returnShippingOutstandingMinor;
+            $componentLabel = $component === 'return_shipping_fee' ? 'return-shipping fee' : 'refund proceeds';
+            $this->event(
+                $returnRequest,
+                $admin,
+                'seller_recovery_recorded',
+                $returnRequest->status,
+                $returnRequest->status,
+                'Admin recorded a verified Seller '.str_replace('_', ' ', $method).' of ₱'.number_format($amountMinor / 100, 2).' for the '.$componentLabel.'. This manual recovery action did not perform an automatic payout deduction.',
+                [
+                    'refund_id' => $refund->id,
+                    'seller_refund_recovery_id' => $recovery->id,
+                    'component' => $component,
+                    'method' => $method,
+                    'amount_minor' => $amountMinor,
+                    'recovered_on' => $recoveredDate->toDateString(),
+                    'external_reference' => trim($reference),
+                    'seller_payout_id' => $sellerPayout?->id,
+                    'seller_payout_no' => $sellerPayout?->payout_no,
+                    'total_recovered_minor' => $newRecoveredMinor,
+                    'outstanding_minor' => $remainingMinor,
+                ],
+            );
+            $this->audit->record(
+                action: 'refund.seller_recovery_recorded',
+                module: 'Returns & Refunds',
+                subject: $refund,
+                description: "A verified Seller {$componentLabel} recovery was recorded for {$refund->refund_no}; this action did not automatically deduct or transfer funds.",
+                oldValues: ['recovered_amount_minor' => $previouslyRecoveredMinor],
+                newValues: [
+                    'method' => $method,
+                    'component' => $component,
+                    'amount_minor' => $amountMinor,
+                    'external_reference' => trim($reference),
+                    'recovered_on' => $recoveredDate->toDateString(),
+                    'seller_payout_id' => $sellerPayout?->id,
+                    'recovered_amount_minor' => $newRecoveredMinor,
+                    'outstanding_minor' => $remainingMinor,
+                    'note' => trim($note),
+                ],
+                severity: 'warning',
+                request: $request,
+            );
+
+            return $recovery->fresh(['refund', 'events.recorder', 'events.sellerPayout']);
+        }, attempts: 3);
+    }
+
+    /** @return array{commission_reversal_minor: int, seller_recovery_minor: int} */
+    private function postRefundLedger(Refund $refund, ReturnRequest $returnRequest, Payment $payment): array
+    {
+        if ($refund->financially_responsible_party !== 'seller') {
+            return ['commission_reversal_minor' => 0, 'seller_recovery_minor' => 0];
+        }
+
+        $sellerOrder = SellerOrder::query()
+            ->whereKey($returnRequest->seller_order_id)
+            ->with('store.sellerProfile')
+            ->lockForUpdate()
+            ->firstOrFail();
+        $saleCommission = PlatformCommission::query()
+            ->where('seller_order_id', $sellerOrder->id)
+            ->whereNull('refund_id')
+            ->where('type', 'sale')
+            ->lockForUpdate()
+            ->first();
+
+        if ($payment->status === 'paid' && ! $saleCommission) {
+            $this->commissionLedger->finalize($payment);
+            $saleCommission = PlatformCommission::query()
+                ->where('seller_order_id', $sellerOrder->id)
+                ->whereNull('refund_id')
+                ->where('type', 'sale')
+                ->lockForUpdate()
+                ->first();
+        }
+
+        $rateBps = (int) ($saleCommission?->rate_bps
+            ?? $sellerOrder->store?->sellerProfile?->commission_rate_bps
+            ?? 0);
+        $commissionBaseMinor = (int) $sellerOrder->total_minor;
+        if (($sellerOrder->shipping_quote['pricing_rule'] ?? null) === 'zone_based_v1') {
+            $commissionBaseMinor = max(0, $commissionBaseMinor - (int) $sellerOrder->shipping_fee_minor);
+        }
+        $saleCommissionMinor = (int) ($saleCommission?->amount_minor
+            ?? round($commissionBaseMinor * $rateBps / 10000));
+        $priorRefundsMinor = (int) Refund::query()
+            ->payoutSent()
+            ->where('financially_responsible_party', 'seller')
+            ->where('id', '!=', $refund->id)
+            ->whereHas('returnRequest', fn ($query) => $query->where('seller_order_id', $sellerOrder->id))
+            ->sum('amount_minor');
+        $priorReversalMinor = (int) PlatformCommission::query()
+            ->where('seller_order_id', $sellerOrder->id)
+            ->whereNotNull('refund_id')
+            ->where('type', 'refund_reversal')
+            ->sum('amount_minor');
+        $newCumulativeRefund = $priorRefundsMinor + (int) $refund->amount_minor;
+        $targetReversal = min($saleCommissionMinor, (int) round($newCumulativeRefund * $rateBps / 10000));
+        $commissionReversal = max(0, $targetReversal - $priorReversalMinor);
+
+        if ($commissionReversal > 0) {
+            PlatformCommission::query()->firstOrCreate(
+                [
+                    'seller_order_id' => $sellerOrder->id,
+                    'refund_id' => $refund->id,
+                    'type' => 'refund_reversal',
+                ],
+                [
+                    'base_amount_minor' => (int) $refund->amount_minor,
+                    'rate_bps' => $rateBps,
+                    'amount_minor' => $commissionReversal,
+                    'status' => 'finalized',
+                    'calculated_at' => now(),
+                    'finalized_at' => now(),
+                    'reversed_at' => now(),
+                ],
+            );
+        }
+
+        $sellerRecoveryMinor = max(0, (int) $refund->amount_minor - $commissionReversal);
+        if ($sellerRecoveryMinor > 0) {
+            $sellerProfileId = (int) ($sellerOrder->store?->seller_profile_id ?? 0);
+            if ($sellerProfileId < 1) {
+                throw ValidationException::withMessages(['refund' => 'The Seller account is unavailable for recovery accounting.']);
+            }
+            $recovery = SellerRefundRecovery::query()
+                ->where('refund_id', $refund->id)
+                ->lockForUpdate()
+                ->first();
+            if (! $recovery) {
+                SellerRefundRecovery::query()->create([
+                    'refund_id' => $refund->id,
+                    'seller_profile_id' => $sellerProfileId,
+                    'amount_minor' => $sellerRecoveryMinor,
+                    'recovered_amount_minor' => 0,
+                    'refund_recovery_minor' => $sellerRecoveryMinor,
+                    'refund_recovered_minor' => 0,
+                    'refund_recovery_voided_minor' => 0,
+                    'return_shipping_fee_minor' => 0,
+                    'return_shipping_fee_recovered_minor' => 0,
+                    'status' => 'pending',
+                ]);
+            } else {
+                if ((int) $recovery->seller_profile_id !== $sellerProfileId
+                    || ((int) $recovery->refund_recovery_minor > 0
+                        && (int) $recovery->refund_recovery_minor !== $sellerRecoveryMinor)) {
+                    throw new ConflictHttpException('The Seller refund recovery no longer matches the finalized refund ledger.');
+                }
+
+                $refundRecoveredMinor = (int) $recovery->refund_recovered_minor;
+                $returnFeeMinor = (int) $recovery->return_shipping_fee_minor;
+                $returnFeeRecoveredMinor = (int) $recovery->return_shipping_fee_recovered_minor;
+                $totalAmountMinor = $sellerRecoveryMinor + $returnFeeMinor;
+                $totalRecoveredMinor = $refundRecoveredMinor + $returnFeeRecoveredMinor;
+                $outstandingMinor = max(
+                    0,
+                    $sellerRecoveryMinor - $refundRecoveredMinor - (int) $recovery->refund_recovery_voided_minor,
+                ) + max(0, $returnFeeMinor - $returnFeeRecoveredMinor);
+                $recovery->update([
+                    'amount_minor' => $totalAmountMinor,
+                    'recovered_amount_minor' => $totalRecoveredMinor,
+                    'refund_recovery_minor' => $sellerRecoveryMinor,
+                    'status' => $outstandingMinor > 0
+                        ? ($totalRecoveredMinor > 0 ? 'partially_recovered' : 'pending')
+                        : 'recovered',
+                ]);
+            }
+        }
+
+        return [
+            'commission_reversal_minor' => $commissionReversal,
+            'seller_recovery_minor' => $sellerRecoveryMinor,
+        ];
+    }
+
+    private function notifyAdminsOfReturn(ReturnRequest $returnRequest, Order $order): void
+    {
+        $this->notifications->sendManyAfterCommit(
+            $this->notifications->admins(),
+            new WorkflowNotification(
+                eventKey: 'admin_return_submitted',
+                title: 'New return request',
+                body: "Return {$returnRequest->return_no} was filed for order {$order->order_no} and needs review.",
+                actionUrl: route('admin.compliance.returns-refunds'),
+                type: 'warning',
+                meta: ['return_request_id' => (int) $returnRequest->id],
+            ),
+        );
+    }
+
+    private function notifySellerOfReturn(ReturnRequest $returnRequest, Order $order, SellerOrder $sellerOrder, User $buyer): void
+    {
+        $sellerUser = $sellerOrder->store?->sellerProfile?->user;
+
+        if (! $sellerUser) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($sellerUser, new WorkflowNotification(
+            eventKey: 'seller_return_updates',
+            title: 'New return request',
+            body: "{$buyer->name} filed return {$returnRequest->return_no} for order {$order->order_no}. Review and respond before the case deadline.",
+            actionUrl: route('seller.orders.returns'),
+            type: 'warning',
+            meta: ['return_request_id' => (int) $returnRequest->id, 'seller_order_id' => (int) $sellerOrder->id],
+        ));
+    }
+
+    private function notifyProviderOfReturnPickup(PickupRequest $pickupRequest, ReturnRequest $returnRequest): void
+    {
+        $providerUser = $pickupRequest->logisticsProfile?->user;
+
+        if (! $providerUser) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($providerUser, new WorkflowNotification(
+            eventKey: 'logistics_pickup_requested',
+            title: 'New return pickup scheduled',
+            body: "Return pickup {$pickupRequest->pickup_no} for case {$returnRequest->return_no} is scheduled with your facility.",
+            actionUrl: route('logistics.pickups.index'),
+            type: 'info',
+            meta: ['pickup_request_id' => (int) $pickupRequest->id],
+        ));
+    }
+
+    /**
+     * @return array{shipment: Shipment, pickup_request: ?PickupRequest, method: string, dropoff_center: ?SortingCenter}
+     */
+    private function createReturnShipment(ReturnRequest $returnRequest, Order $order, User $admin): array
+    {
+        $store = Store::query()
+            ->whereKey($returnRequest->store_id)
+            ->with('sellerProfile.pickupAddress')
+            ->firstOrFail();
+        $sellerAddress = $store->sellerProfile?->pickupAddress;
+        if (! $sellerAddress) {
+            throw ValidationException::withMessages(['return' => 'The Seller must set a pickup address before a physical return can be approved.']);
+        }
+
+        $outbound = Shipment::query()
+            ->where('seller_order_id', $returnRequest->seller_order_id)
+            ->where('purpose', 'outbound')
+            ->with('waybill')
+            ->latest('id')
+            ->first();
+        $parcel = $outbound?->parcels()->with('waybill')->latest('id')->first();
+        $package = $parcel?->waybill ?? $outbound?->waybill;
+        if (! $outbound || ! $package || ! is_numeric($package->total_weight_kg) || (float) $package->total_weight_kg <= 0) {
+            throw ValidationException::withMessages(['return' => 'The original fulfilled shipment has no usable package dimensions for a reverse waybill.']);
+        }
+
+        $buyerCityCode = trim((string) $order->psgc_city_code);
+        if (! preg_match('/^\d{10}$/D', $buyerCityCode)
+            || ! app(PostalCodeLookup::class)->findByCanonicalCityCode($buyerCityCode)) {
+            $buyerCityCode = app(PostalCodeLookup::class)->canonicalCityCode(
+                null,
+                (string) $order->province,
+                (string) $order->city_municipality,
+            ) ?? '';
+        }
+        if (! preg_match('/^\d{10}$/D', $buyerCityCode)
+            || ! app(PostalCodeLookup::class)->findByCanonicalCityCode($buyerCityCode)) {
+            throw ValidationException::withMessages([
+                'return' => 'The Buyer’s order address needs a verified municipality/city before a physical return can be approved.',
+            ]);
+        }
+
+        $method = $returnRequest->return_delivery_method ?: ReturnDeliveryMethod::RiderPickup->value;
+        if (! in_array($method, array_map(static fn (ReturnDeliveryMethod $option): string => $option->value, ReturnDeliveryMethod::cases()), true)) {
+            throw ValidationException::withMessages(['return' => 'The return delivery method is invalid. Ask the Buyer to submit the request again.']);
+        }
+
+        $providerQuery = LogisticsProfile::query()
+            ->where('psgc_city_code', $buyerCityCode)
+            ->where('status', 'active')
+            ->whereHas('user', fn ($query) => $query
+                ->where('status', 'active')
+                ->where(fn ($roles) => $roles
+                    ->where('role', UserRole::Logistics->value)
+                    ->orWhereHas('roles', fn ($roleQuery) => $roleQuery
+                        ->where('roles.name', UserRole::Logistics->value))))
+            ->orderBy('id');
+        if ($method === ReturnDeliveryMethod::BuyerDropoff->value) {
+            $providerQuery->whereHas('sortingCenters', fn ($query) => $query
+                ->where('status', 'active')
+                ->whereHas('address', fn ($address) => $address->where('psgc_city_code', $buyerCityCode)));
+        }
+        $provider = $providerQuery
+            ->lockForUpdate()
+            ->first();
+
+        if (! $provider) {
+            throw ValidationException::withMessages([
+                'return' => 'The active Logistics provider serving the Buyer’s municipality/city must be available to approve a physical return.',
+            ]);
+        }
+
+        $dropoffCenter = null;
+        if ($method === ReturnDeliveryMethod::BuyerDropoff->value) {
+            $dropoffCenter = $this->activeBuyerDropoffCenter($order, lock: true);
+            if (! $dropoffCenter || (int) $dropoffCenter->logistics_profile_id !== (int) $provider->id) {
+                throw ValidationException::withMessages([
+                    'return' => 'Buyer drop-off requires an active Sorting Center in the Buyer’s order city. Choose Rider pickup or restore the city center before approval.',
+                ]);
+            }
+        }
+
+        $destinationCityCode = app(PostalCodeLookup::class)->canonicalCityCode(
+            $sellerAddress->psgc_city_code,
+            (string) $sellerAddress->province,
+            (string) $sellerAddress->city_municipality,
+        );
+        if (! $destinationCityCode) {
+            throw ValidationException::withMessages([
+                'return' => 'The Seller pickup address needs a verified municipality/city before a cross-city return can be approved.',
+            ]);
+        }
+
+        $originAddress = $method === ReturnDeliveryMethod::BuyerDropoff->value
+            ? $dropoffCenter->address
+            : $this->buyerOrderAddress($order, $buyerCityCode);
+        if (! $originAddress) {
+            throw ValidationException::withMessages(['return' => 'The selected return origin has no verified address.']);
+        }
+
+        $packageItems = $this->returnPackageItems($returnRequest, $package);
+        $this->shippingQuotes->lockQuoteConfiguration();
+        $returnQuote = $this->shippingQuotes->quoteReturnRoute(
+            $originAddress,
+            $sellerAddress,
+            $packageItems,
+            lockConfiguration: true,
+        );
+        $returnQuote['origin_address_detail'] = $this->returnAddressSnapshot($originAddress);
+        $returnQuote['destination_address_detail'] = $this->returnAddressSnapshot($sellerAddress);
+        if ($dropoffCenter) {
+            $returnQuote['dropoff_center'] = [
+                'id' => (int) $dropoffCenter->id,
+                'name' => (string) $dropoffCenter->name,
+                'address' => $this->returnAddressSnapshot($dropoffCenter->address),
+            ];
+        }
+
+        $now = now();
+        $pickupAddressId = $order->shipping_address_id
+            ? Address::withTrashed()->whereKey($order->shipping_address_id)->value('id')
+            : null;
+        $originAddressId = $method === ReturnDeliveryMethod::BuyerDropoff->value
+            ? $dropoffCenter->address_id
+            : $pickupAddressId;
+        $pickupRequest = null;
+
+        $shipment = Shipment::query()->create([
+            'shipment_no' => 'SHP-'.Str::upper((string) Str::ulid()),
+            'seller_order_id' => $returnRequest->seller_order_id,
+            'logistics_profile_id' => $provider->id,
+            'origin_logistics_profile_id' => $provider->id,
+            'origin_address_id' => $originAddressId,
+            'destination_address_id' => $sellerAddress->id,
+            'destination_city_code' => $destinationCityCode,
+            'destination_address_snapshot' => [
+                'recipient_name' => (string) $sellerAddress->recipient_name,
+                'phone' => (string) $sellerAddress->phone,
+                'house_number' => $sellerAddress->house_number,
+                'street' => (string) $sellerAddress->street,
+                'barangay' => (string) $sellerAddress->barangay,
+                'city_municipality' => (string) $sellerAddress->city_municipality,
+                'province' => (string) $sellerAddress->province,
+                'postal_code' => $sellerAddress->postal_code,
+                'psgc_city_code' => $destinationCityCode,
+            ],
+            'purpose' => 'return',
+            'status' => $method === ReturnDeliveryMethod::BuyerDropoff->value
+                ? ShipmentStatus::AwaitingBuyerDropoff->value
+                : ShipmentStatus::ReadyForPickup->value,
+            'shipping_fee_minor' => (int) $returnQuote['return_shipping_fee_minor'],
+            'return_shipping_quote' => $returnQuote,
+            'cod_amount_minor' => 0,
+        ]);
+
+        $waybillNo = 'BRLY-RET-'.Str::upper((string) Str::ulid());
+        $waybill = Waybill::query()->create([
+            'shipment_id' => $shipment->id,
+            'waybill_no' => $waybillNo,
+            'scan_token' => Str::random(64),
+            'barcode_value' => $waybillNo,
+            'piece_count' => 1,
+            'total_weight_kg' => (float) $returnQuote['actual_weight_kg'],
+            'length_cm' => data_get($returnQuote, 'parcel_dimensions_cm.length'),
+            'width_cm' => data_get($returnQuote, 'parcel_dimensions_cm.width'),
+            'height_cm' => data_get($returnQuote, 'parcel_dimensions_cm.height'),
+            'status' => 'generated',
+            'generated_by' => $admin->id,
+            'generated_at' => $now,
+        ]);
+        $returnParcel = Parcel::query()->create([
+            'shipment_id' => $shipment->id,
+            'waybill_id' => $waybill->id,
+            'parcel_no' => 'PCL-'.Str::upper((string) Str::ulid()),
+            'piece_sequence' => 1,
+            'weight_kg' => (float) $returnQuote['actual_weight_kg'],
+            'length_cm' => data_get($returnQuote, 'parcel_dimensions_cm.length'),
+            'width_cm' => data_get($returnQuote, 'parcel_dimensions_cm.width'),
+            'height_cm' => data_get($returnQuote, 'parcel_dimensions_cm.height'),
+            'status' => 'created',
+            'last_event_at' => $now,
+        ]);
+
+        if ($method === ReturnDeliveryMethod::RiderPickup->value) {
+            $pickupRequest = $this->createReturnPickupRequest(
+                $returnRequest,
+                $order,
+                $sellerAddress,
+                $provider,
+                $pickupAddressId,
+                $returnParcel,
+                $now,
+            );
+            $this->notifyProviderOfReturnPickup($pickupRequest, $returnRequest);
+        } else {
+            $this->notifyProviderOfBuyerReturnDropoff($provider, $returnRequest, $shipment, $dropoffCenter);
+        }
+
+        $shipment->events()->create([
+            'parcel_id' => $returnParcel->id,
+            'event_type' => $method === ReturnDeliveryMethod::BuyerDropoff->value
+                ? 'return_shipment_awaiting_buyer_dropoff'
+                : 'return_shipment_ready_for_pickup',
+            'from_status' => null,
+            'to_status' => $shipment->status,
+            'actor_user_id' => $admin->id,
+            'source' => 'admin',
+            'notes' => "Reverse shipment created from return request {$returnRequest->return_no}.",
+            'metadata' => [
+                'return_request_id' => $returnRequest->id,
+                'pickup_request_id' => $pickupRequest?->id,
+                'return_delivery_method' => $method,
+                'return_shipping_fee_minor' => (int) $returnQuote['return_shipping_fee_minor'],
+                'financially_responsible_party' => $returnRequest->refunds()->latest('id')->value('financially_responsible_party'),
+            ],
+            'occurred_at' => $now,
+        ]);
+        $returnRequest->update([
+            'return_shipment_id' => $shipment->id,
+            'return_delivery_method' => $method,
+        ]);
+
+        return [
+            'shipment' => $shipment->fresh(['waybill', 'parcels', 'logisticsProfile']),
+            'pickup_request' => $pickupRequest,
+            'method' => $method,
+            'dropoff_center' => $dropoffCenter,
+        ];
+    }
+
+    private function buyerOrderAddress(Order $order, string $cityCode): Address
+    {
+        return new Address([
+            'user_id' => $order->buyer_id,
+            'label' => 'Buyer order address',
+            'recipient_name' => (string) $order->recipient_name,
+            'phone' => (string) $order->recipient_phone,
+            'street' => (string) $order->address_line,
+            'barangay' => (string) $order->barangay,
+            'city_municipality' => (string) $order->city_municipality,
+            'province' => (string) $order->province,
+            'postal_code' => $order->postal_code,
+            'psgc_city_code' => $cityCode,
+        ]);
+    }
+
+    /** @return array<string, string|null> */
+    private function returnAddressSnapshot(Address $address): array
+    {
+        return [
+            'recipient_name' => $address->recipient_name,
+            'phone' => $address->phone,
+            'house_number' => $address->house_number,
+            'street' => $address->street,
+            'barangay' => $address->barangay,
+            'city_municipality' => $address->city_municipality,
+            'province' => $address->province,
+            'postal_code' => $address->postal_code,
+            'psgc_city_code' => $address->psgc_city_code,
+        ];
+    }
+
+    /** @param array<string, mixed> $snapshot */
+    private function addressFromSnapshot(array $snapshot): Address
+    {
+        return new Address([
+            'label' => 'Return shipment address snapshot',
+            'recipient_name' => (string) ($snapshot['recipient_name'] ?? ''),
+            'phone' => (string) ($snapshot['phone'] ?? ''),
+            'house_number' => $snapshot['house_number'] ?? null,
+            'street' => (string) ($snapshot['street'] ?? ''),
+            'barangay' => (string) ($snapshot['barangay'] ?? ''),
+            'city_municipality' => (string) ($snapshot['city_municipality'] ?? ''),
+            'province' => (string) ($snapshot['province'] ?? ''),
+            'postal_code' => $snapshot['postal_code'] ?? null,
+            'psgc_city_code' => (string) ($snapshot['psgc_city_code'] ?? ''),
+        ]);
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function returnPackageItems(ReturnRequest $returnRequest, Waybill $fallbackPackage): array
+    {
+        $snapshotItems = collect((array) data_get($returnRequest->sellerOrder?->shipping_quote, 'package_items', []))
+            ->keyBy('sku');
+        $lines = [];
+
+        foreach ($returnRequest->items as $item) {
+            $sku = (string) $item->orderItem?->sku;
+            $snapshot = $snapshotItems->get($sku);
+            if (! is_array($snapshot)) {
+                return [[
+                    'sku' => $sku ?: 'RETURN-PACKAGE',
+                    'quantity' => 1,
+                    'package_weight_kg' => (float) $fallbackPackage->total_weight_kg,
+                    'package_dimensions_cm' => [
+                        'length' => (float) $fallbackPackage->length_cm,
+                        'width' => (float) $fallbackPackage->width_cm,
+                        'height' => (float) $fallbackPackage->height_cm,
+                    ],
+                ]];
+            }
+            $dimensions = (array) ($snapshot['package_dimensions_cm'] ?? []);
+            $weight = (float) ($snapshot['package_weight_kg'] ?? 0);
+            if ($weight <= 0 || $dimensions === []) {
+                return [[
+                    'sku' => $sku ?: 'RETURN-PACKAGE',
+                    'quantity' => 1,
+                    'package_weight_kg' => (float) $fallbackPackage->total_weight_kg,
+                    'package_dimensions_cm' => [
+                        'length' => (float) $fallbackPackage->length_cm,
+                        'width' => (float) $fallbackPackage->width_cm,
+                        'height' => (float) $fallbackPackage->height_cm,
+                    ],
+                ]];
+            }
+            $lines[] = [
+                'sku' => $sku,
+                'quantity' => (int) $item->quantity,
+                'package_weight_kg' => $weight,
+                'package_dimensions_cm' => $dimensions,
+            ];
+        }
+
+        return $lines !== [] ? $lines : [[
+            'sku' => 'RETURN-PACKAGE',
+            'quantity' => 1,
+            'package_weight_kg' => (float) $fallbackPackage->total_weight_kg,
+            'package_dimensions_cm' => [
+                'length' => (float) $fallbackPackage->length_cm,
+                'width' => (float) $fallbackPackage->width_cm,
+                'height' => (float) $fallbackPackage->height_cm,
+            ],
+        ]];
+    }
+
+    private function createReturnPickupRequest(
+        ReturnRequest $returnRequest,
+        Order $order,
+        Address $sellerAddress,
+        LogisticsProfile $provider,
+        ?int $pickupAddressId,
+        Parcel $returnParcel,
+        mixed $now,
+    ): PickupRequest {
+        $requestedDate = CarbonImmutable::tomorrow(config('app.timezone'));
+        $window = SellerPickupRequestService::PICKUP_WINDOWS['10:00-12:00'];
+        $windowStart = $requestedDate->setTimeFromTimeString($window['start']);
+        $windowEnd = $requestedDate->setTimeFromTimeString($window['end']);
+        $pickupRequest = PickupRequest::query()->create([
+            'pickup_no' => 'PU-'.Str::upper((string) Str::ulid()),
+            'store_id' => $returnRequest->store_id,
+            'return_request_id' => $returnRequest->id,
+            'pickup_address_id' => $pickupAddressId ?: $sellerAddress->id,
+            'pickup_address_snapshot' => [
+                'recipient_name' => (string) $order->recipient_name,
+                'phone' => (string) $order->recipient_phone,
+                'house_number' => null,
+                'street' => (string) $order->address_line,
+                'barangay' => (string) $order->barangay,
+                'city_municipality' => (string) $order->city_municipality,
+                'province' => (string) $order->province,
+                'postal_code' => $order->postal_code,
+                'psgc_city_code' => (string) $order->psgc_city_code,
+            ],
+            'logistics_profile_id' => $provider->id,
+            'status' => 'requested',
+            'requested_date' => $requestedDate->toDateString(),
+            'window_start' => $windowStart,
+            'window_end' => $windowEnd,
+            'return_pickup_date' => $requestedDate->toDateString(),
+            'return_pickup_window' => '10:00-12:00',
+            'seller_instructions' => 'Buyer return pickup. Return delivery fee is covered by the Seller or Platform responsibility recorded for this case; it is not deducted from the Buyer refund.',
+        ]);
+        $pickupRequest->parcels()->attach($returnParcel->id, ['added_at' => $now]);
+
+        return $pickupRequest;
+    }
+
+    private function notifyProviderOfBuyerReturnDropoff(
+        LogisticsProfile $provider,
+        ReturnRequest $returnRequest,
+        Shipment $shipment,
+        SortingCenter $center,
+    ): void {
+        $providerUser = $provider->user;
+        if (! $providerUser) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($providerUser, new WorkflowNotification(
+            eventKey: 'logistics_return_dropoff_expected',
+            title: 'Buyer return drop-off expected',
+            body: "Return {$returnRequest->return_no} (shipment {$shipment->shipment_no}) is assigned to {$center->name}. Scan its return waybill when the Buyer hands over the parcel.",
+            actionUrl: route('logistics.sorting.incoming'),
+            type: 'info',
+            meta: ['return_request_id' => (int) $returnRequest->id, 'shipment_id' => (int) $shipment->id],
+        ));
+    }
+
+    public function switchExpiredDropoffToPickup(User $buyer, int $returnRequestId): ReturnRequest
+    {
+        return DB::transaction(function () use ($buyer, $returnRequestId): ReturnRequest {
+            $stub = ReturnRequest::query()
+                ->whereKey($returnRequestId)
+                ->where('buyer_id', $buyer->id)
+                ->firstOrFail();
+            $order = Order::query()
+                ->whereKey($stub->order_id)
+                ->where('buyer_id', $buyer->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $returnRequest = ReturnRequest::query()
+                ->whereKey($stub->id)
+                ->where('buyer_id', $buyer->id)
+                ->lockForUpdate()
+                ->with(['sellerOrder', 'items.orderItem', 'store.sellerProfile.pickupAddress'])
+                ->firstOrFail();
+
+            if ($returnRequest->request_type !== 'return_refund'
+                || $returnRequest->return_delivery_method !== ReturnDeliveryMethod::BuyerDropoff->value
+                || $returnRequest->status !== ReturnRequestStatus::ReturnDropoffPending->value
+                || ! $returnRequest->dropoff_due_at
+                || ! now()->greaterThan($returnRequest->dropoff_due_at)) {
+                throw ValidationException::withMessages([
+                    'return' => 'Rider pickup becomes available only after an approved Buyer drop-off deadline has passed.',
+                ]);
+            }
+
+            $shipment = Shipment::query()
+                ->whereKey($returnRequest->return_shipment_id)
+                ->where('purpose', 'return')
+                ->lockForUpdate()
+                ->with(['waybill', 'parcels'])
+                ->firstOrFail();
+            if ($shipment->status !== ShipmentStatus::AwaitingBuyerDropoff->value
+                || $shipment->parcels->isEmpty()
+                || $shipment->parcels->contains(fn (Parcel $parcel): bool => $parcel->status !== 'created')
+                || ShipmentEvent::query()
+                    ->where('shipment_id', $shipment->id)
+                    ->where('event_type', 'buyer_return_dropoff_received')
+                    ->exists()) {
+                throw ValidationException::withMessages([
+                    'return' => 'This return parcel has already entered Logistics custody and cannot be switched to Rider pickup.',
+                ]);
+            }
+
+            $buyerCityCode = trim((string) $order->psgc_city_code);
+            if (! preg_match('/^\d{10}$/D', $buyerCityCode)
+                || ! app(PostalCodeLookup::class)->findByCanonicalCityCode($buyerCityCode)) {
+                $buyerCityCode = app(PostalCodeLookup::class)->canonicalCityCode(
+                    null,
+                    (string) $order->province,
+                    (string) $order->city_municipality,
+                ) ?? '';
+            }
+            if (! preg_match('/^\d{10}$/D', $buyerCityCode)
+                || ! app(PostalCodeLookup::class)->findByCanonicalCityCode($buyerCityCode)) {
+                throw ValidationException::withMessages(['return' => 'The Buyer’s order address needs a verified municipality/city before Rider pickup can be scheduled.']);
+            }
+
+            $provider = LogisticsProfile::query()
+                ->where('psgc_city_code', $buyerCityCode)
+                ->where('status', 'active')
+                ->whereHas('user', fn ($query) => $query
+                    ->where('status', 'active')
+                    ->where(fn ($roles) => $roles
+                        ->where('role', UserRole::Logistics->value)
+                        ->orWhereHas('roles', fn ($roleQuery) => $roleQuery
+                            ->where('roles.name', UserRole::Logistics->value))))
+                ->lockForUpdate()
+                ->first();
+            if (! $provider || (int) $provider->id !== (int) $shipment->logistics_profile_id) {
+                throw ValidationException::withMessages([
+                    'return' => 'The Buyer-city Logistics provider is unavailable. Contact Admin before changing this return to Rider pickup.',
+                ]);
+            }
+
+            $sellerPickupAddress = $returnRequest->store?->sellerProfile?->pickupAddress;
+            $destinationSnapshot = (array) $shipment->destination_address_snapshot;
+            if (! $sellerPickupAddress || ! $shipment->waybill || ! filled($destinationSnapshot['psgc_city_code'] ?? null)) {
+                throw ValidationException::withMessages(['return' => 'The return shipment is missing its saved Seller destination or waybill.']);
+            }
+
+            $buyerAddress = $this->buyerOrderAddress($order, $buyerCityCode);
+            $sellerAddressSnapshot = $this->addressFromSnapshot($destinationSnapshot);
+            $this->shippingQuotes->lockQuoteConfiguration();
+            $quote = $this->shippingQuotes->quoteReturnRoute(
+                $buyerAddress,
+                $sellerAddressSnapshot,
+                $this->returnPackageItems($returnRequest, $shipment->waybill),
+                lockConfiguration: true,
+            );
+            $quote['origin_address_detail'] = $this->returnAddressSnapshot($buyerAddress);
+            $quote['destination_address_detail'] = $destinationSnapshot;
+            $pickupAddressId = $order->shipping_address_id
+                ? Address::withTrashed()->whereKey($order->shipping_address_id)->value('id')
+                : null;
+
+            $shipment->update([
+                'origin_address_id' => $pickupAddressId,
+                'status' => ShipmentStatus::ReadyForPickup->value,
+                'shipping_fee_minor' => (int) $quote['return_shipping_fee_minor'],
+                'return_shipping_quote' => $quote,
+            ]);
+
+            $now = now();
+            $pickupRequest = $this->createReturnPickupRequest(
+                $returnRequest,
+                $order,
+                $sellerPickupAddress,
+                $provider,
+                $pickupAddressId,
+                $shipment->parcels->first(),
+                $now,
+            );
+            $fromStatus = $returnRequest->status;
+            $returnRequest->update([
+                'return_delivery_method' => ReturnDeliveryMethod::RiderPickup->value,
+                'status' => ReturnRequestStatus::ReturnPickupRequested->value,
+                'resolution' => 'The Buyer missed the approved drop-off deadline and switched to Rider pickup. The existing Seller/Platform responsibility decision and full Buyer refund remain unchanged.',
+            ]);
+            $this->event(
+                $returnRequest,
+                $buyer,
+                'buyer_switched_return_to_rider_pickup',
+                $fromStatus,
+                ReturnRequestStatus::ReturnPickupRequested->value,
+                'Buyer switched to Rider pickup after the drop-off deadline.',
+                [
+                    'pickup_request_id' => (int) $pickupRequest->id,
+                    'shipment_id' => (int) $shipment->id,
+                    'return_shipping_fee_minor' => (int) $quote['return_shipping_fee_minor'],
+                ],
+            );
+            $shipment->events()->create([
+                'event_type' => 'return_pickup_requested_after_dropoff_deadline',
+                'from_status' => ShipmentStatus::AwaitingBuyerDropoff->value,
+                'to_status' => ShipmentStatus::ReadyForPickup->value,
+                'actor_user_id' => $buyer->id,
+                'source' => 'buyer',
+                'notes' => 'Buyer switched to Rider pickup after the drop-off deadline.',
+                'metadata' => [
+                    'return_request_id' => $returnRequest->id,
+                    'pickup_request_id' => $pickupRequest->id,
+                    'return_shipping_fee_minor' => (int) $quote['return_shipping_fee_minor'],
+                ],
+                'occurred_at' => $now,
+            ]);
+            $this->notifyProviderOfReturnPickup($pickupRequest, $returnRequest);
+            $this->notifyBuyerOfReturnUpdate(
+                $returnRequest,
+                'Rider pickup selected',
+                "Your return {$returnRequest->return_no} is now scheduled for Rider pickup.",
+                'info',
+            );
+
+            return $returnRequest->fresh(['returnShipment.waybill', 'events']);
+        }, attempts: 3);
+    }
+
+    /** Called inside the provider-scoped ParcelIntakeService transaction. */
+    public function recordReturnDropoffReceived(int $returnRequestId, User $logisticsUser, int $shipmentId): void
+    {
+        $returnRequest = ReturnRequest::query()->whereKey($returnRequestId)->lockForUpdate()->first();
+        if (! $returnRequest || (int) $returnRequest->return_shipment_id !== $shipmentId) {
+            throw new ConflictHttpException('This return waybill is not linked to the expected return case.');
+        }
+        $shipment = Shipment::query()
+            ->whereKey($shipmentId)
+            ->where('purpose', 'return')
+            ->where('status', ShipmentStatus::AtSortingCenter->value)
+            ->first();
+        $centerId = (int) ShipmentEvent::query()
+            ->where('shipment_id', $shipmentId)
+            ->where('event_type', 'buyer_return_dropoff_received')
+            ->orderByDesc('id')
+            ->value('sorting_center_id');
+        $logisticsProfileId = (int) ($logisticsUser->logisticsProfile?->id ?? 0);
+        $order = Order::query()
+            ->whereKey($returnRequest->order_id)
+            ->where('buyer_id', $returnRequest->buyer_id)
+            ->first();
+        $orderCityCode = trim((string) $order?->psgc_city_code);
+        if (! preg_match('/^\d{10}$/D', $orderCityCode)
+            || ! app(PostalCodeLookup::class)->findByCanonicalCityCode($orderCityCode)) {
+            $orderCityCode = $order
+                ? (app(PostalCodeLookup::class)->canonicalCityCode(
+                    null,
+                    (string) $order->province,
+                    (string) $order->city_municipality,
+                ) ?? '')
+                : '';
+        }
+        $center = $centerId > 0 ? SortingCenter::query()
+            ->whereKey($centerId)
+            ->where('logistics_profile_id', $logisticsProfileId)
+            ->where('status', 'active')
+            ->with('address')
+            ->lockForUpdate()
+            ->first() : null;
+        $centerCityCode = trim((string) $center?->address?->psgc_city_code);
+        $quotedCenterCityCode = trim((string) data_get(
+            $shipment?->return_shipping_quote,
+            'dropoff_center.address.psgc_city_code',
+        ));
+        $centerIsAssigned = $center !== null
+            && $centerCityCode !== ''
+            && $centerCityCode === $orderCityCode
+            && $centerCityCode === $quotedCenterCityCode;
+        if ($logisticsUser->role !== UserRole::Logistics->value
+            || $logisticsUser->status !== 'active'
+            || ! $shipment
+            || (int) $shipment->logistics_profile_id !== $logisticsProfileId
+            || ! $centerIsAssigned
+            || $centerId < 1
+            || $centerId !== (int) $returnRequest->dropoff_sorting_center_id) {
+            throw new AuthorizationException('Only the assigned Buyer-city Sorting Center can accept this return drop-off.');
+        }
+        if ($returnRequest->return_delivery_method !== ReturnDeliveryMethod::BuyerDropoff->value
+            || $returnRequest->status !== ReturnRequestStatus::ReturnDropoffPending->value
+            || ! $returnRequest->dropoff_due_at
+            || now()->greaterThan($returnRequest->dropoff_due_at)) {
+            throw new ConflictHttpException('This Buyer drop-off is expired or no longer awaiting Logistics receipt.');
+        }
+
+        $fromStatus = $returnRequest->status;
+        $returnRequest->update(['status' => ReturnRequestStatus::ReturnInTransit->value]);
+        $this->event(
+            $returnRequest,
+            $logisticsUser,
+            'buyer_return_dropoff_received',
+            $fromStatus,
+            ReturnRequestStatus::ReturnInTransit->value,
+            'Logistics scanned and accepted the Buyer’s return parcel at the assigned Sorting Center.',
+            ['shipment_id' => $shipmentId],
+        );
+        $this->notifyBuyerOfReturnUpdate(
+            $returnRequest,
+            'Return parcel received by Logistics',
+            "Logistics accepted your return parcel for {$returnRequest->return_no}.",
+            'info',
+        );
+    }
+
+    private function assertAdminReviewable(ReturnRequest $returnRequest): void
+    {
+        if ($returnRequest->status !== ReturnRequestStatus::UnderReview->value) {
+            throw ValidationException::withMessages(['return' => 'A Seller response and any requested evidence are required before an Admin decision.']);
+        }
+    }
+
+    private function evidenceRequestedFrom(ReturnRequest $returnRequest): string
+    {
+        $event = $this->latestEvidenceRequest($returnRequest);
+
+        return (string) ($event?->metadata['requested_from'] ?? 'both');
+    }
+
+    private function latestEvidenceRequest(ReturnRequest $returnRequest): ?ReturnEvent
+    {
+        return ReturnEvent::query()
+            ->where('return_request_id', $returnRequest->id)
+            ->where('event_type', 'additional_evidence_requested')
+            ->latest('id')
+            ->first();
+    }
+
+    private function hasEvidenceResponseSinceLatestRequest(ReturnRequest $returnRequest, string $party): bool
+    {
+        $requestEvent = $this->latestEvidenceRequest($returnRequest);
+        if (! $requestEvent) {
+            return false;
+        }
+
+        return ReturnEvent::query()
+            ->where('return_request_id', $returnRequest->id)
+            ->where('id', '>', $requestEvent->id)
+            ->where('event_type', $party.'_evidence_submitted')
+            ->exists();
+    }
+
+    private function allRequestedEvidenceSubmitted(ReturnRequest $returnRequest, string $currentParty): bool
+    {
+        $requestedFrom = $this->evidenceRequestedFrom($returnRequest);
+        $requiredParties = match ($requestedFrom) {
+            'buyer' => ['buyer'],
+            'seller' => ['seller'],
+            'both' => ['buyer', 'seller'],
+            default => [],
+        };
+
+        foreach ($requiredParties as $party) {
+            if ($party !== $currentParty && ! $this->hasEvidenceResponseSinceLatestRequest($returnRequest, $party)) {
+                return false;
+            }
+        }
+
+        return $requiredParties !== [];
+    }
+
+    /** @param array<int, UploadedFile> $evidenceFiles */
+    private function assertAdditionalEvidenceProvided(?string $note, array $evidenceFiles): void
+    {
+        if ($evidenceFiles === [] && ! filled($note)) {
+            throw ValidationException::withMessages([
+                'evidence' => 'Add a note or at least one evidence file.',
+            ]);
+        }
+    }
+
+    private function orderItemsFullyRefunded(Order $order): bool
+    {
+        $sellerOrders = $order->sellerOrders()
+            ->with('items:id,seller_order_id,quantity')
+            ->get();
+
+        foreach ($sellerOrders as $sellerOrder) {
+            foreach ($sellerOrder->items as $item) {
+                $refundedQuantity = (int) ReturnItem::query()
+                    ->where('order_item_id', $item->id)
+                    ->whereHas('returnRequest', fn ($query) => $query
+                        ->where('order_id', $order->id)
+                        ->whereHas('refunds', fn ($refunds) => $refunds->payoutSent()))
+                    ->sum('quantity');
+
+                if ($refundedQuantity < (int) $item->quantity) {
+                    return false;
+                }
+            }
+        }
+
+        return $sellerOrders->contains(fn (SellerOrder $sellerOrder): bool => $sellerOrder->items->isNotEmpty());
+    }
+
+    private function eligibleForRequest(SellerOrder $sellerOrder): bool
+    {
+        if ($sellerOrder->status !== 'completed' || ! $sellerOrder->completed_at) {
+            return false;
+        }
+
+        $deadline = CarbonImmutable::parse($sellerOrder->completed_at)
+            ->addDays(self::RETURN_WINDOW_DAYS)
+            ->endOfDay();
+        if (now()->greaterThan($deadline)) {
+            return false;
+        }
+
+        return $this->capturedAmountMinor($sellerOrder->order) > 0;
+    }
+
+    /** @param iterable<OrderItem> $items
+     * @return array<int, int>
+     */
+    private function returnableQuantities(iterable $items): array
+    {
+        $items = collect($items);
+        $itemIds = $items->pluck('id')->map(fn ($id): int => (int) $id)->all();
+        $reserved = $itemIds === [] ? [] : DB::table('return_items')
+            ->join('return_requests', 'return_requests.id', '=', 'return_items.return_request_id')
+            ->whereIn('return_items.order_item_id', $itemIds)
+            ->where('return_requests.status', '!=', ReturnRequestStatus::Rejected->value)
+            ->groupBy('return_items.order_item_id')
+            ->select('return_items.order_item_id')
+            ->selectRaw('SUM(return_items.quantity) as reserved_quantity')
+            ->pluck('reserved_quantity', 'order_item_id')
+            ->all();
+
+        $result = [];
+        foreach ($items as $item) {
+            $result[(int) $item->id] = max(0, (int) $item->quantity - (int) ($reserved[$item->id] ?? 0));
+        }
+
+        return $result;
+    }
+
+    private function capturedAmountMinor(Order $order): int
+    {
+        return (int) Payment::query()
+            ->where('order_id', $order->id)
+            ->where('method', 'cod')
+            ->whereNotNull('paid_at')
+            ->whereNotIn('status', ['failed', 'cancelled', 'pending', 'authorized'])
+            ->sum('amount_minor');
+    }
+
+    private function assertRefundCapacity(Order $order, int $amountMinor, ?int $excludeReturnRequestId, ?int $sellerOrderId): void
+    {
+        $captured = $this->capturedAmountMinor($order);
+        $reservedQuery = ReturnRequest::query()
+            ->where('order_id', $order->id)
+            ->where('status', '!=', ReturnRequestStatus::Rejected->value);
+        if ($excludeReturnRequestId) {
+            $reservedQuery->where('id', '!=', $excludeReturnRequestId);
+        }
+        if ($sellerOrderId) {
+            $sellerReserved = ReturnRequest::query()
+                ->where('seller_order_id', $sellerOrderId)
+                ->where('status', '!=', ReturnRequestStatus::Rejected->value);
+            if ($excludeReturnRequestId) {
+                $sellerReserved->where('id', '!=', $excludeReturnRequestId);
+            }
+            $sellerOrder = SellerOrder::query()->find($sellerOrderId);
+            if ($sellerOrder && (int) $sellerReserved->sum('requested_amount_minor') + $amountMinor > (int) $sellerOrder->total_minor) {
+                throw ValidationException::withMessages(['item_quantities' => 'The requested refund would exceed this Seller Order total.']);
+            }
+        }
+
+        $caseReserved = (int) $reservedQuery->sum('requested_amount_minor');
+        $unlinkedRefunds = (int) Refund::query()
+            ->where('order_id', $order->id)
+            ->whereNull('return_request_id')
+            ->whereNotIn('status', self::NON_REFUND_STATUSES)
+            ->sum('amount_minor');
+        if ($caseReserved + $unlinkedRefunds + $amountMinor > $captured) {
+            throw ValidationException::withMessages(['item_quantities' => 'The requested amount exceeds the remaining paid order balance.']);
+        }
+    }
+
+    /** @param array<int, UploadedFile> $files
+     * @param  array<int, string>  $storedPaths
+     */
+    private function storeEvidence(ReturnRequest $returnRequest, User $actor, array $files, string $type, array &$storedPaths): void
+    {
+        foreach ($files as $file) {
+            if (! $file instanceof UploadedFile || ! $file->isValid()) {
+                throw ValidationException::withMessages(['evidence' => 'One or more evidence uploads are invalid.']);
+            }
+            $path = $file->store('return-evidence/'.$returnRequest->return_no, 'local');
+            if (! $path) {
+                throw new \RuntimeException('The return evidence file could not be stored.');
+            }
+            $storedPaths[] = $path;
+            ReturnEvidence::query()->create([
+                'return_request_id' => $returnRequest->id,
+                'uploaded_by' => $actor->id,
+                'type' => $type,
+                'mime_type' => $file->getMimeType(),
+                'file_path' => $path,
+                'original_name' => $this->safeOriginalName($file->getClientOriginalName()),
+                'size_bytes' => $file->getSize(),
+                'description' => null,
+                'created_at' => now(),
+            ]);
+        }
+    }
+
+    private function safeOriginalName(string $name): string
+    {
+        $name = basename(str_replace('\\', '/', $name));
+        $name = preg_replace('/[^A-Za-z0-9._ -]/', '_', $name) ?: 'evidence';
+
+        return mb_substr($name, 0, 255);
+    }
+
+    private function event(
+        ReturnRequest $returnRequest,
+        ?User $actor,
+        string $eventType,
+        ?string $from,
+        ?string $to,
+        ?string $note = null,
+        array $metadata = [],
+    ): void {
+        ReturnEvent::query()->create([
+            'return_request_id' => $returnRequest->id,
+            'actor_user_id' => $actor?->id,
+            'event_type' => $eventType,
+            'from_status' => $from,
+            'to_status' => $to,
+            'note' => filled($note) ? trim($note) : null,
+            'metadata' => $metadata ?: null,
+            'created_at' => now(),
+        ]);
+
+        if ($from === $to) {
+            return;
+        }
+
+        $sellerUserId = (int) (Store::query()
+            ->whereKey($returnRequest->store_id)
+            ->with('sellerProfile')
+            ->first()?->sellerProfile?->user_id ?? 0);
+        if ($sellerUserId < 1) {
+            return;
+        }
+
+        $statusUpdate = new SellerReturnStatusUpdated(
+            sellerUserId: $sellerUserId,
+            returnRequestId: (int) $returnRequest->id,
+            returnNo: (string) $returnRequest->return_no,
+            status: (string) ($to ?? $returnRequest->status),
+            updatedAt: $returnRequest->updated_at?->toIso8601String() ?? now()->toIso8601String(),
+        );
+
+        DB::afterCommit(function () use ($statusUpdate): void {
+            try {
+                Event::dispatch($statusUpdate);
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        });
+    }
+
+    private function orderItemImageUrl(OrderItem $item): ?string
+    {
+        if (! $item->product_image_path) {
+            return null;
+        }
+
+        return Storage::disk($item->product_image_disk ?: 'public')->url($item->product_image_path);
+    }
+}

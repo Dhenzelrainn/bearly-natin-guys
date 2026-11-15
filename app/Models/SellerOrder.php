@@ -1,0 +1,83 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+
+class SellerOrder extends Model
+{
+    protected $guarded = [];
+
+    protected function casts(): array
+    {
+        return ['shipping_quote' => 'array'];
+    }
+
+    public function order()
+    {
+        return $this->belongsTo(Order::class);
+    }
+
+    public function store()
+    {
+        return $this->belongsTo(Store::class);
+    }
+
+    public function items()
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
+    public function statusHistory()
+    {
+        return $this->hasMany(SellerOrderStatusHistory::class)
+            ->orderBy('occurred_at')
+            ->orderBy('id');
+    }
+
+    public function shipments(): BelongsToMany
+    {
+        return $this->belongsToMany(Shipment::class, 'shipment_seller_orders')
+            ->withTimestamps()
+            ->orderBy('shipments.id');
+    }
+
+    public function shippingSettlements()
+    {
+        return $this->hasMany(ShippingSettlement::class);
+    }
+
+    public function returnRequests()
+    {
+        return $this->hasMany(ReturnRequest::class)
+            ->orderByDesc('submitted_at')
+            ->orderByDesc('id');
+    }
+
+    public function disputes()
+    {
+        return $this->hasMany(Dispute::class);
+    }
+
+    public function activeDispute()
+    {
+        return $this->hasOne(Dispute::class)
+            ->ofMany(['id' => 'MAX'], fn ($query) => $query
+                ->where('type', 'order_issue')
+                ->whereNotIn('status', ['resolved', 'closed']));
+    }
+
+    public function activePolicyReport()
+    {
+        return $this->hasOne(Dispute::class)
+            ->ofMany(['id' => 'MAX'], fn ($query) => $query
+                ->where('type', 'off_platform_solicitation')
+                ->whereNotIn('status', ['resolved', 'closed']));
+    }
+
+    public function promotionAllocations()
+    {
+        return $this->hasMany(PromotionRedemptionAllocation::class);
+    }
+}

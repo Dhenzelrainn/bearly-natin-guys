@@ -1,0 +1,548 @@
+[
+  {
+    "id": 1,
+    "name": "Laptop",
+    "price": 32999,
+    "subcategory": "Computers & Accessories",
+    "photo": 0,
+    "color": "White",
+    "sizes": [
+      "14 inch"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "Laptop sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-01-01.jpg"
+  },
+  {
+    "id": 2,
+    "name": "Desktop Computer",
+    "price": 29999,
+    "subcategory": "Computers & Accessories",
+    "photo": 1,
+    "color": "Black",
+    "sizes": [
+      "Complete Set"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Desktop Computer sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-02-01.jpg"
+  },
+  {
+    "id": 3,
+    "name": "Monitor",
+    "price": 8999,
+    "subcategory": "Computers & Accessories",
+    "photo": 2,
+    "color": "Black",
+    "sizes": [
+      "24 inch"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "Monitor sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-03-01.jpg"
+  },
+  {
+    "id": 4,
+    "name": "Keyboard",
+    "price": 2499,
+    "subcategory": "Computers & Accessories",
+    "photo": 3,
+    "color": "Black",
+    "sizes": [
+      "Full Size"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.5,
+    "description": "Keyboard sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-04-01.jpg"
+  },
+  {
+    "id": 5,
+    "name": "Mouse",
+    "price": 1499,
+    "subcategory": "Computers & Accessories",
+    "photo": 4,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.9,
+    "description": "Mouse sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-05-01.jpg"
+  },
+  {
+    "id": 6,
+    "name": "Headphones",
+    "price": 2999,
+    "subcategory": "Audio & Entertainment",
+    "photo": 5,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "Headphones sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-06-01.jpg"
+  },
+  {
+    "id": 7,
+    "name": "Earbuds",
+    "price": 2499,
+    "subcategory": "Audio & Entertainment",
+    "photo": 6,
+    "color": "White",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.3,
+    "description": "Earbuds sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-07-01.jpg"
+  },
+  {
+    "id": 8,
+    "name": "Smart Watch",
+    "price": 3499,
+    "subcategory": "Smart Devices & Power",
+    "photo": 7,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.7,
+    "description": "Smart Watch sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-08-01.jpg"
+  },
+  {
+    "id": 9,
+    "name": "Smartphone",
+    "price": 24999,
+    "subcategory": "Phones & Tablets",
+    "photo": 8,
+    "color": "Black",
+    "sizes": [
+      "128 GB",
+      "256 GB"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.4,
+    "description": "Smartphone sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-09-01.jpg"
+  },
+  {
+    "id": 10,
+    "name": "Tablet",
+    "price": 17999,
+    "subcategory": "Phones & Tablets",
+    "photo": 9,
+    "color": "White",
+    "sizes": [
+      "64 GB",
+      "128 GB"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.8,
+    "description": "Tablet sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-10-01.jpg"
+  },
+  {
+    "id": 11,
+    "name": "Printer",
+    "price": 7999,
+    "subcategory": "Computers & Accessories",
+    "photo": 10,
+    "color": "Black",
+    "sizes": [
+      "A4"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.5,
+    "description": "Printer sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-11-01.jpg"
+  },
+  {
+    "id": 12,
+    "name": "Wi-Fi Router",
+    "price": 3499,
+    "subcategory": "Computers & Accessories",
+    "photo": 11,
+    "color": "Black",
+    "sizes": [
+      "AX1800"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.9,
+    "description": "Wi-Fi Router sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-12-01.jpg"
+  },
+  {
+    "id": 13,
+    "name": "External Hard Drive",
+    "price": 3999,
+    "subcategory": "Computers & Accessories",
+    "photo": 12,
+    "color": "Black",
+    "sizes": [
+      "1 TB",
+      "2 TB"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.6,
+    "description": "External Hard Drive sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-13-01.jpg"
+  },
+  {
+    "id": 14,
+    "name": "USB Flash Drive",
+    "price": 699,
+    "subcategory": "Computers & Accessories",
+    "photo": 13,
+    "color": "Black",
+    "sizes": [
+      "64 GB",
+      "128 GB"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.3,
+    "description": "USB Flash Drive sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-14-01.jpg"
+  },
+  {
+    "id": 15,
+    "name": "Memory Card",
+    "price": 799,
+    "subcategory": "Computers & Accessories",
+    "photo": 14,
+    "color": "Brown",
+    "sizes": [
+      "128 GB",
+      "256 GB"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "Memory Card sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-15-01.jpg"
+  },
+  {
+    "id": 16,
+    "name": "Power Bank",
+    "price": 1499,
+    "subcategory": "Smart Devices & Power",
+    "photo": 15,
+    "color": "Black",
+    "sizes": [
+      "10000 mAh"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Power Bank sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-16-01.jpg"
+  },
+  {
+    "id": 17,
+    "name": "Charging Cable",
+    "price": 399,
+    "subcategory": "Smart Devices & Power",
+    "photo": 16,
+    "color": "Black",
+    "sizes": [
+      "1 m",
+      "2 m"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "Charging Cable sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-17-01.jpg"
+  },
+  {
+    "id": 18,
+    "name": "Wall Charger",
+    "price": 999,
+    "subcategory": "Smart Devices & Power",
+    "photo": 17,
+    "color": "White",
+    "sizes": [
+      "30 W"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.5,
+    "description": "Wall Charger sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-18-01.jpg"
+  },
+  {
+    "id": 19,
+    "name": "Power Strip",
+    "price": 1299,
+    "subcategory": "Smart Devices & Power",
+    "photo": 18,
+    "color": "White",
+    "sizes": [
+      "6 Outlet"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.9,
+    "description": "Power Strip sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-19-01.jpg"
+  },
+  {
+    "id": 20,
+    "name": "Webcam",
+    "price": 1999,
+    "subcategory": "Cameras & Creator Gear",
+    "photo": 19,
+    "color": "Black",
+    "sizes": [
+      "1080p"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "Webcam sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-20-01.jpg"
+  },
+  {
+    "id": 21,
+    "name": "Game Controller",
+    "price": 2999,
+    "subcategory": "Gaming",
+    "photo": 20,
+    "color": "White",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.3,
+    "description": "Game Controller sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-21-01.jpg"
+  },
+  {
+    "id": 22,
+    "name": "Gaming Console",
+    "price": 16999,
+    "subcategory": "Gaming",
+    "photo": 21,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.7,
+    "description": "Gaming Console sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-22-01.jpg"
+  },
+  {
+    "id": 23,
+    "name": "VR Headset",
+    "price": 24999,
+    "subcategory": "Gaming",
+    "photo": 22,
+    "color": "White",
+    "sizes": [
+      "128 GB"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.4,
+    "description": "VR Headset sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-23-01.jpg"
+  },
+  {
+    "id": 24,
+    "name": "Action Camera",
+    "price": 15999,
+    "subcategory": "Cameras & Creator Gear",
+    "photo": 23,
+    "color": "Black",
+    "sizes": [
+      "4K"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.8,
+    "description": "Action Camera sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-24-01.jpg"
+  },
+  {
+    "id": 25,
+    "name": "Drone",
+    "price": 29999,
+    "subcategory": "Cameras & Creator Gear",
+    "photo": 24,
+    "color": "Black",
+    "sizes": [
+      "4K Camera"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.5,
+    "description": "Drone sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-25-01.jpg"
+  },
+  {
+    "id": 26,
+    "name": "Bluetooth Speaker",
+    "price": 3499,
+    "subcategory": "Audio & Entertainment",
+    "photo": 25,
+    "color": "Blue",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.9,
+    "description": "Bluetooth Speaker sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-26-01.jpg"
+  },
+  {
+    "id": 27,
+    "name": "Projector",
+    "price": 14999,
+    "subcategory": "Audio & Entertainment",
+    "photo": 26,
+    "color": "White",
+    "sizes": [
+      "1080p"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.6,
+    "description": "Projector sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-27-01.jpg"
+  },
+  {
+    "id": 28,
+    "name": "Ring Light",
+    "price": 1499,
+    "subcategory": "Cameras & Creator Gear",
+    "photo": 27,
+    "color": "White",
+    "sizes": [
+      "12 inch"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.3,
+    "description": "Ring Light sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-28-01.jpg"
+  },
+  {
+    "id": 29,
+    "name": "Microphone",
+    "price": 2999,
+    "subcategory": "Cameras & Creator Gear",
+    "photo": 28,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "Microphone sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-29-01.jpg"
+  },
+  {
+    "id": 30,
+    "name": "Smart Home Device",
+    "price": 3999,
+    "subcategory": "Smart Devices & Power",
+    "photo": 29,
+    "color": "White",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Smart Home Device sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-30-01.jpg"
+  }
+]

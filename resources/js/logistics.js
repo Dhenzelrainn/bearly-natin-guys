@@ -1,0 +1,4343 @@
+import L from 'leaflet';
+import { isValidPhilippineMobile } from './registration-phone.js';
+import { restoreRegistrationDraft, setupRegistrationDraft } from './registration-draft.js';
+import { createAddressMapPicker } from './address-map-picker';
+import { emailVerificationFailure } from './email-verification-error.js';
+import './notification-center.js';
+import './dashboard-context.js';
+import './logistics-attendance-qr.js';
+import { setupLogisticsPickupMaps } from './logistics-pickup-map.js';
+import {
+    acknowledgeConversation,
+    acknowledgeIncoming,
+    applyReceiptUpdates,
+    attachmentPreviewHtml,
+    receiptMarkup,
+    updateReceiptElements,
+} from './chat-receipts.js';
+
+const normalize = (value) => String(value || '').trim().toLowerCase().replaceAll('_', ' ');
+const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[character]);
+const refreshIcons = () => window.lucide?.createIcons();
+const shippingPolicyScrollKey = 'bearly:logistics-shipping-policies:scroll-y';
+const logisticsLocationPreferencePrefix = 'bearly:logistics-location-sharing';
+const logisticsLocationSendIntervalMs = 5_000;
+const logisticsLocationHeartbeatIntervalMs = 15_000;
+const logisticsLocationFreshnessMs = 180_000;
+const riderAccountStatusLabels = {
+    active: 'Enabled',
+    suspended: 'Suspended',
+    deactivated: 'Deactivated',
+};
+const riderAvailabilityLabels = {
+    available: 'Available',
+    offline: 'Off duty',
+};
+
+function toast(message) {
+    const stack = document.querySelector('[data-toast-stack]');
+    if (!stack) return;
+    const item = document.createElement('div');
+    item.className = 'toast';
+    item.innerHTML = `<i data-lucide="circle-check"></i><span>${message}</span>`;
+    stack.append(item);
+    refreshIcons();
+    setTimeout(() => item.remove(), 3200);
+}
+
+function setupShippingPolicyScrollRestoration() {
+    const page = document.querySelector('[data-shipping-policies-page]');
+    let savedScrollY = null;
+
+    try {
+        savedScrollY = window.sessionStorage.getItem(shippingPolicyScrollKey);
+        window.sessionStorage.removeItem(shippingPolicyScrollKey);
+    } catch {
+        // Scroll restoration is an enhancement; forms still work if storage is unavailable.
+    }
+
+    if (!page) return;
+
+    const feedback = document.querySelector('[data-shipping-policy-feedback]');
+    const scrollY = Number(savedScrollY);
+
+    if (feedback?.dataset.shippingPolicyFeedback === 'success'
+        && savedScrollY !== null
+        && Number.isFinite(scrollY)
+        && scrollY >= 0) {
+        const root = document.documentElement;
+        const previousScrollBehavior = root.style.scrollBehavior;
+        root.style.scrollBehavior = 'auto';
+        window.scrollTo(0, scrollY);
+        window.requestAnimationFrame(() => {
+            root.style.scrollBehavior = previousScrollBehavior;
+        });
+    }
+
+    page.querySelectorAll('form').forEach((form) => {
+        form.addEventListener('submit', () => {
+            try {
+                window.sessionStorage.setItem(shippingPolicyScrollKey, String(window.scrollY));
+            } catch {
+                // The normal post/redirect flow remains the fallback.
+            }
+        });
+    });
+}
+
+function setupShell() {
+    const body = document.body;
+    if (localStorage.getItem('bearlyLogisticsSidebar') === 'collapsed') body.classList.add('sidebar-collapsed');
+    document.querySelector('[data-sidebar-collapse]')?.addEventListener('click', () => {
+        body.classList.toggle('sidebar-collapsed');
+        localStorage.setItem('bearlyLogisticsSidebar', body.classList.contains('sidebar-collapsed') ? 'collapsed' : 'open');
+    });
+    const closeMobile = () => body.classList.remove('sidebar-open');
+    document.querySelector('[data-mobile-menu]')?.addEventListener('click', () => body.classList.add('sidebar-open'));
+    document.querySelector('[data-overlay]')?.addEventListener('click', closeMobile);
+    document.querySelectorAll('[data-dismiss]').forEach((button) => button.addEventListener('click', () => button.closest('.flash-banner')?.remove()));
+    document.querySelectorAll('.flash-banner.is-success[data-auto-dismiss]').forEach((banner) => {
+        const delay = Number.parseInt(banner.dataset.autoDismiss || '', 10);
+
+        if (Number.isFinite(delay) && delay > 0) {
+            window.setTimeout(() => banner.remove(), delay);
+        }
+    });
+
+    document.querySelectorAll('[data-popover-toggle]').forEach((button) => button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const name = button.dataset.popoverToggle;
+        document.querySelectorAll('[data-popover]').forEach((popover) => {
+            popover.hidden = popover.dataset.popover !== name || !popover.hidden;
+        });
+    }));
+    document.addEventListener('click', (event) => {
+        if (!event.target.closest('.popover-wrap')) document.querySelectorAll('[data-popover]').forEach((popover) => { popover.hidden = true; });
+    });
+}
+
+function setupModals() {
+    const backdrop = document.querySelector('[data-modal-backdrop]');
+    let lastModalTrigger = null;
+    const closeAll = () => {
+        document.querySelectorAll('.modal').forEach((modal) => {
+            modal.hidden = true;
+            resetPickupRejection(modal);
+        });
+        if (backdrop) backdrop.hidden = true;
+        document.body.style.overflow = '';
+        lastModalTrigger?.focus();
+        lastModalTrigger = null;
+    };
+    document.querySelectorAll('[data-modal-open]').forEach((button) => button.addEventListener('click', () => {
+        const modal = document.querySelector(`[data-modal="${button.dataset.modalOpen}"]`);
+        if (!modal) return;
+        lastModalTrigger = button;
+        modal.hidden = false;
+        if (backdrop) backdrop.hidden = false;
+        document.body.style.overflow = 'hidden';
+        const prefilledWaybill = button.dataset.waybillPrefill;
+        const waybillInput = modal.querySelector('[data-waybill-identifier]');
+        if (prefilledWaybill && waybillInput) {
+            waybillInput.value = prefilledWaybill;
+            waybillInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        const initialFocus = modal.querySelector('[data-modal-initial-focus]');
+        const visibleControl = [...modal.querySelectorAll('button:not(:disabled), input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled)')]
+            .find((control) => !control.closest('[hidden]'));
+        (initialFocus || visibleControl)?.focus();
+        if (button.hasAttribute('data-pickup-reject-open')) {
+            modal.querySelector('[data-pickup-reject-toggle]')?.click();
+        }
+    }));
+    document.querySelectorAll('[data-modal-close]').forEach((button) => button.addEventListener('click', closeAll));
+    backdrop?.addEventListener('click', closeAll);
+    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeAll(); });
+    window.closeLogisticsModals = closeAll;
+}
+
+function setupPickupRejection() {
+    document.querySelectorAll('[data-pickup-reject-toggle]').forEach((toggle) => {
+        const modal = toggle.closest('.modal');
+        const form = modal?.querySelector('[data-pickup-rejection-form]');
+        const cancel = modal?.querySelector('[data-pickup-reject-cancel]');
+        const confirm = modal?.querySelector('[data-pickup-reject-confirm]');
+        const mainActions = modal?.querySelector('[data-pickup-main-actions]');
+        const reason = form?.querySelector('textarea[name="cancellation_reason"]');
+
+        if (!modal || !form || !cancel || !confirm || !reason) return;
+
+        toggle.addEventListener('click', () => {
+            form.hidden = false;
+            toggle.hidden = true;
+            cancel.hidden = false;
+            confirm.hidden = false;
+            if (mainActions) mainActions.hidden = true;
+            toggle.setAttribute('aria-expanded', 'true');
+            reason.focus();
+        });
+
+        cancel.addEventListener('click', () => {
+            resetPickupRejection(modal);
+            toggle.focus();
+        });
+    });
+}
+
+function resetPickupRejection(modal) {
+    const form = modal.querySelector('[data-pickup-rejection-form]');
+    const toggle = modal.querySelector('[data-pickup-reject-toggle]');
+    const cancel = modal.querySelector('[data-pickup-reject-cancel]');
+    const confirm = modal.querySelector('[data-pickup-reject-confirm]');
+    const mainActions = modal.querySelector('[data-pickup-main-actions]');
+
+    if (!form || !toggle || !cancel || !confirm) return;
+
+    form.hidden = true;
+    const reason = form.querySelector('textarea[name="cancellation_reason"]');
+    if (reason) reason.value = '';
+    toggle.hidden = false;
+    cancel.hidden = true;
+    confirm.hidden = true;
+    if (mainActions) mainActions.hidden = false;
+    toggle.setAttribute('aria-expanded', 'false');
+}
+
+function setupTabs() {
+    document.querySelectorAll('[data-tabs]').forEach((tabs) => {
+        const buttons = [
+            ...tabs.querySelectorAll('[data-tab]'),
+        ];
+
+        const scope =
+            tabs.closest('[data-tab-scope]') ||
+            document;
+
+        const panels = [
+            ...scope.querySelectorAll(
+                '[data-tab-panel]'
+            ),
+        ];
+
+        const activate = (
+            tabName,
+            updateHash = false
+        ) => {
+            const activeButton = buttons.find(
+                (button) =>
+                    button.dataset.tab === tabName
+            );
+
+            if (!activeButton) {
+                return;
+            }
+
+            buttons.forEach((button) => {
+                button.classList.toggle(
+                    'is-active',
+                    button === activeButton
+                );
+            });
+
+            panels.forEach((panel) => {
+                panel.hidden =
+                    panel.dataset.tabPanel !==
+                    tabName;
+            });
+
+            if (updateHash) {
+                history.replaceState(
+                    null,
+                    '',
+                    `#${tabName}`
+                );
+            }
+        };
+
+        buttons.forEach((button) => {
+            button.addEventListener(
+                'click',
+                () => {
+                    activate(
+                        button.dataset.tab,
+                        true
+                    );
+                }
+            );
+        });
+
+        const requestedTab =
+            window.location.hash
+                .replace('#', '');
+
+        if (
+            requestedTab &&
+            buttons.some(
+                (button) =>
+                    button.dataset.tab ===
+                    requestedTab
+            )
+        ) {
+            activate(requestedTab);
+
+            return;
+        }
+
+        const initialButton =
+            buttons.find((button) =>
+                button.classList.contains(
+                    'is-active'
+                )
+            ) || buttons[0];
+
+        if (initialButton) {
+            activate(
+                initialButton.dataset.tab
+            );
+        }
+    });
+}
+
+function setupLogisticsLocationSharing() {
+    const control = document.querySelector('[data-logistics-location-control]');
+    const toggle = control?.querySelector('[data-logistics-location-toggle]');
+    const dot = control?.querySelector('[data-logistics-location-dot]');
+    const label = control?.querySelector('[data-logistics-location-label]');
+    const help = control?.querySelector('[data-logistics-location-help]');
+
+    if (!control || !toggle) return;
+
+    const body = document.body;
+    const logisticsLocationPreferenceKey = `${logisticsLocationPreferencePrefix}:${body.dataset.realtimeUserId || 'unknown'}`;
+    const statusEndpoint = body.dataset.logisticsLocationStatusEndpoint || '';
+    const endpoint = body.dataset.logisticsLocationEndpoint || '';
+    const clearEndpoint = body.dataset.logisticsLocationClearEndpoint || '';
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    let watchId = null;
+    let heartbeatId = null;
+    let firstFixTimeoutId = null;
+    let sharingSession = 0;
+    let requestInFlight = false;
+    let clearInFlight = false;
+    let locationRequestSettled = Promise.resolve();
+    let clearRequestSettled = Promise.resolve();
+    let lastSentAt = 0;
+    let hasSharedLocation = false;
+    let remoteLocationShared = false;
+    let sharingEnabled = false;
+
+    const sharingPreference = () => {
+        if (sharingEnabled) return true;
+
+        try {
+            return window.localStorage.getItem(logisticsLocationPreferenceKey) === 'enabled';
+        } catch {
+            return false;
+        }
+    };
+
+    const setSharingPreference = (enabled) => {
+        sharingEnabled = enabled;
+
+        try {
+            window.localStorage.setItem(logisticsLocationPreferenceKey, enabled ? 'enabled' : 'disabled');
+        } catch {
+            // The current page can still share when local storage is unavailable.
+        }
+    };
+
+    const emitLocation = (location, sharing, state) => {
+        window.dispatchEvent(new CustomEvent('bearly:logistics-location-updated', {
+            detail: { location, sharing, state },
+        }));
+    };
+
+    const setUi = (state, title, description, buttonText, accuracyMeters = null) => {
+        control.dataset.state = state;
+        control.classList.toggle('is-sharing', state === 'sharing');
+        control.classList.toggle('is-error', state === 'error');
+        dot?.classList.toggle('is-sharing', state === 'sharing');
+        dot?.classList.toggle('is-pending', state === 'pending');
+        dot?.classList.toggle('is-error', state === 'error');
+        dot?.classList.toggle('is-off', !['sharing', 'pending', 'error'].includes(state));
+        if (label) label.textContent = title;
+        if (help) help.textContent = description;
+        toggle.disabled = state === 'pending' && buttonText !== 'Stop sharing';
+        toggle.textContent = buttonText;
+
+        if (Number.isFinite(accuracyMeters) || accuracyMeters === null) {
+            control.dataset.accuracyMeters = accuracyMeters === null ? '' : String(accuracyMeters);
+        }
+    };
+
+    const formatUpdatedAt = (value = new Date()) => {
+        const date = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(date.getTime())) return 'time unavailable';
+
+        return new Intl.DateTimeFormat(undefined, {
+            hour: 'numeric',
+            minute: '2-digit',
+        }).format(date);
+    };
+
+    const stopWatcher = () => {
+        sharingSession += 1;
+        if (watchId !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchId);
+        if (heartbeatId !== null) window.clearInterval(heartbeatId);
+        if (firstFixTimeoutId !== null) window.clearTimeout(firstFixTimeoutId);
+        watchId = null;
+        heartbeatId = null;
+        firstFixTimeoutId = null;
+    };
+
+    const clearRemoteLocation = async () => {
+        if (!clearEndpoint) return false;
+        if (clearInFlight) {
+            await clearRequestSettled;
+            return true;
+        }
+
+        clearInFlight = true;
+        let cleared = false;
+        let resolveClearRequest;
+        clearRequestSettled = new Promise((resolve) => {
+            resolveClearRequest = resolve;
+        });
+
+        try {
+            if (requestInFlight) await locationRequestSettled;
+
+            const response = await fetch(clearEndpoint, {
+                method: 'DELETE',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            cleared = response.ok;
+        } catch {
+            // Server-side freshness remains the fallback if explicit clearing fails.
+        } finally {
+            clearInFlight = false;
+            resolveClearRequest?.();
+            remoteLocationShared = false;
+            emitLocation(null, false, 'off');
+        }
+
+        return cleared;
+    };
+
+    const stopSharing = async () => {
+        stopWatcher();
+        setSharingPreference(false);
+        hasSharedLocation = false;
+        remoteLocationShared = false;
+        emitLocation(null, false, 'off');
+        setUi('pending', 'Stopping location sharing', 'Removing the latest shared device location.', 'Stopping…');
+        const cleared = await clearRemoteLocation();
+        setUi(
+            cleared ? 'off' : 'error',
+            cleared ? 'Location sharing is off' : 'Sharing stopped on this device',
+            cleared
+                ? 'Your live device location is no longer shared with Logistics maps.'
+                : 'The last server location could not be cleared and will expire from maps within 3 minutes.',
+            'Share location',
+        );
+    };
+
+    const sendPosition = async (position, session) => {
+        if (session !== sharingSession || !endpoint || watchId === null || !sharingPreference()) return;
+
+        if (clearInFlight) await clearRequestSettled;
+
+        if (session !== sharingSession || requestInFlight || watchId === null || !sharingPreference()) return;
+
+        const now = Date.now();
+        if (now - lastSentAt < logisticsLocationSendIntervalMs) return;
+
+        const latitude = Number(position?.coords?.latitude);
+        const longitude = Number(position?.coords?.longitude);
+        const reportedAccuracy = position?.coords?.accuracy;
+        const accuracy = typeof reportedAccuracy === 'number' && Number.isFinite(reportedAccuracy) && reportedAccuracy >= 0
+            ? reportedAccuracy
+            : null;
+
+        if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
+            || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) return;
+
+        requestInFlight = true;
+        let resolveLocationRequest;
+        locationRequestSettled = new Promise((resolve) => {
+            resolveLocationRequest = resolve;
+        });
+
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    latitude,
+                    longitude,
+                    accuracy_meters: accuracy,
+                }),
+            });
+            const payload = await response.json().catch(() => ({}));
+
+            if (session !== sharingSession || watchId === null || !sharingPreference()) return;
+            if (!response.ok) throw new Error(payload.message || 'Location update failed.');
+
+            const location = payload?.data?.location || {
+                latitude,
+                longitude,
+                accuracy_meters: accuracy,
+                last_seen_at: new Date().toISOString(),
+            };
+            lastSentAt = Date.now();
+            hasSharedLocation = true;
+            remoteLocationShared = true;
+            const accuracyCopy = accuracy === null
+                ? 'Accuracy was not reported; map viewers should treat this as approximate.'
+                : `Reported GPS accuracy is ±${Math.round(accuracy)} m; coarse readings remain marked approximate.`;
+            const title = accuracy === null
+                ? 'Location shared · accuracy unknown'
+                : accuracy > 100
+                    ? 'Location shared · approximate'
+                    : 'Location sharing is active';
+
+            setUi(
+                'sharing',
+                title,
+                `Last update ${formatUpdatedAt(location.last_seen_at)}. ${accuracyCopy} Visible only to your Logistics team; separate from the saved facility pin.`,
+                'Stop sharing',
+                accuracy,
+            );
+            emitLocation(location, true, 'sharing');
+        } catch (error) {
+            if (session !== sharingSession || watchId === null || !sharingPreference()) return;
+
+            setUi(
+                'error',
+                hasSharedLocation ? 'Location update delayed' : 'Could not share location',
+                error instanceof Error
+                    ? `${error.message} We will retry on the next GPS fix; keep this page open and check your connection.`
+                    : 'The latest position could not be saved. We will retry on the next GPS fix.',
+                'Stop sharing',
+            );
+        } finally {
+            requestInFlight = false;
+            resolveLocationRequest?.();
+        }
+    };
+
+    const handlePositionError = (error, session) => {
+        if (session !== sharingSession) return;
+
+        if (error?.code === 1) {
+            stopWatcher();
+            setSharingPreference(false);
+            hasSharedLocation = false;
+            void clearRemoteLocation();
+            setUi('error', 'Location permission denied', 'Allow this site to use location in your browser and device settings, then try again.', 'Try again');
+            return;
+        }
+
+        setUi(
+            'error',
+            error?.code === 3 ? 'Still waiting for GPS' : 'GPS temporarily unavailable',
+            'Check device location and browser permission. We will keep trying while sharing remains on.',
+            'Stop sharing',
+        );
+    };
+
+    const handlePosition = (position, session) => {
+        if (session !== sharingSession) return;
+
+        const latitude = Number(position?.coords?.latitude);
+        const longitude = Number(position?.coords?.longitude);
+        if (Number.isFinite(latitude) && Number.isFinite(longitude) && firstFixTimeoutId !== null) {
+            window.clearTimeout(firstFixTimeoutId);
+            firstFixTimeoutId = null;
+        }
+
+        void sendPosition(position, session);
+    };
+
+    const startWatcher = () => {
+        if (!navigator.geolocation || typeof navigator.geolocation.watchPosition !== 'function') {
+            setSharingPreference(false);
+            setUi('error', 'Location is unavailable', 'This browser does not provide device location.', 'Try again');
+            return;
+        }
+        if (watchId !== null) return;
+
+        const session = ++sharingSession;
+        lastSentAt = 0;
+        hasSharedLocation = false;
+        setSharingPreference(true);
+        setUi('pending', 'Requesting device location', 'Allow this site to use location. Sharing runs only while this page/browser is active.', 'Starting…');
+        firstFixTimeoutId = window.setTimeout(() => {
+            if (session !== sharingSession || watchId === null || hasSharedLocation) return;
+            setUi('error', 'Still waiting for GPS', 'No fix yet. Check browser/device location settings; coarse fixes can still be shared as approximate.', 'Stop sharing');
+        }, 15_000);
+        watchId = navigator.geolocation.watchPosition(
+            (position) => handlePosition(position, session),
+            (error) => handlePositionError(error, session),
+            { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
+        );
+        heartbeatId = window.setInterval(() => {
+            if (session !== sharingSession || watchId === null) return;
+            navigator.geolocation.getCurrentPosition(
+                (position) => handlePosition(position, session),
+                (error) => handlePositionError(error, session),
+                { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
+            );
+        }, logisticsLocationHeartbeatIntervalMs);
+    };
+
+    const loadRemoteStatus = async () => {
+        if (!statusEndpoint || sharingPreference()) return;
+
+        try {
+            const response = await fetch(statusEndpoint, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            const payload = await response.json().catch(() => ({}));
+            const location = payload?.data?.location;
+            if (!response.ok || !payload?.data?.shared || !location) return;
+
+            const lastSeenAt = Date.parse(location.last_seen_at);
+            if (!Number.isFinite(lastSeenAt) || Date.now() - lastSeenAt > logisticsLocationFreshnessMs) return;
+
+            const accuracy = location.accuracy_meters !== null
+                && location.accuracy_meters !== undefined
+                && Number.isFinite(Number(location.accuracy_meters))
+                ? Number(location.accuracy_meters)
+                : null;
+            setUi(
+                'sharing',
+                accuracy !== null && accuracy > 100 ? 'Location shared · approximate' : 'Location shared',
+                'A fresh location is shared by this Logistics provider. It is separate from the saved facility pin.',
+                'Stop sharing',
+                accuracy,
+            );
+            remoteLocationShared = true;
+            emitLocation(location, true, 'sharing');
+        } catch {
+            // Sharing can still be started manually if the status check fails.
+        }
+    };
+
+    toggle.addEventListener('click', () => {
+        if (watchId !== null || sharingPreference() || remoteLocationShared) {
+            void stopSharing();
+            return;
+        }
+        startWatcher();
+    });
+
+    window.addEventListener('storage', (event) => {
+        if (event.key !== logisticsLocationPreferenceKey) return;
+
+        if (event.newValue === 'enabled') {
+            if (watchId === null) startWatcher();
+            return;
+        }
+
+        const hadSharedLocation = watchId !== null || remoteLocationShared;
+        if (watchId !== null) stopWatcher();
+
+        if (hadSharedLocation) {
+            hasSharedLocation = false;
+            remoteLocationShared = false;
+            void clearRemoteLocation();
+            setUi('off', 'Location sharing is off', 'Sharing was stopped in another Bearly tab.', 'Share location');
+        }
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden || watchId === null || !navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition(
+            (position) => handlePosition(position, sharingSession),
+            (error) => handlePositionError(error, sharingSession),
+            { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
+        );
+    });
+
+    if (sharingPreference()) startWatcher();
+    else void loadRemoteStatus();
+}
+
+function setupLogisticsFacilityMap() {
+    const element = document.querySelector('[data-logistics-facility-map]');
+    const form = element?.closest('[data-logistics-facility-form]');
+
+    if (!element || !form) return;
+
+    let picker = null;
+    let liveLayer = null;
+    let liveMarker = null;
+    let accuracyCircle = null;
+    let freshnessTimer = null;
+    let refreshTimer = null;
+    let latestLiveLocation = null;
+
+    const clearLiveMarker = () => {
+        if (freshnessTimer !== null) window.clearTimeout(freshnessTimer);
+        freshnessTimer = null;
+        liveLayer?.clearLayers();
+        liveMarker = null;
+        accuracyCircle = null;
+    };
+
+    const renderLiveLocation = (location) => {
+        latestLiveLocation = location || null;
+        if (!liveLayer) return;
+
+        clearLiveMarker();
+        if (!location) return;
+
+        const latitude = Number(location.latitude);
+        const longitude = Number(location.longitude);
+        const lastSeenAt = Date.parse(location.last_seen_at || '');
+        if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
+            || !Number.isFinite(longitude) || longitude < -180 || longitude > 180
+            || !Number.isFinite(lastSeenAt) || lastSeenAt > Date.now()
+            || Date.now() - lastSeenAt > logisticsLocationFreshnessMs) return;
+
+        const accuracy = location.accuracy_meters !== null
+            && location.accuracy_meters !== undefined
+            && Number.isFinite(Number(location.accuracy_meters))
+            ? Number(location.accuracy_meters)
+            : null;
+        const updatedAt = new Date(lastSeenAt);
+        const updatedLabel = updatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        const coordinates = [latitude, longitude];
+        liveMarker = L.marker(coordinates, {
+            icon: L.divIcon({
+                className: 'logistics-live-location-marker',
+                html: '<span aria-hidden="true"></span>',
+                iconSize: [22, 22],
+                iconAnchor: [11, 11],
+            }),
+            title: 'Live Logistics device location · approximate',
+        }).addTo(liveLayer);
+        liveMarker.bindPopup(`Live Logistics device location · approximate<br>${accuracy === null ? 'GPS accuracy unavailable' : `Reported accuracy ±${Math.round(accuracy)} m`}<br>Updated ${escapeHtml(updatedLabel)}`);
+
+        if (accuracy !== null && accuracy > 0) {
+            accuracyCircle = L.circle(coordinates, {
+                radius: accuracy,
+                color: '#17738a',
+                weight: 2,
+                dashArray: '5 5',
+                fillColor: '#55b4c8',
+                fillOpacity: 0.12,
+            }).addTo(liveLayer);
+        }
+
+        freshnessTimer = window.setTimeout(() => {
+            clearLiveMarker();
+            latestLiveLocation = null;
+        }, Math.max(0, lastSeenAt + logisticsLocationFreshnessMs - Date.now() + 1));
+    };
+
+    const refreshLiveLocation = async () => {
+        if (!picker || element.closest('[data-tab-panel]')?.hidden) return;
+
+        const endpoint = document.body.dataset.logisticsLocationStatusEndpoint || '';
+        if (!endpoint) return;
+
+        try {
+            const response = await fetch(endpoint, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) return;
+            renderLiveLocation(payload?.data?.shared ? payload.data.location : null);
+        } catch {
+            // The latest marker will expire locally if the status request fails.
+        }
+    };
+
+    const initialize = () => {
+        if (picker || element.closest('[data-tab-panel]')?.hidden) return;
+
+        picker = createAddressMapPicker({
+            element,
+            latitudeInput: form.querySelector('[name="latitude"]'),
+            longitudeInput: form.querySelector('[name="longitude"]'),
+            clearButton: form.querySelector('[data-clear-facility-pin]'),
+            locationButton: form.querySelector('[data-detect-facility-location]'),
+            manualPlacementButton: form.querySelector('[data-place-facility-pin-manually]'),
+            stopLocationButton: form.querySelector('[data-stop-facility-location]'),
+            locationControl: form.querySelector('[data-facility-location-status]'),
+            reverseGeocodeUrl: element.dataset.reverseGeocodeUrl,
+            stableLocation: false,
+            continuousLocation: true,
+            maximumLocationAccuracyMeters: 100,
+            saveLabel: 'Save facility settings',
+            status: form.querySelector('[data-logistics-facility-map-status]'),
+            latitude: element.dataset.latitude || null,
+            longitude: element.dataset.longitude || null,
+        });
+
+        if (picker) {
+            liveLayer = L.layerGroup().addTo(picker.map);
+            renderLiveLocation(latestLiveLocation);
+            window.requestAnimationFrame(() => picker.map.invalidateSize());
+            void refreshLiveLocation();
+            if (refreshTimer === null) refreshTimer = window.setInterval(() => { void refreshLiveLocation(); }, 10_000);
+        }
+    };
+
+    window.addEventListener('bearly:logistics-location-updated', (event) => {
+        renderLiveLocation(event.detail?.sharing ? event.detail.location : null);
+    });
+
+    initialize();
+    document.querySelector('[data-tab="facility"]')?.addEventListener('click', () => {
+        window.requestAnimationFrame(initialize);
+        window.requestAnimationFrame(() => { void refreshLiveLocation(); });
+    });
+}
+
+function setupLogisticsPayoutDestinationForm() {
+    const channel = document.querySelector('[data-logistics-payout-channel]');
+    const providerField = document.querySelector('[data-bank-provider-field]');
+    const providerInput = providerField?.querySelector('[data-bank-provider-input]');
+    const destinationLabel = document.querySelector('[data-payout-destination-label]');
+    const destinationInput = document.querySelector('[data-payout-destination-input]');
+    const gcashHint = document.querySelector('[data-gcash-number-hint]');
+
+    if (!channel || !providerField || !providerInput || !destinationLabel || !destinationInput) return;
+
+    const update = () => {
+        const isGcash = channel.value === 'gcash';
+        providerField.hidden = isGcash;
+        providerInput.disabled = isGcash;
+        providerInput.required = !isGcash;
+        destinationLabel.textContent = isGcash ? 'GCash mobile number' : 'Bank account number';
+        destinationInput.setAttribute('inputmode', isGcash ? 'tel' : 'numeric');
+        if (gcashHint) gcashHint.hidden = !isGcash;
+    };
+
+    channel.addEventListener('change', update);
+    update();
+}
+
+function setupTables() {
+    document.querySelectorAll('[data-table-scope]').forEach((scope) => {
+        const rows = [...scope.querySelectorAll('tbody tr[data-row]')];
+        const empty = scope.querySelector('[data-empty-row]');
+        const apply = () => {
+            const query = normalize(scope.querySelector('[data-table-search]')?.value);
+            const status = normalize(scope.querySelector('[data-filter-status]')?.value);
+            const zone = normalize(scope.querySelector('[data-filter-zone]')?.value);
+            let shown = 0;
+            rows.forEach((row) => {
+                const matches = (!query || normalize(row.textContent).includes(query)) && (!status || normalize(row.dataset.status) === status) && (!zone || normalize(row.dataset.zone) === zone);
+                row.classList.toggle('is-filtered-out', !matches);
+                if (matches) shown++;
+            });
+            if (empty) empty.style.display = shown ? 'none' : 'table-cell';
+        };
+        scope.querySelectorAll('[data-table-search], [data-filter-status], [data-filter-zone]').forEach((field) => field.addEventListener(field.tagName === 'INPUT' ? 'input' : 'change', apply));
+        scope.querySelectorAll('th[data-sort]').forEach((header) => header.addEventListener('click', () => {
+            const index = [...header.parentElement.children].indexOf(header);
+            const direction = header.dataset.direction === 'asc' ? 'desc' : 'asc';
+            header.dataset.direction = direction;
+            rows.sort((a, b) => a.children[index].innerText.localeCompare(b.children[index].innerText, undefined, { numeric: true }) * (direction === 'asc' ? 1 : -1));
+            rows.forEach((row) => row.parentElement.append(row));
+        }));
+    });
+}
+
+function setupRiderAccountRealtime() {
+    const scope = document.querySelector('[data-rider-accounts-table]');
+    if (!scope) return;
+
+    const labelFor = (labels, value) => labels[value]
+        || String(value || '').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+    window.addEventListener('bearly:rider-operational-status-updated', (event) => {
+        const payload = event.detail || {};
+        const riderUserId = String(payload.rider_user_id || '');
+        const accountStatus = String(payload.account_status || '').toLowerCase();
+        const availabilityStatus = String(payload.availability_status || '').toLowerCase();
+        const row = [...scope.querySelectorAll('[data-record-type="riderAccounts"][data-record-id]')]
+            .find((candidate) => candidate.dataset.recordId === riderUserId);
+
+        if (!row || !accountStatus || !availabilityStatus) return;
+
+        row.dataset.status = accountStatus;
+        row.dataset.availability = availabilityStatus;
+
+        const accountBadge = row.querySelector('[data-status-badge]');
+        if (accountBadge) {
+            accountBadge.dataset.status = accountStatus;
+            accountBadge.textContent = labelFor(riderAccountStatusLabels, accountStatus);
+        }
+
+        const availabilityBadge = row.querySelector('[data-availability]');
+        if (availabilityBadge) {
+            availabilityBadge.dataset.availability = availabilityStatus;
+            availabilityBadge.textContent = labelFor(riderAvailabilityLabels, availabilityStatus);
+        }
+
+        scope.querySelector('[data-filter-status]')?.dispatchEvent(new Event('change'));
+        toast('Rider status updated in real time.');
+    });
+}
+
+function setupChat() {
+    const conversations = [
+        ...document.querySelectorAll(
+            '[data-conversation]'
+        ),
+    ];
+
+    const name =
+        document.querySelector(
+            '[data-chat-name]'
+        );
+
+    const role =
+        document.querySelector(
+            '[data-chat-role]'
+        );
+
+    const messages =
+        document.querySelector(
+            '[data-chat-messages]'
+        );
+
+    const input =
+        document.querySelector(
+            '[data-chat-input]'
+        );
+
+    const sendButton =
+        document.querySelector(
+            '[data-chat-send]'
+        );
+
+    const attachmentButton =
+        document.querySelector(
+            '[data-chat-attachment-button]'
+        );
+
+    const attachmentInput =
+        document.querySelector(
+            '[data-chat-attachment]'
+        );
+
+    const attachmentName =
+        document.querySelector(
+            '[data-chat-attachment-name]'
+        );
+
+    if (!messages) {
+        return;
+    }
+
+    const conversationData =
+        window.bearlyLogisticsConversations
+        || {};
+
+    const csrfToken =
+        document
+            .querySelector(
+                'meta[name="csrf-token"]'
+            )
+            ?.getAttribute(
+                'content'
+            )
+        || '';
+
+    if (!conversations.length) {
+        if (name) {
+            name.textContent =
+                'No conversation selected';
+        }
+
+        if (role) {
+            role.textContent = '';
+        }
+
+        if (input) {
+            input.disabled = true;
+        }
+
+        if (sendButton) {
+            sendButton.disabled = true;
+        }
+
+        if (attachmentButton) {
+            attachmentButton.disabled = true;
+        }
+
+        if (attachmentInput) {
+            attachmentInput.disabled = true;
+        }
+
+        messages.innerHTML = `
+            <div class="table-empty">
+                Your Logistics conversations
+                will appear here.
+            </div>
+        `;
+
+        return;
+    }
+
+    const requestedConversation =
+        new URLSearchParams(
+            window.location.search
+        ).get('conversation');
+
+    const requestedConversationButton =
+        requestedConversation
+            ? conversations.find(
+                (item) =>
+                    String(
+                        item.dataset.conversation
+                    ) === String(
+                        requestedConversation
+                    )
+            )
+            : null;
+
+    let active = String(
+        (requestedConversationButton
+            || conversations[0]
+        ).dataset.conversation
+    );
+
+    if (requestedConversationButton) {
+        conversations.forEach(
+            (item) =>
+                item.classList.toggle(
+                    'is-active',
+                    item
+                    === requestedConversationButton
+                )
+        );
+    }
+
+    let sending = false;
+
+    const activeConversation = () =>
+        conversationData[active]
+        || null;
+
+    /* Realtime fetches and polling may overlap; keep one bubble per message id. */
+    const unseenMessages = (
+        existing = [],
+        incoming = []
+    ) => {
+        const seen = new Set(
+            (Array.isArray(existing) ? existing : [])
+                .map((message) => Number(message?.id || 0))
+                .filter((id) => id > 0)
+        );
+
+        return (Array.isArray(incoming) ? incoming : [])
+            .filter((message) => {
+                const id = Number(message?.id || 0);
+
+                if (id <= 0) {
+                    return true;
+                }
+
+                if (seen.has(id)) {
+                    return false;
+                }
+
+                seen.add(id);
+
+                return true;
+            });
+    };
+
+    const maxAttachmentSize =
+        10 * 1024 * 1024;
+
+    const clearAttachment = () => {
+        if (attachmentInput) {
+            attachmentInput.value = '';
+        }
+
+        if (attachmentName) {
+            attachmentName.textContent = '';
+            attachmentName.hidden = true;
+        }
+    };
+
+    const selectedAttachment = () =>
+        attachmentInput
+            ?.files
+            ?.[0]
+        || null;
+
+    const reading = new Set();
+
+    const markRead = async (
+        conversationId
+    ) => {
+        const id =
+            String(
+                conversationId
+            );
+
+        const conversation =
+            conversationData[id];
+
+        if (
+            !conversation
+            || !conversation.read_url
+            || reading.has(id)
+        ) {
+            return;
+        }
+
+        reading.add(id);
+
+        try {
+            const response =
+                await fetch(
+                    conversation.read_url,
+                    {
+                        method: 'POST',
+
+                        credentials:
+                            'same-origin',
+
+                        headers: {
+                            'Accept':
+                                'application/json',
+
+                            'X-CSRF-TOKEN':
+                                csrfToken,
+                        },
+                    }
+                );
+
+            if (!response.ok) {
+                return;
+            }
+
+            conversation.unread = 0;
+
+            const button =
+                conversations.find(
+                    (item) =>
+                        String(
+                            item
+                                .dataset
+                                .conversation
+                        ) === id
+                );
+
+            if (button) {
+                button.dataset.unread =
+                    '0';
+            }
+        } finally {
+            reading.delete(id);
+        }
+    };
+
+    const THREAD_POLL_MS = 5000;
+
+    let pollTimer = null;
+
+    const pollActiveThread =
+        async () => {
+            const conversation =
+                activeConversation();
+
+            if (
+                !conversation
+                || !conversation.thread_url
+            ) {
+                return;
+            }
+
+            const requested = active;
+
+            const thread =
+                Array.isArray(
+                    conversation.messages
+                )
+                    ? conversation.messages
+                    : [];
+
+            const lastId =
+                thread.length
+                    ? Number(
+                        thread[
+                            thread.length
+                            - 1
+                        ].id
+                        || 0
+                    )
+                    : 0;
+
+            const url =
+                new URL(
+                    conversation
+                        .thread_url,
+                    window.location.origin
+                );
+
+            if (lastId > 0) {
+                url.searchParams.set(
+                    'after',
+                    String(lastId)
+                );
+            }
+
+            const response =
+                await fetch(
+                    url.toString(),
+                    {
+                        headers: {
+                            Accept:
+                                'application/json',
+                        },
+                    }
+                );
+
+            if (
+                !response.ok
+                || requested !== active
+            ) {
+                return;
+            }
+
+            const result =
+                await response.json();
+
+            const receiptUpdates =
+                Array.isArray(
+                    result?.data
+                        ?.receipt_updates
+                )
+                    ? result
+                        .data
+                        .receipt_updates
+                    : [];
+
+            if (receiptUpdates.length) {
+                applyReceiptUpdates(
+                    thread,
+                    receiptUpdates
+                );
+
+                updateReceiptElements(
+                    receiptUpdates,
+                    messages
+                );
+            }
+
+            const incoming =
+                unseenMessages(
+                    thread,
+                    result?.data
+                        ?.messages
+                    || []
+                );
+
+            if (!incoming.length) {
+                return;
+            }
+
+            const nearBottom =
+                messages.scrollHeight
+                - messages.scrollTop
+                - messages.clientHeight
+                < 96;
+
+            const previousScrollTop =
+                messages.scrollTop;
+
+            conversation.messages = [
+                ...thread,
+                ...incoming,
+            ];
+
+            render();
+
+            if (!nearBottom) {
+                messages.scrollTop =
+                    previousScrollTop;
+            }
+
+            const latest =
+                incoming[
+                    incoming.length
+                    - 1
+                ];
+
+            conversation.preview =
+                latest.text
+                || (
+                    latest.attachments
+                        ?.length
+                        ? latest
+                            .attachments[0]
+                            .name
+                        : 'Attachment'
+                );
+
+            conversation.time =
+                latest.time;
+
+            const button =
+                conversations.find(
+                    (item) =>
+                        String(
+                            item
+                                .dataset
+                                .conversation
+                        ) === requested
+                );
+
+            if (button) {
+                const preview =
+                    button.querySelector(
+                        '.conversation-copy small'
+                    );
+
+                const time =
+                    button.querySelector(
+                        '.conversation-time'
+                    );
+
+                if (preview) {
+                    preview.textContent =
+                        conversation
+                            .preview;
+                }
+
+                if (time) {
+                    time.textContent =
+                        latest.time;
+                }
+            }
+
+            const fromOthers =
+                incoming.filter(
+                    (message) =>
+                        !message.mine
+                ).length;
+
+            acknowledgeIncoming(
+                conversation,
+                incoming,
+                csrfToken
+            ).catch(() => {});
+
+            if (fromOthers > 0) {
+                conversation.unread =
+                    Number(
+                        conversation.unread
+                        || 0
+                    ) + fromOthers;
+
+                markRead(active);
+            }
+        };
+
+    const startPolling = () => {
+        if (pollTimer) {
+            return;
+        }
+
+        pollTimer =
+            window.setInterval(
+                () => {
+                    if (
+                        document.hidden
+                        || sending
+                    ) {
+                        return;
+                    }
+
+                    pollActiveThread()
+                        .catch(
+                            () => {}
+                        );
+                },
+                THREAD_POLL_MS
+            );
+
+        document.addEventListener(
+            'visibilitychange',
+            () => {
+                if (document.hidden) {
+                    return;
+                }
+
+                pollActiveThread()
+                    .catch(() => {});
+
+                markRead(active);
+            }
+        );
+    };
+
+    const render = () => {
+        const button =
+            conversations.find(
+                (item) =>
+                    String(
+                        item.dataset.conversation
+                    ) === active
+            );
+
+        const conversation =
+            activeConversation()
+            || {};
+
+        if (name) {
+            name.textContent =
+                conversation.name
+                || button?.dataset.name
+                || 'Conversation';
+        }
+
+        if (role) {
+            role.textContent =
+                conversation.role
+                || button?.dataset.role
+                || '';
+        }
+
+        const presence =
+            document.querySelector(
+                '[data-chat-presence]'
+            );
+
+        if (presence) {
+            presence.dataset.presenceConversation =
+                String(conversation.id || '');
+
+            presence.dataset.presenceUsers =
+                (
+                    Array.isArray(
+                        conversation.presence_user_ids
+                    )
+                        ? conversation.presence_user_ids
+                        : []
+                ).join(',');
+        }
+
+        window.BearlyPresence?.refresh?.();
+
+        const isOpen =
+            conversation.status
+            === 'open';
+
+        if (input) {
+            input.disabled =
+                !isOpen
+                || sending;
+
+            input.placeholder =
+                isOpen
+                    ? 'Write a message…'
+                    : 'This conversation is closed';
+        }
+
+        if (sendButton) {
+            sendButton.disabled =
+                !isOpen
+                || sending;
+        }
+
+        if (attachmentButton) {
+            attachmentButton.disabled =
+                !isOpen
+                || sending;
+        }
+
+        if (attachmentInput) {
+            attachmentInput.disabled =
+                !isOpen
+                || sending;
+        }
+
+        const thread =
+            Array.isArray(
+                conversation.messages
+            )
+                ? conversation.messages
+                : [];
+
+        messages.innerHTML =
+            thread.length
+                ? thread
+                    .map(
+                        (item) => `
+                            <div
+                                class="
+                                    message-bubble
+                                    ${
+                                        item.mine
+                                            ? 'is-mine'
+                                            : ''
+                                    }
+                                "
+                                data-message-id="${Number(
+                                    item.id || 0
+                                )}"
+                            >
+                                ${item.text
+                                    ? `
+                                        <div class="message-text">
+                                            ${escapeHtml(
+                                                item.text
+                                            )}
+                                        </div>
+                                    `
+                                    : ''}
+
+                                ${(Array.isArray(
+                                    item.attachments
+                                )
+                                    ? item.attachments
+                                    : [])
+                                    .map(
+                                        (attachment) =>
+                                            attachmentPreviewHtml(
+                                                attachment,
+                                                {
+                                                    linkClass:
+                                                        'message-attachment',
+                                                    mediaClass:
+                                                        'message-attachment-preview',
+                                                }
+                                            )
+                                    )
+                                    .join('')}
+
+                                <small class="message-meta" data-chat-meta>
+                                    ${escapeHtml(
+                                        item.time
+                                    )}
+                                    ${
+                                        item.mine
+                                        && item.receipt
+                                            ? receiptMarkup(
+                                                item.receipt
+                                            )
+                                            : ''
+                                    }
+                                </small>
+                            </div>
+                        `
+                    )
+                    .join('')
+                : `
+                    <div class="table-empty">
+                        No messages yet.
+                    </div>
+                `;
+
+        messages.scrollTop =
+            messages.scrollHeight;
+    };
+
+    const selectConversation = (
+        button
+    ) => {
+        clearAttachment();
+
+        active = String(
+            button.dataset.conversation
+        );
+
+        conversations.forEach(
+            (item) =>
+                item.classList.toggle(
+                    'is-active',
+                    item === button
+                )
+        );
+
+        render();
+
+        if (!document.hidden) {
+            markRead(active);
+        }
+    };
+
+    conversations.forEach(
+        (button) =>
+            button.addEventListener(
+                'click',
+                () =>
+                    selectConversation(
+                        button
+                    )
+            )
+    );
+
+    attachmentButton
+        ?.addEventListener(
+            'click',
+            () => attachmentInput?.click()
+        );
+
+    attachmentInput
+        ?.addEventListener(
+            'change',
+            () => {
+                const attachment =
+                    selectedAttachment();
+
+                if (!attachment) {
+                    clearAttachment();
+                    return;
+                }
+
+                if (
+                    attachment.size
+                    > maxAttachmentSize
+                ) {
+                    clearAttachment();
+                    toast(
+                        'Attachments must be 10 MB or smaller.'
+                    );
+                    return;
+                }
+
+                if (attachmentName) {
+                    attachmentName.textContent =
+                        attachment.name;
+
+                    attachmentName.hidden = false;
+                }
+            }
+        );
+
+    const send = async () => {
+        if (
+            sending
+            || !input
+        ) {
+            return;
+        }
+
+        const text =
+            input.value.trim();
+
+        const attachment =
+            selectedAttachment();
+
+        if (
+            !text
+            && !attachment
+        ) {
+            return;
+        }
+
+        const conversation =
+            activeConversation();
+
+        if (
+            !conversation
+            || conversation.status
+                !== 'open'
+            || !conversation.send_url
+        ) {
+            return;
+        }
+
+        sending = true;
+        render();
+
+        try {
+            const formData =
+                new FormData();
+
+            formData.append(
+                'message',
+                text
+            );
+
+            if (attachment) {
+                formData.append(
+                    'attachment',
+                    attachment
+                );
+            }
+
+            const response =
+                await fetch(
+                    conversation.send_url,
+                    {
+                        method: 'POST',
+
+                        headers: {
+                            'Accept':
+                                'application/json',
+
+                            'X-CSRF-TOKEN':
+                                csrfToken,
+                        },
+
+                        body: formData,
+                    }
+                );
+
+            const data =
+                await response.json();
+
+            if (!response.ok) {
+                const validationMessage =
+                    data.errors
+                        ?.message
+                        ?.[0]
+                    || data.errors
+                        ?.attachment
+                        ?.[0];
+
+                throw new Error(
+                    validationMessage
+                    || data.message
+                    || 'Unable to send message.'
+                );
+            }
+
+            conversation.messages =
+                Array.isArray(
+                    conversation.messages
+                )
+                    ? conversation.messages
+                    : [];
+
+            conversation
+                .messages
+                .push(
+                    ...unseenMessages(
+                        conversation
+                            .messages,
+                        [data.data]
+                    )
+                );
+
+            conversation.preview =
+                data.data.text;
+
+            conversation.time =
+                data.data.time;
+
+            conversation.unread = 0;
+
+            const button =
+                conversations.find(
+                    (item) =>
+                        String(
+                            item
+                                .dataset
+                                .conversation
+                        ) === active
+                );
+
+            if (button) {
+                const preview =
+                    button.querySelector(
+                        '.conversation-copy small'
+                    );
+
+                const time =
+                    button.querySelector(
+                        '.conversation-time'
+                    );
+
+                if (preview) {
+                    preview.textContent =
+                        data.data.text;
+                }
+
+                if (time) {
+                    time.textContent =
+                        data.data.time;
+                }
+
+                button.dataset.unread =
+                    '0';
+            }
+
+            input.value = '';
+            clearAttachment();
+
+            toast(
+                'Message sent successfully.'
+            );
+        } catch (error) {
+            toast(
+                error.message
+                || 'Unable to send message.'
+            );
+        } finally {
+            sending = false;
+            render();
+
+            if (
+                !input.disabled
+            ) {
+                input.focus();
+            }
+        }
+    };
+
+    sendButton
+        ?.addEventListener(
+            'click',
+            send
+        );
+
+    input
+        ?.addEventListener(
+            'keydown',
+            (event) => {
+                if (
+                    event.key
+                    !== 'Enter'
+                ) {
+                    return;
+                }
+
+                event.preventDefault();
+                send();
+            }
+        );
+
+    render();
+
+    const initialConversation =
+        activeConversation();
+
+    if (initialConversation) {
+        acknowledgeConversation(
+            initialConversation,
+            csrfToken
+        ).catch(() => {});
+    }
+
+    if (!document.hidden) {
+        markRead(active);
+    }
+
+    startPolling();
+
+    window.addEventListener('bearly:message-created', (event) => {
+        const conversationId = String(event.detail?.conversation_id || '');
+        if (conversationId !== active) return;
+        pollActiveThread().catch(() => {});
+    });
+
+    window.addEventListener('bearly:message-receipt', (event) => {
+        const receipts = Array.isArray(event.detail?.receipts)
+            ? event.detail.receipts
+            : [];
+
+        if (!receipts.length) return;
+
+        const conversation = activeConversation();
+
+        if (conversation?.messages) {
+            applyReceiptUpdates(conversation.messages, receipts);
+        }
+
+        updateReceiptElements(receipts, messages);
+    });
+}
+
+function setupNewConversation() {
+    const modal =
+        document.querySelector(
+            '[data-modal="new-conversation"]'
+        );
+
+    const opener =
+        document.querySelector(
+            '[data-modal-open="new-conversation"]'
+        );
+
+    const form =
+        document.querySelector(
+            '[data-new-conversation-form]'
+        );
+
+    if (
+        !modal
+        || !form
+    ) {
+        return;
+    }
+
+    const submit =
+        form.querySelector(
+            '[data-new-conversation-submit]'
+        );
+
+    const csrfToken =
+        document
+            .querySelector(
+                'meta[name="csrf-token"]'
+            )
+            ?.getAttribute(
+                'content'
+            )
+        || '';
+
+    const open = () => {
+        modal.hidden = false;
+    };
+
+    const close = () => {
+        modal.hidden = true;
+    };
+
+    opener?.addEventListener(
+        'click',
+        open
+    );
+
+    modal
+        .querySelectorAll(
+            '[data-modal-close]'
+        )
+        .forEach(
+            (button) =>
+                button.addEventListener(
+                    'click',
+                    close
+                )
+        );
+
+    form.addEventListener(
+        'submit',
+        async (event) => {
+            event.preventDefault();
+
+            if (
+                !form.reportValidity()
+            ) {
+                return;
+            }
+
+            const url =
+                form.dataset.storeUrl;
+
+            if (!url) {
+                return;
+            }
+
+            if (submit) {
+                submit.disabled = true;
+            }
+
+            const formData =
+                new FormData(form);
+
+            try {
+                const response =
+                    await fetch(
+                        url,
+                        {
+                            method: 'POST',
+
+                            headers: {
+                                'Accept':
+                                    'application/json',
+
+                                'Content-Type':
+                                    'application/json',
+
+                                'X-CSRF-TOKEN':
+                                    csrfToken,
+                            },
+
+                            body:
+                                JSON.stringify(
+                                    Object.fromEntries(
+                                        formData
+                                    )
+                                ),
+                        }
+                    );
+
+                const data =
+                    await response.json();
+
+                if (!response.ok) {
+                    const firstError =
+                        Object
+                            .values(
+                                data.errors
+                                || {}
+                            )
+                            .flat()
+                            .find(Boolean);
+
+                    throw new Error(
+                        firstError
+                        || data.message
+                        || 'Unable to start conversation.'
+                    );
+                }
+
+                form.reset();
+
+                toast(
+                    'Conversation started successfully.'
+                );
+
+                window.location.assign(
+                    data.redirect_url
+                    || window.location.href
+                );
+            } catch (error) {
+                toast(
+                    error.message
+                    || 'Unable to start conversation.'
+                );
+            } finally {
+                if (submit) {
+                    submit.disabled = false;
+                }
+            }
+        }
+    );
+}
+
+function setupRegistrationEmail(form) {
+    const email = form.elements.email;
+    const send = form.querySelector('[data-email-send]');
+    const check = form.querySelector('[data-email-check]');
+    const code = form.querySelector('[data-email-code]');
+    const entry = form.querySelector('[data-email-code-entry]');
+    const status = form.querySelector('[data-email-status]');
+
+    if (!email || !send || !check || !code || !entry || !status) {
+        return { validate: () => true };
+    }
+
+    let verifiedEmail = '';
+    let verifiedUntil = 0;
+    let sentEmail = '';
+    let busy = false;
+    let restoring = false;
+    let cooldownUntil = 0;
+    let generation = 0;
+
+    const normalizedEmail = () =>
+        String(email.value || '').trim().toLowerCase();
+
+    const setStatus = (message, state = 'info') => {
+        status.textContent = message;
+        status.dataset.state = state;
+    };
+
+    const resetVerification = () => {
+        generation++;
+        restoring = false;
+        verifiedEmail = '';
+        verifiedUntil = 0;
+        sentEmail = '';
+        entry.hidden = true;
+        code.value = '';
+        setStatus('Verify your email address to continue.');
+    };
+
+    const validEmail = () => {
+        email.value = normalizedEmail();
+        email.setCustomValidity('');
+
+        if (!email.value || !email.checkValidity()) {
+            email.reportValidity();
+            email.focus();
+            return false;
+        }
+
+        return true;
+    };
+
+    async function post(url, extra = {}) {
+        const response = await fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'X-CSRF-TOKEN': form.elements._token.value,
+            },
+            body: JSON.stringify({
+                email: normalizedEmail(),
+                ...extra,
+            }),
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            const failure = emailVerificationFailure(
+                response,
+                data,
+                'Email verification is unavailable. Please try again.',
+            );
+            const error = new Error(failure.message);
+            error.retryAfter = failure.retryAfter;
+
+            throw error;
+        }
+
+        return data;
+    }
+
+    async function restoreVerifiedProof() {
+        const requestedEmail = normalizedEmail();
+
+        if (
+            !form.dataset.emailStatus ||
+            !requestedEmail ||
+            !email.checkValidity()
+        ) {
+            return;
+        }
+
+        email.value = requestedEmail;
+        const requestGeneration = generation;
+        restoring = true;
+        setStatus('Checking saved email verification…');
+        refresh();
+
+        try {
+            const data = await post(form.dataset.emailStatus);
+
+            if (
+                requestGeneration !== generation ||
+                normalizedEmail() !== requestedEmail
+            ) {
+                return;
+            }
+
+            if (data.verified && Number(data.expires_in) > 0) {
+                verifiedEmail = requestedEmail;
+                sentEmail = requestedEmail;
+                verifiedUntil = Date.now() + Number(data.expires_in) * 1000;
+                entry.hidden = true;
+                code.value = '';
+                setStatus('Email address verified. You may continue.', 'verified');
+            } else {
+                setStatus('Verify your email address to continue.');
+            }
+        } catch (_) {
+            if (requestGeneration === generation) {
+                setStatus(
+                    'Could not check the saved verification. Please retry or request a new code.',
+                    'error',
+                );
+            }
+        } finally {
+            if (requestGeneration === generation) {
+                restoring = false;
+            }
+
+            refresh();
+        }
+    }
+
+    const refresh = () => {
+        const secondsLeft = Math.max(
+            0,
+            Math.ceil((cooldownUntil - Date.now()) / 1000)
+        );
+
+        const isVerified =
+            verifiedEmail === normalizedEmail() &&
+            Date.now() < verifiedUntil;
+
+        send.disabled = busy || restoring || secondsLeft > 0 || isVerified;
+        check.disabled = busy || restoring;
+
+        send.textContent = busy
+            ? 'Please wait…'
+            : restoring
+                ? 'Checking…'
+            : isVerified
+                ? 'Verified'
+                : secondsLeft
+                    ? `Resend in ${secondsLeft}s`
+                    : sentEmail === normalizedEmail()
+                        ? 'Resend code'
+                        : 'Send code';
+
+        if (verifiedEmail && Date.now() >= verifiedUntil) {
+            resetVerification();
+            setStatus(
+                'Verification expired. Please verify your email again.',
+                'error'
+            );
+        }
+    };
+
+    email.addEventListener('input', () => {
+        resetVerification();
+        refresh();
+    });
+
+    code.addEventListener('input', () => {
+        code.value = code.value
+            .replace(/[^0-9]/g, '')
+            .slice(0, 6);
+    });
+
+    send.addEventListener('click', async () => {
+        if (busy || restoring || Date.now() < cooldownUntil || !validEmail()) return;
+
+        busy = true;
+        resetVerification();
+
+        const requestGeneration = generation;
+        const requestedEmail = normalizedEmail();
+
+        refresh();
+        setStatus('Sending verification code…');
+
+        try {
+            const data = await post(form.dataset.emailSend);
+
+            cooldownUntil =
+                Date.now() + Number(data.retry_after || 60) * 1000;
+
+            if (requestGeneration !== generation) return;
+
+            sentEmail = requestedEmail;
+            entry.hidden = false;
+            setStatus(
+                data.message ||
+                'Verification code sent. Check your inbox.'
+            );
+            code.focus();
+        } catch (error) {
+            if (requestGeneration === generation) {
+                if (error.retryAfter) {
+                    cooldownUntil = Date.now() + error.retryAfter * 1000;
+                }
+
+                setStatus(error.message, 'error');
+            }
+        } finally {
+            busy = false;
+            refresh();
+        }
+    });
+
+    check.addEventListener('click', async () => {
+        if (busy || restoring || !validEmail()) return;
+
+        if (normalizedEmail() !== sentEmail) {
+            resetVerification();
+            setStatus(
+                'The email address changed. Request a new code.',
+                'error'
+            );
+            return;
+        }
+
+        if (!/^[0-9]{6}$/.test(code.value)) {
+            setStatus(
+                'Enter the 6-digit code from your email.',
+                'error'
+            );
+            code.focus();
+            return;
+        }
+
+        busy = true;
+
+        const requestGeneration = generation;
+        const requestedEmail = normalizedEmail();
+
+        refresh();
+
+        try {
+            const data = await post(
+                form.dataset.emailCheck,
+                { code: code.value }
+            );
+
+            if (requestGeneration !== generation) return;
+
+            verifiedEmail = requestedEmail;
+            verifiedUntil =
+                Date.now() + Number(data.expires_in || 900) * 1000;
+
+            entry.hidden = true;
+            code.value = '';
+            setStatus(
+                data.message || 'Email address verified.',
+                'verified'
+            );
+        } catch (error) {
+            if (requestGeneration === generation) {
+                setStatus(error.message, 'error');
+            }
+        } finally {
+            busy = false;
+            refresh();
+        }
+    });
+
+    resetVerification();
+    void restoreVerifiedProof();
+    refresh();
+    window.setInterval(refresh, 1000);
+
+    return {
+        validate: () => {
+            if (!validEmail()) return false;
+
+            if (restoring) {
+                setStatus('Checking whether this email is already verified. Please wait.');
+                return false;
+            }
+
+            if (
+                verifiedEmail !== normalizedEmail() ||
+                Date.now() >= verifiedUntil
+            ) {
+                setStatus(
+                    'Verify your email address before continuing.',
+                    'error'
+                );
+                send.focus();
+                return false;
+            }
+
+            return true;
+        },
+    };
+}
+
+function setupRegistrationPassword(form) {
+    const password = form.querySelector('[data-registration-password]');
+    const confirmation = form.querySelector(
+        '[data-registration-password-confirmation]'
+    );
+
+    if (!password || !confirmation) {
+        return {
+            prepareField: () => {},
+            validate: () => true,
+        };
+    }
+
+    const meter = form.querySelector('.registration-password-meter');
+    const strengthLabel = form.querySelector(
+        '[data-password-strength-label]'
+    );
+    const status = form.querySelector('[data-password-status]');
+    const matchStatus = form.querySelector('[data-password-match]');
+
+    const ruleElements = {
+        length: form.querySelector('[data-password-rule="length"]'),
+        uppercase: form.querySelector('[data-password-rule="uppercase"]'),
+        lowercase: form.querySelector('[data-password-rule="lowercase"]'),
+        number: form.querySelector('[data-password-rule="number"]'),
+    };
+
+    const evaluate = (value) => ({
+        length: value.length >= 8,
+        uppercase: /[A-Z]/.test(value),
+        lowercase: /[a-z]/.test(value),
+        number: /[0-9]/.test(value),
+    });
+
+    const passwordMessage = (value) => {
+        const rules = evaluate(value);
+
+        if (!rules.length) {
+            return 'Password must be at least 8 characters long.';
+        }
+        if (!rules.uppercase) {
+            return 'Password must contain at least one uppercase letter.';
+        }
+        if (!rules.lowercase) {
+            return 'Password must contain at least one lowercase letter.';
+        }
+        if (!rules.number) {
+            return 'Password must contain at least one number.';
+        }
+
+        return '';
+    };
+
+    const update = () => {
+        const rules = evaluate(password.value);
+        const score = Object.values(rules).filter(Boolean).length;
+
+        Object.entries(rules).forEach(([name, met]) => {
+            ruleElements[name]?.classList.toggle('is-met', met);
+        });
+
+        meter?.style.setProperty('--strength', `${score * 25}%`);
+
+        if (strengthLabel) {
+            const labels = ['Not set', 'Weak', 'Fair', 'Good', 'Strong'];
+            strengthLabel.textContent =
+                password.value ? labels[score] : labels[0];
+            strengthLabel.dataset.strength = String(score);
+        }
+
+        if (status) {
+            if (!password.value) {
+                status.textContent =
+                    'Meet all four requirements to continue.';
+                status.dataset.state = 'neutral';
+            } else if (score === 4) {
+                status.textContent =
+                    'Password meets all requirements.';
+                status.dataset.state = 'success';
+            } else {
+                status.textContent = passwordMessage(password.value);
+                status.dataset.state = 'error';
+            }
+        }
+
+        if (matchStatus) {
+            if (!confirmation.value) {
+                matchStatus.textContent = '';
+                matchStatus.dataset.state = 'neutral';
+            } else if (confirmation.value === password.value) {
+                matchStatus.textContent = 'Passwords match.';
+                matchStatus.dataset.state = 'success';
+            } else {
+                matchStatus.textContent = 'Passwords do not match.';
+                matchStatus.dataset.state = 'error';
+            }
+        }
+    };
+
+    const prepareField = (field) => {
+        if (field === password) {
+            field.setCustomValidity(passwordMessage(field.value));
+        }
+
+        if (field === confirmation) {
+            field.setCustomValidity(
+                field.value === password.value
+                    ? ''
+                    : 'Passwords do not match.'
+            );
+        }
+    };
+
+    form
+        .querySelectorAll('[data-toggle-password]')
+        .forEach((button) => {
+            button.addEventListener('click', () => {
+                const input = document.getElementById(
+                    button.dataset.togglePassword
+                );
+
+                if (!input) return;
+
+                input.type =
+                    input.type === 'password'
+                        ? 'text'
+                        : 'password';
+
+                const isVisible = input.type === 'text';
+
+                button.setAttribute(
+                    'aria-label',
+                    isVisible ? 'Hide password' : 'Show password'
+                );
+                button.setAttribute(
+                    'aria-pressed',
+                    String(isVisible)
+                );
+            });
+        });
+
+    password.addEventListener('input', () => {
+        password.setCustomValidity('');
+        confirmation.setCustomValidity('');
+        update();
+    });
+
+    confirmation.addEventListener('input', () => {
+        confirmation.setCustomValidity('');
+        update();
+    });
+
+    update();
+
+    return {
+        prepareField,
+        validate: () => {
+            prepareField(password);
+
+            if (!password.checkValidity()) {
+                password.reportValidity();
+                password.focus();
+                return false;
+            }
+
+            prepareField(confirmation);
+
+            if (!confirmation.checkValidity()) {
+                confirmation.reportValidity();
+                confirmation.focus();
+                return false;
+            }
+
+            return true;
+        },
+    };
+}
+
+function setupMiddleInitial(form) {
+    const middle = form.querySelector('[data-middle-initial]');
+    if (!middle) return;
+
+    const getLetter = () =>
+        middle.value
+            .replace(/[^A-Za-z]/g, '')
+            .slice(0, 1)
+            .toUpperCase();
+
+    middle.addEventListener('focus', () => {
+        middle.value = getLetter();
+    });
+
+    middle.addEventListener('input', () => {
+        middle.value = getLetter();
+    });
+
+    middle.addEventListener('blur', () => {
+        const letter = getLetter();
+        middle.value = letter ? `${letter}.` : '';
+    });
+}
+
+function setupRegistration() {
+    const form = document.querySelector('[data-registration-form]');
+    if (!form) return;
+
+    restoreRegistrationDraft(form);
+    setupRegistrationDraft(form);
+    let step = Math.max(1, Math.min(3, Number(form.dataset.draftStep || 1)));
+
+    const emailVerification = setupRegistrationEmail(form);
+    const passwordUx = setupRegistrationPassword(form);
+
+    setupMiddleInitial(form);
+
+    const region = form.querySelector('[data-region]');
+    const province = form.querySelector('[data-province]');
+    const city = form.querySelector('[data-city]');
+    const barangay = form.querySelector('[data-barangay]');
+
+    const postalCode = form.querySelector('[data-postal-code]');
+    const postalChoices = form.querySelector('[data-postal-choices]');
+    const postalHelp = form.querySelector('[data-postal-help]');
+    const cityCodeField = form.elements.city_code;
+    const regionCodeField = form.elements.region_code;
+    const postalManualField = form.elements.postal_manual;
+    const savedPostalCode = postalCode?.value || '';
+    const savedPostalManual = postalManualField?.value === '1';
+    const savedCityCode = cityCodeField?.value || '';
+    let restoringAddress = Boolean(savedPostalCode && savedCityCode);
+
+    /*
+     * Searchable address dropdowns
+     * Same interaction pattern as Buyer/Seller:
+     * click the select-looking trigger -> search field appears inside panel.
+     */
+    const searchableSelects = new Map();
+
+    const normalizeSearchText = (value) =>
+        String(value || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLocaleLowerCase('en-PH')
+            .trim();
+
+    const closeSearchableSelect = (
+        select,
+        returnFocus = false
+    ) => {
+        const widget = searchableSelects.get(select);
+
+        if (!widget || widget.panel.hidden) return;
+
+        widget.panel.hidden = true;
+        widget.trigger.setAttribute('aria-expanded', 'false');
+        widget.wrapper.classList.remove('is-open');
+        widget.search.value = '';
+        widget.renderOptions();
+
+        if (returnFocus) {
+            widget.trigger.focus();
+        }
+    };
+
+    const closeOtherSearchableSelects = (currentSelect) => {
+        searchableSelects.forEach((widget, select) => {
+            if (select !== currentSelect) {
+                closeSearchableSelect(select);
+            }
+        });
+    };
+
+    const openSearchableSelect = (select) => {
+        const widget = searchableSelects.get(select);
+
+        if (!widget || select.disabled) return;
+
+        closeOtherSearchableSelects(select);
+
+        widget.panel.hidden = false;
+        widget.trigger.setAttribute('aria-expanded', 'true');
+        widget.wrapper.classList.add('is-open');
+        widget.search.value = '';
+        widget.renderOptions();
+
+        window.requestAnimationFrame(() => {
+            widget.search.focus();
+        });
+    };
+
+    const syncSearchableSelect = (select) => {
+        const widget = searchableSelects.get(select);
+        if (!widget) return;
+
+        const selected = select.selectedOptions?.[0];
+
+        widget.value.textContent =
+            selected?.textContent || 'Select an option';
+
+        widget.value.classList.toggle(
+            'is-placeholder',
+            !select.value
+        );
+
+        widget.trigger.disabled = select.disabled;
+        widget.trigger.setAttribute(
+            'aria-disabled',
+            String(select.disabled)
+        );
+
+        widget.wrapper.classList.toggle(
+            'is-disabled',
+            select.disabled
+        );
+
+        widget.wrapper.classList.remove('is-invalid');
+
+        if (select.disabled) {
+            closeSearchableSelect(select);
+        }
+
+        widget.renderOptions();
+    };
+
+    const createSearchableSelect = (select) => {
+        if (!select || searchableSelects.has(select)) return;
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'searchable-select';
+
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'searchable-select__trigger';
+        trigger.setAttribute('aria-haspopup', 'listbox');
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.innerHTML = `
+            <span class="searchable-select__value"></span>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="m5 7.5 5 5 5-5"></path>
+            </svg>
+        `;
+
+        const panel = document.createElement('div');
+        panel.className = 'searchable-select__panel';
+        panel.hidden = true;
+        panel.innerHTML = `
+            <div class="searchable-select__search-wrap">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="11" cy="11" r="7"></circle>
+                    <path d="m20 20-4-4"></path>
+                </svg>
+
+                <input
+                    type="search"
+                    class="searchable-select__search"
+                    autocomplete="off"
+                    spellcheck="false"
+                >
+            </div>
+
+            <ul
+                class="searchable-select__options"
+                role="listbox"
+            ></ul>
+
+            <p
+                class="searchable-select__empty"
+                hidden
+            >
+                No locations found
+            </p>
+
+            <p
+                class="searchable-select__count"
+                aria-live="polite"
+            ></p>
+        `;
+
+        select.parentNode.insertBefore(wrapper, select);
+        wrapper.append(select, trigger, panel);
+
+        select.classList.add('searchable-select__native');
+
+        const value =
+            trigger.querySelector('.searchable-select__value');
+
+        const search =
+            panel.querySelector('.searchable-select__search');
+
+        const options =
+            panel.querySelector('.searchable-select__options');
+
+        const empty =
+            panel.querySelector('.searchable-select__empty');
+
+        const count =
+            panel.querySelector('.searchable-select__count');
+
+        search.placeholder =
+            select.dataset.searchPlaceholder ||
+            'Search location';
+
+        search.setAttribute(
+            'aria-label',
+            search.placeholder
+        );
+
+        const widget = {
+            wrapper,
+            trigger,
+            panel,
+            value,
+            search,
+            options,
+            empty,
+            count,
+            activeIndex: -1,
+            visibleOptions: [],
+            renderOptions: () => {},
+        };
+
+        widget.renderOptions = () => {
+            const query =
+                normalizeSearchText(search.value);
+
+            const availableOptions =
+                [...select.options].filter(
+                    (option) =>
+                        option.value &&
+                        !option.disabled
+                );
+
+            const matches =
+                availableOptions.filter((option) =>
+                    normalizeSearchText(
+                        option.textContent
+                    ).includes(query)
+                );
+
+            options.replaceChildren();
+
+            widget.visibleOptions = matches;
+            widget.activeIndex = -1;
+
+            matches.forEach((option) => {
+                const item =
+                    document.createElement('li');
+
+                const button =
+                    document.createElement('button');
+
+                const isSelected =
+                    option.value === select.value;
+
+                button.type = 'button';
+                button.className =
+                    'searchable-select__option';
+
+                button.setAttribute(
+                    'role',
+                    'option'
+                );
+
+                button.setAttribute(
+                    'aria-selected',
+                    String(isSelected)
+                );
+
+                button.dataset.value = option.value;
+
+                button.innerHTML = `
+                    <span></span>
+                    <span
+                        class="searchable-select__check"
+                        aria-hidden="true"
+                    >
+                        ${isSelected ? '✓' : ''}
+                    </span>
+                `;
+
+                button.firstElementChild.textContent =
+                    option.textContent;
+
+                button.addEventListener('click', () => {
+                    select.value = option.value;
+                    select.setCustomValidity('');
+
+                    select.dispatchEvent(
+                        new Event(
+                            'change',
+                            { bubbles: true }
+                        )
+                    );
+
+                    syncSearchableSelect(select);
+                    closeSearchableSelect(
+                        select,
+                        true
+                    );
+                });
+
+                item.append(button);
+                options.append(item);
+            });
+
+            empty.hidden = matches.length !== 0;
+
+            count.textContent =
+                `${matches.length} ${
+                    matches.length === 1
+                        ? 'location'
+                        : 'locations'
+                } found`;
+        };
+
+        searchableSelects.set(select, widget);
+
+        trigger.addEventListener('click', () => {
+            if (panel.hidden) {
+                openSearchableSelect(select);
+            } else {
+                closeSearchableSelect(select);
+            }
+        });
+
+        trigger.addEventListener(
+            'keydown',
+            (event) => {
+                if (
+                    [
+                        'ArrowDown',
+                        'Enter',
+                        ' ',
+                    ].includes(event.key)
+                ) {
+                    event.preventDefault();
+                    openSearchableSelect(select);
+                }
+            }
+        );
+
+        search.addEventListener(
+            'input',
+            widget.renderOptions
+        );
+
+        search.addEventListener(
+            'keydown',
+            (event) => {
+                const optionButtons = [
+                    ...options.querySelectorAll(
+                        'button'
+                    ),
+                ];
+
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+
+                    closeSearchableSelect(
+                        select,
+                        true
+                    );
+
+                    return;
+                }
+
+                if (
+                    ![
+                        'ArrowDown',
+                        'ArrowUp',
+                        'Enter',
+                    ].includes(event.key)
+                ) {
+                    return;
+                }
+
+                event.preventDefault();
+
+                if (event.key === 'Enter') {
+                    optionButtons[
+                        widget.activeIndex
+                    ]?.click();
+
+                    return;
+                }
+
+                const direction =
+                    event.key === 'ArrowDown'
+                        ? 1
+                        : -1;
+
+                widget.activeIndex = Math.max(
+                    0,
+                    Math.min(
+                        optionButtons.length - 1,
+                        widget.activeIndex +
+                            direction
+                    )
+                );
+
+                optionButtons.forEach(
+                    (button, index) => {
+                        button.classList.toggle(
+                            'is-active',
+                            index ===
+                                widget.activeIndex
+                        );
+                    }
+                );
+
+                optionButtons[
+                    widget.activeIndex
+                ]?.scrollIntoView({
+                    block: 'nearest',
+                });
+            }
+        );
+
+        syncSearchableSelect(select);
+    };
+
+    form
+        .querySelectorAll('[data-searchable-location]')
+        .forEach(createSearchableSelect);
+
+    document.addEventListener(
+        'pointerdown',
+        (event) => {
+            searchableSelects.forEach(
+                (widget, select) => {
+                    if (
+                        !widget.wrapper.contains(
+                            event.target
+                        )
+                    ) {
+                        closeSearchableSelect(
+                            select
+                        );
+                    }
+                }
+            );
+        }
+    );
+
+    const show = (next) => {
+        step = next;
+        form.dataset.currentStep = String(step);
+
+        document
+            .querySelectorAll('[data-form-step]')
+            .forEach((panel) => {
+                panel.hidden =
+                    Number(panel.dataset.formStep) !== step;
+            });
+
+        document
+            .querySelectorAll('[data-step-marker]')
+            .forEach((marker) => {
+                const markerStep =
+                    Number(marker.dataset.stepMarker);
+
+                marker.classList.toggle(
+                    'is-active',
+                    markerStep === step
+                );
+
+                marker.classList.toggle(
+                    'is-complete',
+                    markerStep < step
+                );
+            });
+
+        window.scrollTo({
+            top: 0,
+            behavior: 'smooth',
+        });
+        form.dispatchEvent(new Event('registration:step'));
+    };
+
+    const validateStep = () => {
+        const panel = form.querySelector(
+            `[data-form-step="${step}"]`
+        );
+
+        if (!panel) return false;
+
+        const fields = [
+            ...panel.querySelectorAll(
+                'input, select, textarea'
+            ),
+        ].filter(
+            (field) =>
+                !field.disabled &&
+                field.type !== 'button' &&
+                field.type !== 'submit' &&
+                !field.classList.contains(
+                    'searchable-select__search'
+                )
+        );
+
+        for (const field of fields) {
+            field.setCustomValidity('');
+            passwordUx.prepareField(field);
+
+            if (['first_name', 'last_name'].includes(field.name) && field.value.trim()) {
+                const name = field.value.trim();
+
+                if (name.length < 2 || name.length > 50 || !/^[\p{L}\s'-]+$/u.test(name)) {
+                    field.setCustomValidity('Use 2 to 50 letters. Spaces, apostrophes, and hyphens are allowed.');
+                }
+            }
+
+            if (field.name === 'contact_number' && field.value.trim() && !isValidPhilippineMobile(field.value)) {
+                field.setCustomValidity('Enter a valid Philippine mobile number.');
+            }
+
+            if (!field.checkValidity()) {
+                const widget =
+                    searchableSelects.get(field);
+
+                if (widget) {
+                    widget.wrapper.classList.add(
+                        'is-invalid'
+                    );
+
+                    openSearchableSelect(field);
+                    widget.trigger.focus();
+                } else {
+                    field.reportValidity();
+                    field.focus();
+                }
+
+                return false;
+            }
+        }
+
+        if (step === 1) {
+            if (!passwordUx.validate()) return false;
+            if (!emailVerification.validate()) return false;
+        }
+
+        return true;
+    };
+
+    document
+        .querySelectorAll('[data-step-next]')
+        .forEach((button) => {
+            button.addEventListener('click', () => {
+                if (validateStep()) {
+                    show(
+                        Math.min(
+                            3,
+                            step + 1
+                        )
+                    );
+                }
+            });
+        });
+
+    document
+        .querySelectorAll('[data-step-back]')
+        .forEach((button) => {
+            button.addEventListener('click', () => {
+                show(
+                    Math.max(
+                        1,
+                        step - 1
+                    )
+                );
+            });
+        });
+
+    const birthday =
+        form.querySelector('[name="birthday"]');
+
+    const ageField =
+        form.querySelector('[data-age]');
+
+    const updateAge = () => {
+        if (!birthday || !ageField) return;
+
+        if (!birthday.value) {
+            ageField.value = '';
+            return;
+        }
+
+        const birth =
+            new Date(
+                `${birthday.value}T00:00:00`
+            );
+
+        const now = new Date();
+
+        let age =
+            now.getFullYear() -
+            birth.getFullYear();
+
+        if (
+            now <
+            new Date(
+                now.getFullYear(),
+                birth.getMonth(),
+                birth.getDate()
+            )
+        ) {
+            age--;
+        }
+
+        ageField.value =
+            Number.isFinite(age) &&
+            age >= 0
+                ? String(age)
+                : '';
+    };
+
+    birthday?.addEventListener(
+        'change',
+        updateAge
+    );
+
+    updateAge();
+
+    form
+        .querySelectorAll('input[type="file"]')
+        .forEach((input) => {
+            input.addEventListener(
+                'change',
+                () => {
+                    const label =
+                        input
+                            .closest(
+                                '.upload-field'
+                            )
+                            ?.querySelector(
+                                '[data-file-name]'
+                            );
+
+                    if (label) {
+                        label.textContent =
+                            input.files?.[0]
+                                ?.name ||
+                            input.dataset.fileHelp ||
+                            'Choose a JPG, PNG, or PDF file';
+                    }
+                }
+            );
+        });
+
+    const fallbackLocations = (url) => {
+        if (url.endsWith('/regions')) {
+            return [
+                {
+                    name: 'Region IV-A (CALABARZON)',
+                    code: '0400000000',
+                },
+            ];
+        }
+
+        if (url.endsWith('/provinces')) {
+            return [
+                {
+                    name: 'Laguna',
+                    code: '0403400000',
+                },
+                {
+                    name: 'Batangas',
+                    code: '0401000000',
+                },
+                {
+                    name: 'Cavite',
+                    code: '0402100000',
+                },
+                {
+                    name: 'Quezon',
+                    code: '0405600000',
+                },
+            ];
+        }
+
+        if (
+            url.includes(
+                '/provinces/0403400000/'
+            )
+        ) {
+            return [
+                {
+                    name: 'San Pablo City',
+                    code: '0403424000',
+                },
+                {
+                    name: 'Santa Cruz',
+                    code: '0403426000',
+                },
+                {
+                    name: 'Calauan',
+                    code: '0403406000',
+                },
+                {
+                    name: 'Pila',
+                    code: '0403422000',
+                },
+                {
+                    name: 'Bay',
+                    code: '0403402000',
+                },
+            ];
+        }
+
+        if (url.includes('/provinces/')) {
+            return [
+                {
+                    name: 'Provincial Capital',
+                    code: '000000001',
+                },
+                {
+                    name: 'Service Municipality',
+                    code: '000000002',
+                },
+            ];
+        }
+
+        return [
+            {
+                name: 'Poblacion',
+                code: '000000101',
+            },
+            {
+                name: 'San Antonio',
+                code: '000000102',
+            },
+            {
+                name: 'San Rafael',
+                code: '000000103',
+            },
+            {
+                name: 'Del Remedio',
+                code: '000000104',
+            },
+        ];
+    };
+
+    const fill = (
+        select,
+        items,
+        placeholder
+    ) => {
+        select.innerHTML =
+            `<option value="">${placeholder}</option>` +
+            items
+                .map(
+                    (item) =>
+                        `<option value="${escapeHtml(item.name)}" data-code="${escapeHtml(item.code)}">${escapeHtml(item.name)}</option>`
+                )
+                .join('');
+
+        select.disabled = false;
+        const oldValue = select.dataset.oldValue || '';
+        select.dataset.oldValue = '';
+        if (oldValue) {
+            const match = [...select.options].find((option) =>
+                option.value.toLocaleLowerCase() === oldValue.toLocaleLowerCase());
+            if (match) select.value = match.value;
+        }
+        syncSearchableSelect(select);
+    };
+
+    const load = async (
+        url,
+        select,
+        placeholder
+    ) => {
+        select.disabled = true;
+        select.innerHTML =
+            '<option value="">Loading…</option>';
+
+        syncSearchableSelect(select);
+
+        try {
+            const response = await fetch(url);
+
+            if (!response.ok) throw new Error();
+
+            const payload =
+                await response.json();
+
+            const items =
+                Array.isArray(payload)
+                    ? payload
+                    : payload.data;
+
+            if (!Array.isArray(items)) {
+                throw new Error();
+            }
+
+            fill(
+                select,
+                items,
+                placeholder
+            );
+        } catch {
+            fill(
+                select,
+                fallbackLocations(url),
+                `${placeholder} (preview list)`
+            );
+
+            toast(
+                'Using the offline preview location list.'
+            );
+        }
+    };
+
+    const resetPostal = (
+        message =
+            'Select a municipality to fill this automatically.'
+    ) => {
+        if (!postalCode) return;
+
+        postalCode.value = '';
+        postalCode.readOnly = true;
+        postalCode.placeholder =
+            'Auto-generated';
+
+        if (postalChoices) {
+            postalChoices.hidden = true;
+            postalChoices.innerHTML = '';
+        }
+
+        if (postalHelp) {
+            postalHelp.textContent = message;
+            postalHelp.dataset.state = 'info';
+        }
+
+        if (cityCodeField) {
+            cityCodeField.value = '';
+        }
+
+        if (postalManualField) {
+            postalManualField.value = '0';
+        }
+    };
+
+    const postalLabel = (option) => {
+        const area =
+            option.area ||
+            option.label ||
+            option.name ||
+            option.location ||
+            '';
+
+        return area
+            ? `${option.code} — ${area}`
+            : String(option.code || '');
+    };
+
+    const applyPostal = (option) => {
+        if (!postalCode || !option?.code) return;
+
+        postalCode.value =
+            String(option.code)
+                .replace(/\D/g, '')
+                .slice(0, 4);
+
+        postalCode.readOnly = true;
+
+        if (postalManualField) {
+            postalManualField.value = '0';
+        }
+    };
+
+    const loadPostalCode = async () => {
+        if (
+            !postalCode ||
+            !city ||
+            !province
+        ) {
+            return;
+        }
+
+        const cityOption =
+            city.selectedOptions[0];
+
+        const cityCode =
+            cityOption?.dataset.code || '';
+
+        resetPostal('Looking up postal code…');
+
+        if (
+            !city.value ||
+            !province.value
+        ) {
+            resetPostal();
+            return;
+        }
+
+        if (cityCodeField) {
+            cityCodeField.value = cityCode;
+        }
+
+        try {
+            const params =
+                new URLSearchParams({
+                    city_code: cityCode,
+                    province: province.value,
+                    city: city.value,
+                });
+
+            const response =
+                await fetch(
+                    `${form.dataset.postalUrl}?${params.toString()}`,
+                    {
+                        headers: {
+                            Accept:
+                                'application/json',
+                        },
+                    }
+                );
+
+            if (!response.ok) {
+                throw new Error();
+            }
+
+            const payload =
+                await response.json();
+
+            const options =
+                Array.isArray(payload.options)
+                    ? payload.options.filter(
+                        (item) =>
+                            item &&
+                            /^\d{4}$/.test(
+                                String(
+                                    item.code ||
+                                        ''
+                                )
+                            )
+                    )
+                    : [];
+
+            if (options.length === 1) {
+                applyPostal(options[0]);
+
+                if (postalHelp) {
+                    postalHelp.textContent =
+                        `Postal code ${options[0].code} was filled from the selected municipality.`;
+
+                    postalHelp.dataset.state =
+                        'success';
+                }
+
+                return;
+            }
+
+            if (
+                options.length > 1 &&
+                postalChoices
+            ) {
+                postalChoices.innerHTML =
+                    options
+                        .map(
+                            (
+                                option,
+                                index
+                            ) =>
+                                `<option value="${escapeHtml(option.code)}" data-index="${index}">${escapeHtml(postalLabel(option))}</option>`
+                        )
+                        .join('');
+
+                postalChoices.hidden = false;
+
+                applyPostal(options[0]);
+
+                postalChoices.onchange = () => {
+                    const selected =
+                        options[
+                            Number(
+                                postalChoices
+                                    .selectedOptions[0]
+                                    ?.dataset
+                                    .index || 0
+                            )
+                        ];
+
+                    applyPostal(selected);
+                };
+
+                if (postalHelp) {
+                    postalHelp.textContent =
+                        'This municipality has more than one postal code. Choose the correct postal area.';
+
+                    postalHelp.dataset.state =
+                        'info';
+                }
+
+                return;
+            }
+
+            postalCode.readOnly = false;
+            postalCode.placeholder =
+                'Enter 4-digit postal code';
+
+            if (postalManualField) {
+                postalManualField.value =
+                    '1';
+            }
+
+            if (postalHelp) {
+                postalHelp.textContent =
+                    'No postal code was found for this municipality. Enter the correct 4-digit postal code.';
+
+                postalHelp.dataset.state =
+                    'warning';
+            }
+        } catch {
+            postalCode.readOnly = false;
+            postalCode.placeholder =
+                'Enter 4-digit postal code';
+
+            if (postalManualField) {
+                postalManualField.value =
+                    '1';
+            }
+
+            if (postalHelp) {
+                postalHelp.textContent =
+                    'Postal lookup is temporarily unavailable. Enter the correct 4-digit postal code.';
+
+                postalHelp.dataset.state =
+                    'warning';
+            }
+        }
+    };
+
+    postalCode?.addEventListener(
+        'input',
+        () => {
+            if (!postalCode.readOnly) {
+                postalCode.value =
+                    postalCode.value
+                        .replace(/\D/g, '')
+                        .slice(0, 4);
+            }
+        }
+    );
+
+    if (region && province && city && barangay) {
+        const restoreAddressCascade = async () => {
+            await load(
+                '/api/psgc/regions',
+                region,
+                'Select region'
+            );
+
+            const regionCode = region.selectedOptions[0]?.dataset.code || '';
+            if (regionCodeField) regionCodeField.value = regionCode;
+            if (!regionCode) return;
+
+            await load(
+                `/api/psgc/regions/${regionCode}/provinces`,
+                province,
+                'Select province'
+            );
+
+            const provinceCode = province.selectedOptions[0]?.dataset.code || '';
+            if (!provinceCode) return;
+
+            await load(
+                `/api/psgc/provinces/${provinceCode}/cities`,
+                city,
+                'Select municipality / city'
+            );
+
+            const cityCode = city.selectedOptions[0]?.dataset.code || '';
+            if (!cityCode) return;
+
+            await load(
+                `/api/psgc/cities/${cityCode}/barangays`,
+                barangay,
+                'Select barangay'
+            );
+
+            await loadPostalCode();
+
+            if (restoringAddress) {
+                const selectedCityCode = city.selectedOptions[0]?.dataset.code || '';
+                if (selectedCityCode && selectedCityCode === savedCityCode) {
+                    postalCode.value = savedPostalCode;
+                    postalCode.readOnly = !savedPostalManual;
+                    postalManualField.value = savedPostalManual ? '1' : '0';
+                    cityCodeField.value = selectedCityCode;
+                }
+
+                restoringAddress = false;
+            }
+        };
+
+        void restoreAddressCascade();
+
+        region.addEventListener(
+            'change',
+            () => {
+                const code = region.selectedOptions[0]?.dataset.code || '';
+                if (regionCodeField) regionCodeField.value = code;
+
+                province.dataset.oldValue = '';
+                province.innerHTML =
+                    '<option value="">Select region first</option>';
+
+                province.disabled = true;
+
+                city.innerHTML =
+                    '<option value="">Select province first</option>';
+
+                city.disabled = true;
+
+                barangay.innerHTML =
+                    '<option value="">Select city first</option>';
+
+                barangay.disabled = true;
+
+                syncSearchableSelect(province);
+                syncSearchableSelect(city);
+                syncSearchableSelect(barangay);
+
+                resetPostal();
+
+                if (code) {
+                    load(
+                        `/api/psgc/regions/${code}/provinces`,
+                        province,
+                        'Select province'
+                    );
+                }
+            }
+        );
+
+        province.addEventListener(
+            'change',
+            () => {
+                const code =
+                    province
+                        .selectedOptions[0]
+                        ?.dataset.code;
+
+                city.innerHTML =
+                    '<option value="">Select province first</option>';
+
+                city.disabled = true;
+
+                barangay.innerHTML =
+                    '<option value="">Select city first</option>';
+
+                barangay.disabled = true;
+
+                syncSearchableSelect(city);
+                syncSearchableSelect(barangay);
+
+                resetPostal();
+
+                if (code) {
+                    load(
+                        `/api/psgc/provinces/${code}/cities`,
+                        city,
+                        'Select municipality / city'
+                    );
+                }
+            }
+        );
+
+        city.addEventListener(
+            'change',
+            () => {
+                const code =
+                    city
+                        .selectedOptions[0]
+                        ?.dataset.code;
+
+                barangay.innerHTML =
+                    '<option value="">Select city first</option>';
+
+                barangay.disabled = true;
+
+                syncSearchableSelect(barangay);
+
+                resetPostal();
+
+                if (code) {
+                    load(
+                        `/api/psgc/cities/${code}/barangays`,
+                        barangay,
+                        'Select barangay'
+                    );
+                }
+
+                void loadPostalCode().finally(() => {
+                    if (!restoringAddress) return;
+
+                    const selectedCityCode = city.selectedOptions[0]?.dataset.code || '';
+                    if (selectedCityCode && selectedCityCode === savedCityCode) {
+                        postalCode.value = savedPostalCode;
+                        postalCode.readOnly = !savedPostalManual;
+                        postalManualField.value = savedPostalManual ? '1' : '0';
+                        cityCodeField.value = selectedCityCode;
+                    }
+
+                    restoringAddress = false;
+                });
+            }
+        );
+
+        barangay.addEventListener(
+            'change',
+            () => {
+                syncSearchableSelect(barangay);
+            }
+        );
+    }
+
+    show(step);
+}
+
+function setupSortingZones() {
+    document.querySelectorAll('[data-zone-archive-form]').forEach((archiveForm) => {
+        archiveForm.addEventListener('submit', (event) => {
+            if (!window.confirm('Archive this zone? It will be deactivated and removed from parcel routing. You can restore it later from Archived zones.')) {
+                event.preventDefault();
+            }
+        });
+    });
+
+    document.querySelectorAll('[data-zone-delete-form]').forEach((deleteForm) => {
+        deleteForm.addEventListener('submit', (event) => {
+            if (!window.confirm('Permanently delete this archived zone? This cannot be undone. Parcel, dispatch, and tracking records remain, but their link to this zone will be cleared.')) {
+                event.preventDefault();
+            }
+        });
+    });
+
+    const form = document.querySelector('[data-sorting-zone-form]');
+    if (!form) return;
+
+    const cityCode = form.dataset.cityCode || '';
+    const search = form.querySelector('[data-zone-barangay-search]');
+    const list = form.querySelector('[data-zone-barangays]');
+    const count = form.querySelector('[data-zone-barangay-count]');
+    const status = form.querySelector('[data-zone-location-status]');
+    const submit = form.querySelector('[data-zone-submit]');
+    const editing = form.querySelector('input[name="_method"]')?.value === 'PATCH';
+    let oldBarangays = [];
+    let barangayRequest = 0;
+    let restorePending = false;
+
+    try {
+        const saved = JSON.parse(
+            form.querySelector('[data-zone-old-barangays]')?.textContent || '[]'
+        );
+        oldBarangays = Array.isArray(saved) ? saved : [];
+        restorePending = oldBarangays.length > 0;
+    } catch {
+        oldBarangays = [];
+    }
+
+    const locations = async (url) => {
+        const response = await fetch(url, {
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) throw new Error('The location service is unavailable.');
+
+        const payload = await response.json();
+        const items = Array.isArray(payload) ? payload : payload.data;
+
+        if (!Array.isArray(items)) throw new Error('Invalid location response.');
+
+        return items.filter((item) => item && item.name && item.code);
+    };
+
+    const selectedBarangays = () => [
+        ...list.querySelectorAll('input[name="barangays[]"]:checked'),
+    ];
+
+    const updateFormState = () => {
+        const selected = selectedBarangays();
+        count.textContent = selected.length
+            ? editing
+                ? `${selected.length} ${selected.length === 1 ? 'barangay' : 'barangays'} selected`
+                : `${selected.length} ${selected.length === 1 ? 'zone' : 'zones'} will be created`
+            : 'No barangays selected';
+        submit.disabled = !cityCode || selected.length === 0;
+    };
+
+    const resetBarangays = (message = 'Your municipality’s barangays will load shortly.') => {
+        list.replaceChildren();
+        const empty = document.createElement('span');
+        empty.className = 'zone-location-empty';
+        empty.textContent = message;
+        list.append(empty);
+        search.value = '';
+        search.disabled = true;
+        count.textContent = 'No barangays selected';
+        updateFormState();
+    };
+
+    const renderBarangays = (items, selectedNames = []) => {
+        list.replaceChildren();
+
+        if (items.length === 0) {
+            resetBarangays('No barangays were returned for this municipality.');
+            return;
+        }
+
+        items.forEach((item) => {
+            const label = document.createElement('label');
+            label.className = 'zone-barangay-option';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.name = 'barangays[]';
+            checkbox.value = item.name;
+            checkbox.checked = selectedNames.includes(item.name);
+            checkbox.addEventListener('change', updateFormState);
+
+            const name = document.createElement('span');
+            name.textContent = item.name;
+
+            label.append(checkbox, name);
+            label.dataset.search = item.name.toLocaleLowerCase();
+            list.append(label);
+        });
+
+        search.value = '';
+        search.disabled = false;
+        status.textContent = editing
+            ? `${items.length} barangays loaded. Select the coverage for this zone.`
+            : `${items.length} barangays loaded. Each selected barangay will get its own zone.`;
+        updateFormState();
+    };
+
+    const loadBarangays = async (restoreSelection = false) => {
+        const request = ++barangayRequest;
+        resetBarangays();
+
+        if (!cityCode) {
+            status.textContent = 'Your Logistics service city is not configured. Contact support before creating a zone.';
+            return;
+        }
+
+        search.disabled = true;
+        resetBarangays('Loading barangays…');
+        status.textContent = 'Loading barangays…';
+
+        try {
+            const items = await locations(
+                `${form.dataset.barangaysUrl}/${encodeURIComponent(cityCode)}/barangays`
+            );
+            if (request !== barangayRequest) return;
+            renderBarangays(
+                items,
+                restoreSelection
+                    ? oldBarangays.map((item) => typeof item === 'string' ? item : item?.name).filter(Boolean)
+                    : []
+            );
+            if (restoreSelection) restorePending = false;
+        } catch {
+            if (request !== barangayRequest) return;
+            resetBarangays('Barangays could not be loaded.');
+            status.textContent = 'Could not load barangays. Refresh the page and try again.';
+        }
+    };
+
+    search.addEventListener('input', () => {
+        const query = search.value.trim().toLocaleLowerCase();
+
+        list.querySelectorAll('.zone-barangay-option').forEach((label) => {
+            label.hidden = !label.dataset.search.includes(query);
+        });
+    });
+
+    status.textContent = 'Loading the official barangay list for your registered service city…';
+    loadBarangays(restorePending);
+
+    document.querySelectorAll('[data-zone-status-form]').forEach((statusForm) => {
+        statusForm.addEventListener('submit', (event) => {
+            if (statusForm.querySelector('[name="status"]')?.value !== 'inactive') return;
+
+            if (!window.confirm('Deactivate this delivery zone? Active dispatch batches and non-final parcels must be cleared first.')) {
+                event.preventDefault();
+            }
+        });
+    });
+
+    updateFormState();
+}
+
+function setupRiderZoneAssignment() {
+    const center = document.querySelector('#rider-home-sorting-center');
+    const zone = document.querySelector('#rider-current-zone');
+    const coverage = document.querySelector('[data-rider-zone-coverage]');
+
+    if (!center || !zone) return;
+
+    const sync = (clearInvalidSelection = false) => {
+        const centerId = center.value;
+
+        [...zone.options].forEach((option) => {
+            if (!option.value) return;
+
+            const belongsToCenter = option.dataset.centerId === centerId;
+            option.disabled = !belongsToCenter;
+            option.hidden = !belongsToCenter;
+        });
+
+        if (
+            clearInvalidSelection
+            && zone.selectedOptions[0]?.disabled
+        ) {
+            zone.value = '';
+        }
+
+        const selected = zone.selectedOptions[0];
+        if (coverage) {
+            coverage.textContent = selected?.dataset.coverage
+                ? `Assigned zone covers ${selected.dataset.coverage}.`
+                : 'Dispatches are limited to parcels whose destination barangay is covered by the assigned zone.';
+        }
+    };
+
+    center.addEventListener('change', () => sync(true));
+    zone.addEventListener('change', () => sync());
+    sync(true);
+}
+
+function setupRefundAcknowledgmentPrinting() {
+    document.querySelector('[data-print-refund-slip]')?.addEventListener('click', () => window.print());
+}
+
+function setupCashAmountFormatting() {
+    document.querySelectorAll('[data-cash-amount]').forEach((input) => {
+        const format = (preserveCaret = true, padDecimals = false) => {
+            const current = input.value;
+            const caret = input.selectionStart ?? current.length;
+            const digitsBeforeCaret = (current.slice(0, caret).match(/\d/g) || []).length;
+            const caretAfterDecimal = current.slice(0, caret).includes('.');
+            const ungrouped = current.replace(/,/g, '').replace(/[^\d.]/g, '');
+            const decimalIndex = ungrouped.indexOf('.');
+            const integer = decimalIndex === -1 ? ungrouped : ungrouped.slice(0, decimalIndex);
+            const decimals = decimalIndex === -1
+                ? ''
+                : ungrouped.slice(decimalIndex + 1).replace(/\./g, '');
+            const groupedInteger = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            const formattedDecimals = padDecimals ? decimals.padEnd(2, '0') : decimals;
+            const formatted = decimalIndex === -1 && !padDecimals
+                ? groupedInteger
+                : `${groupedInteger || '0'}.${formattedDecimals}`;
+
+            input.value = formatted;
+
+            if (!preserveCaret || document.activeElement !== input) return;
+
+            let position = 0;
+            let digitsFound = 0;
+
+            while (position < formatted.length && digitsFound < digitsBeforeCaret) {
+                if (/\d/.test(formatted[position])) digitsFound += 1;
+                position += 1;
+            }
+
+            if (caretAfterDecimal && formatted.includes('.')) {
+                position = Math.max(position, formatted.indexOf('.') + 1);
+            }
+
+            input.setSelectionRange(position, position);
+        };
+
+        format(false);
+        input.addEventListener('input', () => format());
+        input.addEventListener('blur', () => format(false, true));
+    });
+}
+
+function setupShipmentTransfers() {
+    document.querySelectorAll('[data-transfer-send-form]').forEach((form) => {
+        form.addEventListener('submit', (event) => {
+            if (!window.confirm('Send this shipment to the destination-city Logistics account? It will remain in your custody until that account scans and accepts it.')) {
+                event.preventDefault();
+            }
+        });
+    });
+}
+
+function setupCashReferenceCopy() {
+    document.addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-copy-cash-reference]');
+        if (!button) return;
+
+        const reference = button.dataset.copyValue || '';
+        const clipboard = navigator.clipboard;
+
+        if (!reference || !clipboard?.writeText) {
+            toast('Clipboard is unavailable. Select and copy the reference.');
+            return;
+        }
+
+        try {
+            await clipboard.writeText(reference);
+            toast('Cash reference copied.');
+        } catch {
+            toast('Could not copy. Select and copy the reference.');
+        }
+    });
+}
+
+function setupRiderPayoutCashReference() {
+    document.querySelectorAll('[data-rider-payout-form]').forEach((form) => {
+        const method = form.querySelector('select[name="method"]');
+        const referenceField = form.querySelector('[data-external-rider-payout-reference]');
+        const reference = referenceField?.querySelector('input[name="reference"]');
+        const cashReferenceHint = form.querySelector('[data-generated-rider-cash-reference]');
+        if (!method || !referenceField || !reference || !cashReferenceHint) return;
+
+        const updateReferenceField = () => {
+            const cashSelected = method.value === 'cash';
+            referenceField.hidden = cashSelected;
+            reference.disabled = cashSelected;
+            reference.required = !cashSelected;
+            cashReferenceHint.hidden = !cashSelected;
+            if (cashSelected) reference.value = '';
+        };
+
+        method.addEventListener('change', updateReferenceField);
+        updateReferenceField();
+    });
+}
+
+function setupShippingSettlementRealtime() {
+    const settlements = document.querySelector('[data-shipping-settlement-live]');
+    if (!settlements) return;
+
+    let statusVersion = settlements.dataset.statusVersion || '';
+    let statusCheckInFlight = false;
+    let rowsRefreshInFlight = false;
+    let refreshQueued = false;
+    let dirtyFormNoticeShown = false;
+    const statusUrl = settlements.dataset.statusUrl || '';
+
+    const dirtyForm = () => settlements.querySelector('[data-rider-payout-form][data-rider-payout-dirty="true"]');
+    const markFormDirty = (event) => {
+        if (!(event.target instanceof Element)) return;
+        const form = event.target.closest('[data-shipping-settlement-live] [data-rider-payout-form]');
+        if (form) form.dataset.riderPayoutDirty = 'true';
+    };
+
+    document.addEventListener('input', markFormDirty);
+    document.addEventListener('change', markFormDirty);
+
+    const refreshRows = async () => {
+        if (document.hidden) {
+            refreshQueued = true;
+            return;
+        }
+        if (dirtyForm()) {
+            refreshQueued = true;
+            if (!dirtyFormNoticeShown) {
+                toast('A settlement changed while this payout form has edits. Submit the form to load the latest status.');
+                dirtyFormNoticeShown = true;
+            }
+            return;
+        }
+        if (rowsRefreshInFlight) {
+            refreshQueued = true;
+            return;
+        }
+
+        rowsRefreshInFlight = true;
+        try {
+            const url = new URL(window.location.href);
+            url.hash = '';
+            const response = await fetch(url, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'text/html',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            if (!response.ok) return;
+
+            const html = await response.text();
+            const refreshedPage = new DOMParser().parseFromString(html, 'text/html');
+            const refreshedSettlements = refreshedPage.querySelector('[data-shipping-settlement-live]');
+            const refreshedRows = refreshedSettlements?.querySelector('[data-shipping-settlement-rows]');
+            if (!refreshedSettlements || !refreshedRows) return;
+
+            const nextVersion = refreshedSettlements.dataset.statusVersion || '';
+            if (!nextVersion || nextVersion === statusVersion) return;
+
+            settlements.querySelector('[data-shipping-settlement-rows]')?.replaceWith(refreshedRows);
+            statusVersion = nextVersion;
+            settlements.dataset.statusVersion = nextVersion;
+            dirtyFormNoticeShown = false;
+            setupRiderPayoutCashReference();
+            refreshIcons();
+            toast('Rider settlement status updated.');
+        } catch {
+            // The next event, reconnect check, or disconnected fallback retries.
+        } finally {
+            rowsRefreshInFlight = false;
+            if (refreshQueued && !document.hidden && !dirtyForm()) {
+                refreshQueued = false;
+                refreshRows();
+            }
+        }
+    };
+
+    const checkStatusVersion = async (force = false) => {
+        if (!statusUrl || document.hidden || statusCheckInFlight
+            || (!force && window.BearlyRealtime?.connected)) return;
+
+        statusCheckInFlight = true;
+        try {
+            const response = await fetch(statusUrl, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            const payload = await response.json().catch(() => ({}));
+            const nextVersion = String(payload?.data?.version || '');
+            if (!response.ok || !nextVersion) return;
+
+            if (statusVersion && nextVersion !== statusVersion) {
+                await refreshRows();
+                return;
+            }
+
+            statusVersion = nextVersion;
+            settlements.dataset.statusVersion = nextVersion;
+        } catch {
+            // A later visibility change or disconnected poll retries.
+        } finally {
+            statusCheckInFlight = false;
+        }
+    };
+
+    window.addEventListener('bearly:rider-shipping-earning-updated', refreshRows);
+    window.addEventListener('bearly:realtime-status', (event) => {
+        if (event.detail?.connected) checkStatusVersion(true);
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) checkStatusVersion(true);
+    });
+
+    checkStatusVersion(true);
+    window.setInterval(() => checkStatusVersion(), 10000);
+}
+
+function setupRefundCashRealtime() {
+    let list = document.querySelector('[data-refund-cash-list]');
+    if (!list) return;
+
+    let statusVersion = list.dataset.statusVersion || '';
+    let statusCheckInFlight = false;
+    let listRefreshInFlight = false;
+    let refreshQueued = false;
+    let dirtyFormNoticeShown = false;
+    const statusUrl = list.dataset.statusUrl;
+
+    const dirtyForm = () => list.querySelector('form[data-cash-custody-dirty="true"]');
+    const markFormDirty = (event) => {
+        const form = event.target.closest('[data-refund-cash-list] form');
+        if (form) form.dataset.cashCustodyDirty = 'true';
+    };
+
+    document.addEventListener('input', markFormDirty);
+    document.addEventListener('change', markFormDirty);
+
+    const refreshAssignments = async () => {
+        if (document.hidden) {
+            refreshQueued = true;
+            return;
+        }
+        if (dirtyForm()) {
+            refreshQueued = true;
+            if (!dirtyFormNoticeShown) {
+                toast('A refund cash status changed. Finish or cancel this form to load the latest status.');
+                dirtyFormNoticeShown = true;
+            }
+            return;
+        }
+        if (listRefreshInFlight) {
+            refreshQueued = true;
+            return;
+        }
+
+        listRefreshInFlight = true;
+        try {
+            const url = new URL(window.location.href);
+            url.hash = '';
+            const response = await fetch(url, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'text/html',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            if (!response.ok) return;
+
+            const html = await response.text();
+            const refreshedPage = new DOMParser().parseFromString(html, 'text/html');
+            const refreshedList = refreshedPage.querySelector('[data-refund-cash-list]');
+            if (!refreshedList) return;
+
+            const nextVersion = refreshedList.dataset.statusVersion || '';
+            if (nextVersion && nextVersion === statusVersion) return;
+
+            list.replaceWith(refreshedList);
+            list = refreshedList;
+            statusVersion = nextVersion;
+            dirtyFormNoticeShown = false;
+            refreshIcons();
+            toast('Refund cash status updated.');
+        } catch {
+            // The next broadcast, reconnect check, or fallback poll retries.
+        } finally {
+            listRefreshInFlight = false;
+            if (refreshQueued && !document.hidden && !dirtyForm()) {
+                refreshQueued = false;
+                refreshAssignments();
+            }
+        }
+    };
+
+    const checkStatusVersion = async (force = false) => {
+        if (!statusUrl || document.hidden || statusCheckInFlight
+            || (!force && window.BearlyRealtime?.connected)) return;
+
+        statusCheckInFlight = true;
+        try {
+            const response = await fetch(statusUrl, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            const payload = await response.json().catch(() => ({}));
+            const nextVersion = String(payload?.data?.version || '');
+            if (!response.ok || !nextVersion) return;
+
+            if (statusVersion && nextVersion !== statusVersion) {
+                await refreshAssignments();
+                return;
+            }
+
+            statusVersion = nextVersion;
+        } catch {
+            // The next visibility change or fallback poll retries.
+        } finally {
+            statusCheckInFlight = false;
+        }
+    };
+
+    window.addEventListener('bearly:logistics-refund-cash-updated', refreshAssignments);
+    window.addEventListener('bearly:realtime-status', (event) => {
+        if (event.detail?.connected) checkStatusVersion(true);
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) checkStatusVersion(true);
+    });
+
+    checkStatusVersion(true);
+    window.setInterval(() => checkStatusVersion(), 10000);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    setupShippingPolicyScrollRestoration();
+    setupShell();
+    setupModals();
+    setupPickupRejection();
+    setupTabs();
+    setupLogisticsLocationSharing();
+    setupLogisticsFacilityMap();
+    setupTables();
+    setupRiderAccountRealtime();
+    setupChat();
+    setupNewConversation();
+    setupRegistration();
+    setupSortingZones();
+    setupRiderZoneAssignment();
+    setupLogisticsPayoutDestinationForm();
+    setupRefundAcknowledgmentPrinting();
+    setupCashAmountFormatting();
+    setupCashReferenceCopy();
+    setupRiderPayoutCashReference();
+    setupShippingSettlementRealtime();
+    setupRefundCashRealtime();
+    setupShipmentTransfers();
+    setupLogisticsPickupMaps();
+    refreshIcons();
+});

@@ -1,0 +1,159 @@
+import { createAddressMapPicker } from './address-map-picker';
+import { setupPsgcAddressSelector } from './psgc-address-selector';
+
+(() => {
+  const $ = id => document.getElementById(id);
+  const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
+  let addresses = [], activeLabel = 'Home', pendingDelete = null, mapPicker = null;
+
+  const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[char]));
+
+  function toast(message) {
+    const element = $('address-toast');
+    if (!element) return;
+    element.textContent = message;
+    element.classList.add('show');
+    clearTimeout(window.__addressToast);
+    window.__addressToast = setTimeout(() => element.classList.remove('show'), 1600);
+  }
+
+  function fullAddress(address) {
+    return [address.street, address.barangay, address.city, address.province, address.postal]
+      .filter(Boolean).join(', ');
+  }
+
+  function render() {
+    const list = $('address-list');
+    if (!list) return;
+    list.innerHTML = addresses.map(address => `<article class="address-item" data-id="${escapeHtml(address.id)}">
+      <div><div class="address-name-line"><strong>${escapeHtml(address.name)}</strong><span class="address-phone">${escapeHtml(address.phone)}</span></div>
+      <div class="address-text">${escapeHtml(fullAddress(address))}</div>
+      <div class="address-tags"><span class="address-tag">${escapeHtml(address.label || 'Home')}</span>${address.isDefault ? '<span class="address-tag default-badge">Default</span>' : ''}${address.cityVerified ? '' : '<span class="address-tag address-verify-tag">Verify city for checkout</span>'}</div></div>
+      <div class="address-actions"><div class="address-actions-top"><button class="edit-btn" data-edit type="button">Edit</button><button class="delete-btn" data-delete type="button">Delete</button></div>
+      <button class="set-default-btn" data-default type="button" ${address.isDefault ? 'disabled' : ''}>${address.isDefault ? 'Default Address' : 'Set as Default'}</button></div>
+    </article>`).join('');
+    $('address-empty').hidden = addresses.length > 0;
+  }
+
+  async function request(url, options = {}) {
+    const response = await fetch(url, {
+      ...options,
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf(), ...(options.headers || {}) }
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(Object.values(result.errors || {}).flat()[0] || result.message || 'Unable to save address.');
+    }
+    return result;
+  }
+
+  async function load() {
+    try {
+      const result = await request('/addresses/data', { method: 'GET' });
+      addresses = Array.isArray(result.data) ? result.data : [];
+      render();
+    } catch (error) {
+      toast(error.message);
+    }
+  }
+
+  function setLabel(label) {
+    activeLabel = label;
+    document.querySelectorAll('.label-choice').forEach(button => button.classList.toggle('active', button.dataset.label === label));
+  }
+
+  function openForm(address = null) {
+    $('address-modal-title').textContent = address ? 'Edit Address' : 'New Address';
+    $('editing-id').value = address?.id || '';
+    $('full-name').value = address?.name || '';
+    $('phone-number').value = address?.phone || '';
+    $('city-code').value = address?.cityCode || '';
+    $('barangay').value = address?.barangay || '';
+    $('postal-code').value = address?.postal || '';
+    $('street').value = address?.street || '';
+    $('set-default').checked = Boolean(address?.isDefault);
+    setLabel(address?.label || 'Home');
+    $('address-modal').hidden = false;
+    void psgcAddressSelector?.setAddress(address?.province || '', address?.cityCode || '');
+    mapPicker?.reset(address?.latitude, address?.longitude);
+    setTimeout(() => $('full-name').focus(), 30);
+  }
+
+  function closeForm() {
+    $('address-modal').hidden = true;
+    $('address-form').reset();
+    $('editing-id').value = '';
+    $('city-code').value = '';
+    setLabel('Home');
+  }
+
+  function formData() {
+    return {
+      name: $('full-name').value.trim(), phone: $('phone-number').value.trim(),
+      province: $('province').value.trim(), city: $('city').value.trim(), city_code: $('city-code').value.trim(),
+      barangay: $('barangay').value.trim(), postal: $('postal-code').value.trim(),
+      street: $('street').value.trim(), label: activeLabel,
+      is_default: $('set-default').checked,
+      latitude: $('address-latitude').value || null,
+      longitude: $('address-longitude').value || null
+    };
+  }
+
+  $('add-address').onclick = () => openForm();
+  $('empty-add-address').onclick = () => openForm();
+  $('close-address-modal').onclick = closeForm;
+  $('cancel-address').onclick = closeForm;
+  document.querySelectorAll('.label-choice').forEach(button => button.onclick = () => setLabel(button.dataset.label));
+
+  $('address-form').onsubmit = async event => {
+    event.preventDefault();
+    const id = $('editing-id').value;
+    try {
+      await request(id ? `/addresses/${encodeURIComponent(id)}` : '/addresses', { method: id ? 'PATCH' : 'POST', body: JSON.stringify(formData()) });
+      closeForm(); await load(); toast(id ? 'Address updated' : 'Address added');
+    } catch (error) { toast(error.message); if (/city|PSGC/i.test(error.message)) { $('city').setAttribute('aria-invalid', 'true'); $('address-psgc-status').textContent = error.message; $('city').focus(); } }
+  };
+
+  $('address-list').onclick = async event => {
+    const row = event.target.closest('.address-item');
+    if (!row) return;
+    const id = row.dataset.id;
+    const address = addresses.find(item => String(item.id) === id);
+    if (event.target.closest('[data-edit]')) return openForm(address);
+    if (event.target.closest('[data-delete]')) { pendingDelete = id; $('delete-modal').hidden = false; return; }
+    if (event.target.closest('[data-default]')) {
+      try { await request(`/addresses/${encodeURIComponent(id)}/default`, { method: 'PATCH', body: '{}' }); await load(); toast('Default address updated'); }
+      catch (error) { toast(error.message); }
+    }
+  };
+
+  $('cancel-delete').onclick = () => { $('delete-modal').hidden = true; pendingDelete = null; };
+  $('confirm-delete').onclick = async () => {
+    if (!pendingDelete) return;
+    try { await request(`/addresses/${encodeURIComponent(pendingDelete)}`, { method: 'DELETE' }); $('delete-modal').hidden = true; pendingDelete = null; await load(); toast('Address deleted'); }
+    catch (error) { toast(error.message); }
+  };
+  $('address-modal').onclick = event => { if (event.target === $('address-modal')) closeForm(); };
+  $('delete-modal').onclick = event => { if (event.target === $('delete-modal')) { $('delete-modal').hidden = true; pendingDelete = null; } };
+
+  const psgcAddressSelector = setupPsgcAddressSelector({ province: $('province'), city: $('city'), cityCode: $('city-code'), status: $('address-psgc-status') });
+  psgcAddressSelector?.load();
+
+  mapPicker = createAddressMapPicker({
+    element: $('address-map'),
+    latitudeInput: $('address-latitude'),
+    longitudeInput: $('address-longitude'),
+    clearButton: $('clear-address-pin'),
+    locationButton: $('use-current-location'),
+    reverseGeocodeUrl: $('address-map')?.dataset.reverseGeocodeUrl,
+    forwardGeocodeUrl: $('address-map')?.dataset.forwardGeocodeUrl,
+    fields: {
+      street: $('street'), barangay: $('barangay'), city: $('city'), province: $('province'), postal: $('postal-code'),
+    },
+    status: $('address-map-status'),
+  });
+
+  load();
+})();

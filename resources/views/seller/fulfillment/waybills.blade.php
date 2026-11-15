@@ -1,0 +1,205 @@
+@extends('layouts.seller')
+
+@section('title', 'Waybills')
+@section('page-title', 'Waybills')
+
+@section('content')
+<div class="waybills-page">
+    <div class="page-heading fulfillment-heading waybills-heading">
+        <div>
+            <span class="section-kicker">Fulfillment preparation</span>
+            <h2>Waybills</h2>
+            <p>Prepare and attach parcel labels before the Rider pickup.</p>
+        </div>
+
+        <button class="seller-primary-button waybill-bulk-button" type="button" data-waybill-bulk disabled>
+            <i data-lucide="file-down" aria-hidden="true"></i>
+            Download Selected PDFs
+        </button>
+    </div>
+
+    @if (session('success'))
+        <div class="waybill-alert is-success" role="status">{{ session('success') }}</div>
+    @endif
+    @if (session('error'))
+        <div class="waybill-alert is-error" role="alert">{{ session('error') }}</div>
+    @endif
+
+    <section class="fulfillment-workspace waybill-workspace" data-waybill-workspace aria-label="Waybill management">
+        <div class="waybill-workspace-head">
+            <nav class="fulfillment-tabs" aria-label="Waybill status filters">
+                @foreach (['all' => 'All', 'ready' => 'Ready to Print', 'printed' => 'Printed', 'voided' => 'Voided'] as $key => $label)
+                    <a href="{{ route('seller.fulfillment.waybills', array_filter(['status' => $key === 'all' ? null : $key, 'search' => $search ?: null])) }}"
+                       @class(['is-active' => $statusFilter === $key])
+                       @if ($statusFilter === $key) aria-current="page" @endif>
+                        {{ $label }} <span>{{ $counts[$key] }}</span>
+                    </a>
+                @endforeach
+            </nav>
+        </div>
+
+        <div class="fulfillment-toolbar waybill-toolbar">
+            <form method="get" action="{{ route('seller.fulfillment.waybills') }}">
+                @if ($statusFilter !== 'all')<input type="hidden" name="status" value="{{ $statusFilter }}">@endif
+                <label>
+                    <i data-lucide="search" aria-hidden="true"></i>
+                    <input type="search" name="search" value="{{ $search }}" placeholder="Search order, item, SKU, waybill, courier, parcel, destination, or pickup" aria-label="Search waybills">
+                </label>
+                <button type="submit">Search</button>
+                @if ($search !== '')<a href="{{ route('seller.fulfillment.waybills', $statusFilter === 'all' ? [] : ['status' => $statusFilter]) }}">Clear</a>@endif
+            </form>
+            <button type="button" data-waybill-history>
+                <i data-lucide="history" aria-hidden="true"></i>
+                PDF / Print History
+            </button>
+        </div>
+
+        <div class="waybill-record-list">
+            <div class="waybill-select-all">
+                <label><input type="checkbox" data-waybill-check-all> <span>Select all printable waybills on this page</span></label>
+                <span>{{ $waybills->count() }} {{ $waybills->count() === 1 ? 'waybill' : 'waybills' }}</span>
+            </div>
+
+            @forelse ($waybills as $item)
+                <article data-waybill-row data-status="{{ $item['status_key'] }}" class="waybill-record {{ $item['status_key'] === 'ready' ? 'is-actionable' : '' }}">
+                    <div class="waybill-record-main">
+                        <label class="waybill-record-select">
+                            <input type="checkbox" data-waybill-check value="{{ $item['id'] }}" {{ $item['status_key'] === 'voided' ? 'disabled' : '' }}>
+                            <span class="sr-only">Select {{ $item['order'] }}</span>
+                        </label>
+
+                        <section class="waybill-order-overview" aria-labelledby="waybill-overview-title-{{ $item['id'] }}">
+                            <header class="waybill-overview-heading">
+                                <i data-lucide="briefcase-business" aria-hidden="true"></i>
+                                <span aria-hidden="true"></span>
+                                <h3 id="waybill-overview-title-{{ $item['id'] }}">Seller Order / Buyer</h3>
+                            </header>
+
+                            <div class="waybill-overview-body">
+                                <section class="waybill-overview-items" aria-labelledby="waybill-items-title-{{ $item['id'] }}">
+                                    <div class="waybill-overview-section-heading">
+                                        <i data-lucide="layers-2" aria-hidden="true"></i>
+                                        <h4 id="waybill-items-title-{{ $item['id'] }}">Items</h4>
+                                        <span class="waybill-linked-order-count">{{ $item['seller_order_count'] }} linked {{ $item['seller_order_count'] === 1 ? 'order' : 'orders' }}</span>
+                                    </div>
+
+                                    <div class="waybill-product-gallery">
+                                        <div class="waybill-product-thumbnails" role="group" aria-label="Products in {{ $item['order'] }}">
+                                            @forelse (array_slice($item['products'], 0, 3) as $product)
+                                                @include('seller.fulfillment.partials.waybill-product-thumbnail', ['product' => $product])
+                                            @empty
+                                                <span class="waybill-product-thumbnail is-empty" aria-hidden="true"><i data-lucide="shopping-bag"></i></span>
+                                            @endforelse
+                                            @if ($item['product_count'] > 3)
+                                                @php($remainingProducts = $item['product_count'] - 3)
+                                                <button class="waybill-product-more" type="button" data-waybill-products-toggle
+                                                    data-waybill-more-label="+{{ $remainingProducts }}"
+                                                    data-waybill-less-label="Show less"
+                                                    data-waybill-more-count="{{ $remainingProducts }}"
+                                                    aria-expanded="false"
+                                                    aria-controls="waybill-extra-products-{{ $item['id'] }}"
+                                                    aria-label="Show {{ $remainingProducts }} more product images">+{{ $remainingProducts }}</button>
+                                            @endif
+                                        </div>
+                                        @if ($item['product_count'] > 3)
+                                            <div class="waybill-product-extra-list" id="waybill-extra-products-{{ $item['id'] }}" role="group" aria-label="Additional product images in {{ $item['order'] }}" hidden>
+                                                @foreach (array_slice($item['products'], 3) as $product)
+                                                    @include('seller.fulfillment.partials.waybill-product-thumbnail', ['product' => $product])
+                                                @endforeach
+                                            </div>
+                                        @endif
+                                    </div>
+                                </section>
+
+                                <div class="waybill-overview-orders-recipient">
+                                    <section class="waybill-linked-orders" aria-labelledby="waybill-seller-orders-title-{{ $item['id'] }}">
+                                        <div class="waybill-overview-section-heading">
+                                            <i data-lucide="tag" aria-hidden="true"></i>
+                                            <h4 id="waybill-seller-orders-title-{{ $item['id'] }}">Seller Orders</h4>
+                                        </div>
+                                        <ul class="waybill-seller-order-list">
+                                            @forelse ($item['seller_orders'] as $sellerOrderNumber)
+                                                <li>{{ $sellerOrderNumber }}</li>
+                                            @empty
+                                                <li>Seller Order details unavailable.</li>
+                                            @endforelse
+                                        </ul>
+                                    </section>
+
+                                    <div class="waybill-recipient-card">
+                                        <i data-lucide="user-round" aria-hidden="true"></i>
+                                        <span><small>Buyer</small><strong>{{ $item['customer'] }}</strong></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+
+                    <div class="waybill-record-details">
+                        <dl class="waybill-detail-grid">
+                            <div class="waybill-detail-number"><dt>Waybill Number</dt><dd><strong>{{ $item['tracking'] }}</strong><small>Generated {{ $item['generated_at'] }}</small></dd></div>
+                            <div><dt>Logistics</dt><dd>{{ $item['courier'] }}</dd></div>
+                            <div><dt>Parcel</dt><dd><strong>{{ $item['packages'] }} {{ $item['packages'] === 1 ? 'piece' : 'pieces' }}</strong><small>{{ $item['weight'] }} · {{ $item['size'] }}</small>@if ($item['print_count'] > 0)<small>{{ $item['print_count'] }} print confirmation(s)</small>@endif</dd></div>
+                            <div><dt>Destination</dt><dd><span class="waybill-cell-with-icon"><i data-lucide="map-pin" aria-hidden="true"></i><span>{{ $item['destination'] }}</span></span></dd></div>
+                            <div><dt>Pickup</dt><dd><span class="waybill-cell-with-icon"><i data-lucide="calendar-days" aria-hidden="true"></i><span>{{ $item['pickup'] }}</span></span></dd></div>
+                            <div><dt>Label Status</dt><dd><span @class(['fulfillment-status', 'waybill-label-status', 'is-ready' => $item['status_key'] === 'ready', 'is-printed' => $item['status_key'] === 'printed', 'is-voided' => $item['status_key'] === 'voided'])>@if ($item['status_key'] === 'ready')<i data-lucide="printer" aria-hidden="true"></i>@endif{{ $item['status'] }}</span></dd></div>
+                        </dl>
+
+                        <div class="waybill-actions">
+                            <span class="waybill-detail-heading waybill-actions-heading">Actions</span>
+                            @if ($item['status_key'] !== 'voided')
+                                <button class="fulfillment-row-action is-primary" type="button" data-waybill-download="{{ $item['id'] }}">Download PDF</button>
+                                @if (! $item['pdf_generated'])<small class="waybill-print-hint">Download the PDF to enable print confirmation.</small>@endif
+                                <form method="post" action="{{ route('seller.fulfillment.waybills.printed', $item['id']) }}">
+                                    @csrf
+                                    <button class="fulfillment-row-action" type="submit" data-waybill-print-confirm @disabled(! $item['pdf_generated']) title="{{ $item['pdf_generated'] ? '' : 'Download the PDF first.' }}">{{ $item['status_key'] === 'printed' ? 'Confirm Reprint & Attach' : 'Mark Printed & Attached' }}</button>
+                                </form>
+                            @else
+                                <span class="waybill-voided-note">Not valid for shipping</span>
+                            @endif
+                        </div>
+                    </div>
+                </article>
+            @empty
+                <div class="waybill-empty-card" role="status" data-waybill-empty>
+                    <i data-lucide="package-search" aria-hidden="true"></i>
+                    <strong>No waybills match this view</strong>
+                    <span>Submit a pickup request after a Seller Order is ready to create its waybill.</span>
+                </div>
+            @endforelse
+        </div>
+
+        @if ($waybills->hasPages())
+            <footer class="fulfillment-footer waybill-footer">{{ $waybills->links() }}</footer>
+        @else
+            <footer class="fulfillment-footer waybill-footer">Showing {{ $waybills->count() }} {{ $waybills->count() === 1 ? 'waybill' : 'waybills' }}</footer>
+        @endif
+    </section>
+
+    <form id="waybill-pdf-form" method="post" action="{{ route('seller.fulfillment.waybills.pdf') }}" target="_blank" hidden>
+        @csrf
+    </form>
+
+    <div class="seller-modal fulfillment-modal" data-modal="waybill-history" hidden>
+        <button class="modal-backdrop" type="button" data-modal-close aria-label="Close"></button>
+        <section class="modal-card waybill-history-modal" aria-label="Waybill PDF and print history">
+            <div class="modal-heading">
+                <div><span class="section-kicker">Audit log</span><h3>PDF / Print History</h3></div>
+                <button type="button" data-modal-close aria-label="Close history"><i data-lucide="x" aria-hidden="true"></i></button>
+            </div>
+            <div class="waybill-history-table-wrap">
+                <table class="waybill-history-table">
+                    <thead><tr><th scope="col">Seller Order</th><th scope="col">Waybill</th><th scope="col">Action</th><th scope="col">Actor</th><th scope="col">Time</th></tr></thead>
+                    <tbody>
+                        @forelse ($history as $entry)
+                            <tr><td><strong>{{ $entry['order'] }}</strong></td><td>{{ $entry['tracking'] }}</td><td>{{ $entry['action'] }}</td><td>{{ $entry['actor'] }}</td><td>{{ $entry['time'] }}</td></tr>
+                        @empty
+                            <tr><td colspan="5">No PDF or print actions recorded yet.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+</div>
+@endsection

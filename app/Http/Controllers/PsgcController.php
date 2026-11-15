@@ -10,6 +10,23 @@ class PsgcController extends Controller
 {
     private const BASE_URL = 'https://psgc.cloud/api/v2';
 
+    public function regions(): JsonResponse
+    {
+        return $this->request('/regions');
+    }
+
+    public function provincesForRegion(string $regionCode): JsonResponse
+    {
+        abort_unless(
+            preg_match('/^\d{10}$/', $regionCode),
+            404
+        );
+
+        return $this->request(
+            "/regions/{$regionCode}/provinces"
+        );
+    }
+
     public function provinces(): JsonResponse
     {
         return $this->request('/provinces');

@@ -1,0 +1,1802 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Address;
+use App\Models\Cart;
+use App\Models\CartItem;
+use App\Models\Category;
+use App\Models\InventoryMovement;
+use App\Models\LogisticsProfile;
+use App\Models\Order;
+use App\Models\PlatformCampaignParticipation;
+use App\Models\PlatformCampaignParticipationItem;
+use App\Models\PlatformPromotion;
+use App\Models\Policy;
+use App\Models\Product;
+use App\Models\ProductImage;
+use App\Models\ProductVariant;
+use App\Models\SellerOrder;
+use App\Models\SellerProfile;
+use App\Models\Store;
+use App\Models\SystemSetting;
+use App\Models\User;
+use App\Notifications\WorkflowNotification;
+use App\Services\CheckoutService;
+use App\Services\PisoSaleEligibilityService;
+use App\Services\PostalCodeLookup;
+use App\Services\ProductPricingService;
+use App\Services\ShippingZoneClassifier;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use Tests\TestCase;
+
+class OrdersCheckoutIntegrationTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private int $sequence = 0;
+
+    public function test_checkout_creates_one_order_with_store_orders_and_is_idempotent(): void
+    {
+        Notification::fake();
+
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$firstSeller, $firstStore] = $this->sellerAndStore($category, 'checkout-first');
+        [$secondSeller, $secondStore] = $this->sellerAndStore($category, 'checkout-second');
+        $firstVariant = $this->variant($this->product($firstStore, $category, 'First Item'), 'FIRST-001', 10001, 5);
+        $secondVariant = $this->variant($this->product($secondStore, $category, 'Second Item'), 'SECOND-001', 2500, 5);
+        $firstCartItem = $this->cartItem($buyer, $firstVariant, 2);
+        $secondCartItem = $this->cartItem($buyer, $secondVariant, 1);
+        $requestKey = (string) Str::uuid();
+        $quoteToken = $this->quoteToken($buyer, [$firstCartItem->id, $secondCartItem->id], $destination->id);
+
+        $response = $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => $requestKey,
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$firstCartItem->id, $secondCartItem->id],
+            'quote_token' => $quoteToken,
+            'payment_method' => 'cod',
+        ]);
+
+        $order = Order::query()->with(['sellerOrders.items', 'payments'])->firstOrFail();
+        $response->assertRedirect(route('checkout.confirmation', $order->order_no));
+        $this->assertSame(2, $order->sellerOrders->count());
+        $this->assertSame(22502, (int) $order->subtotal_minor);
+        $this->assertSame(10000, (int) $order->shipping_fee_minor);
+        $this->assertSame(10000, (int) $order->buyer_paid_shipping_fee_minor);
+        $this->assertSame('buyer', $order->shipping_funding_source);
+        $this->assertSame(32502, (int) $order->total_minor);
+        $this->assertSame(
+            [5000, 5000],
+            $order->sellerOrders->pluck('shipping_fee_minor')->map(fn ($fee): int => (int) $fee)->all(),
+        );
+        $this->assertSame(
+            [5000, 5000],
+            $order->sellerOrders->pluck('buyer_paid_shipping_fee_minor')->map(fn ($fee): int => (int) $fee)->all(),
+        );
+        $this->assertSame('processing', $order->status);
+        $this->assertSame('unpaid', $order->payment_status);
+        $this->assertNull($order->delivery_latitude);
+        $this->assertNull($order->delivery_longitude);
+        $this->assertSame('cod', $order->payments->sole()->method);
+        $this->assertSame('pending', $order->payments->sole()->status);
+        $this->assertNull($order->payments->sole()->provider);
+        $this->assertSame(2, $order->sellerOrders->sum(fn ($sellerOrder) => $sellerOrder->items->count()));
+        // Checkout snapshots the purchase-time marketplace category on every
+        // order item for the admin sales reports.
+        $order->sellerOrders->flatMap->items->each(function ($item) use ($category): void {
+            $this->assertSame($category->id, (int) $item->category_id_snapshot);
+            $this->assertSame($category->name, $item->category_name_snapshot);
+        });
+        $this->assertSame(2, (int) $firstVariant->fresh()->stock_reserved);
+        $this->assertSame(1, (int) $secondVariant->fresh()->stock_reserved);
+        $this->assertSame(5, (int) $firstVariant->fresh()->stock_on_hand);
+        $this->assertDatabaseMissing('cart_items', ['id' => $firstCartItem->id]);
+        $this->assertDatabaseMissing('cart_items', ['id' => $secondCartItem->id]);
+        $this->assertSame(2, InventoryMovement::query()->where('type', 'order_reserved')->count());
+
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => $requestKey,
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$firstCartItem->id, $secondCartItem->id],
+            'quote_token' => $quoteToken,
+            'payment_method' => 'cod',
+        ])->assertRedirect(route('checkout.confirmation', $order->order_no));
+
+        $this->assertSame(1, Order::query()->count());
+        $this->assertSame(2, InventoryMovement::query()->where('type', 'order_reserved')->count());
+
+        Notification::assertSentTo(
+            $firstSeller,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'seller_order_updates',
+        );
+        Notification::assertSentTo(
+            $secondSeller,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'seller_order_updates',
+        );
+        Notification::assertSentToTimes($firstSeller, WorkflowNotification::class, 1);
+    }
+
+    public function test_checkout_snapshots_optional_delivery_coordinates_without_exposing_them(): void
+    {
+        Notification::fake();
+
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $destination->update([
+            'latitude' => 14.1234567,
+            'longitude' => 121.9876543,
+        ]);
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'checkout-coordinate-snapshot');
+        $variant = $this->variant($this->product($store, $category, 'Pinned Delivery Item'), 'PINNED-001', 2500, 5);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+        $quote = $this->actingAs($buyer)->postJson(route('checkout.quote'), [
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+        ])->assertOk();
+
+        $quoteAddress = $quote->json('data.delivery_address');
+        $this->assertArrayNotHasKey('latitude', $quoteAddress);
+        $this->assertArrayNotHasKey('longitude', $quoteAddress);
+
+        $quoteToken = (string) $quote->json('data.quote_token');
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $quoteToken,
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+
+        $order = Order::query()->sole();
+        $this->assertSame(14.1234567, (float) $order->delivery_latitude);
+        $this->assertSame(121.9876543, (float) $order->delivery_longitude);
+        $this->assertArrayNotHasKey('delivery_latitude', $order->toArray());
+        $this->assertArrayNotHasKey('delivery_longitude', $order->toArray());
+
+        $destination->update([
+            'latitude' => 14.2000000,
+            'longitude' => 121.9000000,
+        ]);
+        $this->assertSame(14.1234567, (float) $order->fresh()->delivery_latitude);
+        $this->assertSame(121.9876543, (float) $order->fresh()->delivery_longitude);
+    }
+
+    public function test_quote_uses_one_combined_parcel_and_zone_fee_for_over_one_kg(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'checkout-heavy');
+        $variant = $this->variant($this->product($store, $category, 'Heavy Parcel Item'), 'HEAVY-001', 799, 10, [10, 10, 10]);
+        $cartItem = $this->cartItem($buyer, $variant, 8);
+
+        $this->assertSame(0, Order::query()->count());
+        $this->assertSame(0, (int) $variant->fresh()->stock_reserved);
+
+        $response = $this->actingAs($buyer)->postJson(route('checkout.quote'), [
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+        ])->assertOk();
+
+        $response->assertJsonPath('data.shipping_fee_minor', 5000)
+            ->assertJsonPath('data.seller_orders.0.shipping_fee_minor', 5000)
+            ->assertJsonPath('data.seller_orders.0.quote.pricing_rule', 'zone_based_v1')
+            ->assertJsonPath('data.seller_orders.0.quote.zone_level', 0)
+            ->assertJsonPath('data.seller_orders.0.quote.zone_surcharge_minor', 0)
+            ->assertJsonPath('data.seller_orders.0.quote.billable_weight_kg', 2)
+            ->assertJsonPath('data.seller_orders.0.quote.volumetric_divisor', 5000)
+            ->assertJsonPath('data.seller_orders.0.quote.package_estimator', 'greedy_minimum_bounding_box_v1');
+        $response->assertJsonPath('data.items.0.unit_price_minor', 799)
+            ->assertJsonPath('data.items.0.quantity', 8)
+            ->assertJsonPath('data.delivery_address.name', $buyer->name)
+            ->assertJsonPath('data.delivery_address.city', 'Santa Rosa');
+        $this->assertNotEmpty($response->json('data.quote_token'));
+        $dimensions = $response->json('data.seller_orders.0.quote.parcel_dimensions_cm');
+        $this->assertSame(8000.0, (float) $dimensions['length'] * (float) $dimensions['width'] * (float) $dimensions['height']);
+    }
+
+    public function test_shipping_quote_preserves_three_decimal_centimeter_dimensions(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'checkout-package-thousandths');
+        $variant = $this->variant(
+            $this->product($store, $category, 'Three Decimal Package Item'),
+            'PACKAGE-THOUSANDTHS-001',
+            10000,
+            5,
+            [100, 100, 0.795],
+        );
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+
+        $quote = $this->actingAs($buyer)
+            ->postJson(route('checkout.quote'), [
+                'address_id' => $destination->id,
+                'cart_item_ids' => [$cartItem->id],
+            ])
+            ->assertOk()
+            ->json('data.seller_orders.0.quote');
+
+        $this->assertSame('0.795', (string) $variant->fresh()->package_height_cm);
+        $this->assertSame(0.795, (float) $quote['parcel_dimensions_cm']['height']);
+        $this->assertSame(0.795, (float) $quote['package_items'][0]['package_dimensions_cm']['height']);
+        $this->assertSame(1.59, (float) $quote['volumetric_weight_kg']);
+    }
+
+    public function test_checkout_rejects_foreign_cart_items_and_foreign_addresses(): void
+    {
+        $buyer = $this->user('buyer');
+        $foreignBuyer = $this->user('other-buyer');
+        $foreignAddress = $this->address($foreignBuyer, 'Santa Rosa');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'checkout-owner');
+        $variant = $this->variant($this->product($store, $category, 'Owned Item'), 'OWNED-001', 10000, 5);
+        $foreignCartItem = $this->cartItem($foreignBuyer, $variant, 1);
+        $buyerAddress = $this->address($buyer, 'Santa Rosa');
+        $buyersOwnVariant = $this->variant($this->product($store, $category, 'Buyers Own Item'), 'OWNED-002', 10000, 5);
+        $buyerCartItem = $this->cartItem($buyer, $buyersOwnVariant, 1);
+
+        $this->actingAs($buyer)->postJson(route('checkout.quote'), [
+            'address_id' => $buyerAddress->id,
+            'cart_item_ids' => [$foreignCartItem->id],
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('cart_item_ids');
+
+        $this->actingAs($buyer)->postJson(route('checkout.quote'), [
+            'address_id' => $foreignAddress->id,
+            'cart_item_ids' => [$buyerCartItem->id],
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('address_id');
+    }
+
+    public function test_buyer_can_cancel_only_pending_seller_orders_and_reservation_is_released(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'checkout-cancel');
+        $variant = $this->variant($this->product($store, $category, 'Cancelable Item'), 'CANCEL-001', 1299, 7);
+        $cartItem = $this->cartItem($buyer, $variant, 3);
+        $quoteToken = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $quoteToken,
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+        $order = Order::query()->firstOrFail();
+        $this->assertSame(3, (int) $variant->fresh()->stock_reserved);
+
+        $this->actingAs($buyer)->post(route('checkout.cancel', $order->id), [
+            'reason' => 'Changed my mind',
+        ])->assertRedirect(route('checkout.confirmation', $order->order_no));
+
+        $this->assertSame('cancelled', $order->fresh()->status);
+        $this->assertSame('cancelled', $order->sellerOrders()->sole()->status);
+        $this->assertSame(0, (int) $variant->fresh()->stock_reserved);
+        $this->assertSame(7, (int) $variant->fresh()->stock_on_hand);
+        $this->assertDatabaseHas('inventory_movements', [
+            'variant_id' => $variant->id,
+            'type' => 'order_reservation_released',
+            'reserved_delta' => -3,
+            'reserved_balance_after' => 0,
+            'created_by' => $buyer->id,
+        ]);
+
+        // Buyer cancellations notify the owning store through their own
+        // registry event instead of the shared order-updates event.
+        $cancellation = $seller->notifications()
+            ->where('data->event', 'seller_order_cancelled')
+            ->first();
+
+        $this->assertNotNull($cancellation);
+        $this->assertSame(
+            (int) $order->sellerOrders()->sole()->id,
+            (int) $cancellation->data['meta']['seller_order_id'],
+        );
+        $this->assertStringContainsString('Changed my mind', $cancellation->data['body']);
+
+        $this->actingAs($buyer)->post(route('checkout.cancel', $order->id), [
+            'reason' => 'Retry',
+        ])->assertRedirect(route('checkout.confirmation', $order->order_no))
+            ->assertSessionHas('warning', CheckoutService::BUYER_ORDER_ALREADY_CANCELLED_MESSAGE);
+    }
+
+    public function test_piso_sale_checkout_reserves_eligibility_until_cancellation_then_restores_it(): void
+    {
+        Notification::fake();
+
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'piso-reservation');
+        $product = $this->product($store, $category, 'Piso Reservation Product');
+        $variant = $this->variant($product, 'PISO-RESERVATION-001', 10_000, 8);
+        $campaign = $this->pisoSaleCampaign($seller, $store, $product, $variant);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+        $quoteToken = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+        $eligibility = app(PisoSaleEligibilityService::class);
+
+        $this->assertTrue($eligibility->canApply($buyer));
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $quoteToken,
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+
+        $order = Order::query()->with('sellerOrders.items')->sole();
+        $this->assertTrue($order->piso_sale_used);
+        $this->assertSame(10000, (int) $order->sellerOrders->sole()->items->sole()->subtotal_minor);
+        $this->assertSame(9900, (int) $order->sellerOrders->sole()->items->sole()->campaign_platform_discount_minor);
+        $this->assertTrue($eligibility->canDisplay($buyer));
+        $this->assertTrue($eligibility->isReserved($buyer));
+        $this->assertFalse($eligibility->canApply($buyer));
+
+        $this->actingAs($buyer)->get(route('home'))
+            ->assertOk()
+            ->assertSee('Reserved in your current order');
+        $this->actingAs($buyer)->get(route('campaigns.show', $campaign))
+            ->assertOk()
+            ->assertSee('This Piso Sale is reserved for an order you’ve already placed.');
+        $this->cartItem($buyer, $variant, 1);
+        $this->actingAs($buyer)->getJson(route('cart.data'))
+            ->assertOk()
+            ->assertJsonPath('data.items.0.price_minor', 10_000)
+            ->assertJsonPath('data.items.0.campaign_name', null);
+
+        $this->actingAs($buyer)->post(route('checkout.cancel', $order->id), [
+            'reason' => 'Changed my mind',
+        ])->assertRedirect(route('checkout.confirmation', $order->order_no));
+
+        $cancelledOrder = $order->fresh();
+        $this->assertTrue($cancelledOrder->piso_sale_used, 'The order snapshot remains immutable after cancellation.');
+        $this->assertFalse($eligibility->isReserved($buyer));
+        $this->assertTrue($eligibility->canApply($buyer));
+        $this->actingAs($buyer)->getJson(route('cart.data'))
+            ->assertOk()
+            ->assertJsonPath('data.items.0.price_minor', 100)
+            ->assertJsonPath('data.items.0.campaign_name', 'Piso Sale Checkout Test');
+
+        $price = app(ProductPricingService::class)->priceForVariant($product->fresh(), $variant->fresh(), buyer: $buyer->fresh());
+        $this->assertSame(100, $price['unit_price_minor']);
+        $this->assertSame('campaign', $price['price_source']);
+    }
+
+    public function test_stale_buyer_cancellation_after_seller_acceptance_shows_notice_without_cancelling(): void
+    {
+        Notification::fake();
+
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'stale-cancel');
+        $variant = $this->variant($this->product($store, $category, 'Accepted Item'), 'ACCEPTED-001', 1299, 7);
+        $cartItem = $this->cartItem($buyer, $variant, 2);
+        $quoteToken = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $quoteToken,
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+
+        $order = Order::query()->with('sellerOrders')->sole();
+        $sellerOrder = $order->sellerOrders->sole();
+        $sellerOrder->update(['status' => 'accepted']);
+
+        $this->actingAs($buyer)->post(route('checkout.cancel', $order->id), [
+            'reason' => 'Buyer requested cancellation',
+        ])->assertRedirect(route('checkout.confirmation', $order->order_no))
+            ->assertSessionHas('warning', CheckoutService::BUYER_CANCELLATION_UNAVAILABLE_MESSAGE);
+
+        $this->assertSame('processing', $order->fresh()->status);
+        $this->assertSame('accepted', $sellerOrder->fresh()->status);
+        $this->assertSame(2, (int) $variant->fresh()->stock_reserved);
+        $this->assertDatabaseMissing('inventory_movements', [
+            'reference_type' => Order::class,
+            'reference_id' => $order->id,
+            'type' => 'order_reservation_released',
+        ]);
+
+        $this->actingAs($buyer)
+            ->get(route('checkout.confirmation', $order->order_no))
+            ->assertOk()
+            ->assertSee(CheckoutService::BUYER_CANCELLATION_UNAVAILABLE_MESSAGE)
+            ->assertDontSee('Cancel order before Seller processing');
+    }
+
+    public function test_buyer_can_still_cancel_remaining_pending_seller_orders_after_another_seller_order_was_cancelled(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [, $firstStore] = $this->sellerAndStore($category, 'partial-cancel-first');
+        [, $secondStore] = $this->sellerAndStore($category, 'partial-cancel-second');
+        $firstVariant = $this->variant($this->product($firstStore, $category, 'Already Cancelled Seller Item'), 'PARTIAL-CANCEL-001', 1200, 8);
+        $secondVariant = $this->variant($this->product($secondStore, $category, 'Still Pending Seller Item'), 'PARTIAL-CANCEL-002', 1800, 8);
+        $firstCartItem = $this->cartItem($buyer, $firstVariant, 1);
+        $secondCartItem = $this->cartItem($buyer, $secondVariant, 2);
+        $cartItemIds = [$firstCartItem->id, $secondCartItem->id];
+        $quoteToken = $this->quoteToken($buyer, $cartItemIds, $destination->id);
+
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => $cartItemIds,
+            'quote_token' => $quoteToken,
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+
+        $order = Order::query()->with('sellerOrders')->firstOrFail();
+        $firstSellerOrder = $order->sellerOrders->firstWhere('store_id', $firstStore->id);
+        $pendingSellerOrder = $order->sellerOrders->firstWhere('store_id', $secondStore->id);
+        $firstSellerOrder->update(['status' => 'cancelled', 'cancelled_at' => now()]);
+        $firstVariant->update(['stock_reserved' => 0]);
+
+        $purchase = collect($this->actingAs($buyer)
+            ->getJson(route('buyer.purchases.data'))
+            ->assertOk()
+            ->json('data'))
+            ->firstWhere('id', $order->order_no);
+        $this->assertTrue($purchase['can_cancel']);
+        $this->assertSame(route('checkout.cancel', $order->id), $purchase['cancel_url']);
+
+        $this->actingAs($buyer)->post(route('checkout.cancel', $order->id), [
+            'reason' => 'Cancel remaining pending Seller Order',
+        ])->assertRedirect(route('checkout.confirmation', $order->order_no));
+
+        $this->assertSame('cancelled', $firstSellerOrder->fresh()->status);
+        $this->assertSame('cancelled', $pendingSellerOrder->fresh()->status);
+        $this->assertSame(0, (int) $secondVariant->fresh()->stock_reserved);
+    }
+
+    public function test_seller_orders_are_persisted_and_scoped_to_the_authenticated_store(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$firstSeller, $firstStore] = $this->sellerAndStore($category, 'orders-seller-first');
+        [, $secondStore] = $this->sellerAndStore($category, 'orders-seller-second');
+        $firstVariant = $this->variant($this->product($firstStore, $category, 'First Seller Item'), 'SELLER-FIRST-001', 1000, 5);
+        $secondVariant = $this->variant($this->product($secondStore, $category, 'Second Seller Item'), 'SELLER-SECOND-001', 2000, 5);
+        $firstItem = $this->cartItem($buyer, $firstVariant, 1);
+        $secondItem = $this->cartItem($buyer, $secondVariant, 1);
+        $quoteToken = $this->quoteToken($buyer, [$firstItem->id, $secondItem->id], $destination->id);
+
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$firstItem->id, $secondItem->id],
+            'quote_token' => $quoteToken,
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+
+        $sellerOrders = Order::query()->firstOrFail()->sellerOrders()->orderBy('store_id')->get();
+        $this->actingAs($firstSeller)
+            ->withSession(['success' => 'Order marked ready for pickup.'])
+            ->get(route('seller.orders'))
+            ->assertOk()
+            ->assertSee('Order marked ready for pickup.')
+            ->assertSee('data-auto-dismiss="5000"', false)
+            ->assertSee($sellerOrders->first()->seller_order_no)
+            ->assertSee('First Seller Item')
+            ->assertDontSee($sellerOrders->last()->seller_order_no)
+            ->assertDontSee('Second Seller Item')
+            ->assertSee('data-bearly-action-modal', false)
+            ->assertSee('data-order-transition-action="confirm"', false)
+            ->assertSee('Pickup Requests')
+            ->assertSee('Logistics verifies the request and assigns a Rider.');
+    }
+
+    public function test_seller_can_advance_its_order_and_each_transition_is_audited(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'orders-transitions');
+        $this->logisticsProviderFor('0403422000');
+        $provider = $this->logisticsProviderFor((string) $destination->psgc_city_code);
+        $variant = $this->variant($this->product($store, $category, 'Transition Item'), 'TRANSITION-001', 2500, 8);
+        $cartItem = $this->cartItem($buyer, $variant, 5);
+        $quoteToken = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $quoteToken,
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+
+        $sellerOrder = Order::query()->firstOrFail()->sellerOrders()->sole();
+        $endpoint = route('seller.orders.status', $sellerOrder->id);
+
+        $this->actingAs($seller)->patchJson($endpoint, ['action' => 'confirm'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'accepted')
+            ->assertJsonPath('message', 'Order confirmed. You can now prepare it.');
+        $this->assertNotNull($sellerOrder->fresh()->confirmed_at);
+
+        $item = $sellerOrder->items()->sole();
+        $originalQuote = $sellerOrder->shipping_quote;
+        $oversizedQuote = $originalQuote;
+        $oversizedQuote['package_items'][0]['quantity'] = 65_536;
+        $item->update(['quantity' => 65_536]);
+        $sellerOrder->update(['shipping_quote' => $oversizedQuote]);
+        $this->actingAs($seller)
+            ->get(route('seller.orders.packing', $sellerOrder->id))
+            ->assertConflict();
+        $item->update(['quantity' => 5]);
+        $sellerOrder->update(['shipping_quote' => $originalQuote]);
+
+        $this->actingAs($seller)
+            ->get(route('seller.orders.packing', $sellerOrder->id))
+            ->assertOk()
+            ->assertSee('Plan the physical packages')
+            ->assertSee('5 parcels in this plan')
+            ->assertSee('Combine all into one')
+            ->assertSee('No Bearly Logistics handling policies are published yet.')
+            ->assertSee('Save plan and create Waybill');
+
+        $handlingPolicy = Policy::query()->create([
+            'code' => 'SHP-TEST-PACKING-1',
+            'title' => 'Test package handling note',
+            'category' => 'Packaging and combinations',
+            'scope' => 'shipping_provider',
+            'scope_key' => config('shipping.provider_key'),
+            'status' => 'active',
+        ]);
+        $handlingPolicy->versions()->create([
+            'version' => 'v1.0',
+            'summary' => 'Test reference only.',
+            'body' => 'Keep the sample package upright.',
+            'source_reference' => 'Automated test fixture',
+            'status' => 'published',
+            'created_by' => $seller->id,
+            'published_at' => now(),
+            'effective_at' => now(),
+        ]);
+
+        $this->actingAs($seller)
+            ->get(route('seller.orders.packing', $sellerOrder->id))
+            ->assertOk()
+            ->assertSee('Test package handling note')
+            ->assertSee('Keep the sample package upright.')
+            ->assertSee('This packing plan records item quantities and package measurements. It does not automatically classify restricted goods or check product compatibility.');
+
+        $this->actingAs($seller)->patchJson($endpoint, ['action' => 'start_preparing'])
+            ->assertUnprocessable();
+        $this->assertDatabaseCount('shipments', 0);
+
+        $incompletePlan = [[
+            'items' => [$item->id => 2],
+            'weight_kg' => '0.500',
+            'length_cm' => '20.00',
+            'width_cm' => '15.00',
+            'height_cm' => '10.00',
+        ]];
+        $this->actingAs($seller)
+            ->from(route('seller.orders.packing', $sellerOrder->id))
+            ->post(route('seller.orders.packing.store', $sellerOrder->id), ['parcels' => $incompletePlan])
+            ->assertRedirect()
+            ->assertSessionHasErrors('parcels');
+        $this->assertDatabaseCount('shipments', 0);
+
+        $foreignItemPlan = [[
+            'items' => [PHP_INT_MAX => 5],
+            'weight_kg' => '1.250',
+            'length_cm' => '25.00',
+            'width_cm' => '20.00',
+            'height_cm' => '12.00',
+        ]];
+        $this->actingAs($seller)
+            ->from(route('seller.orders.packing', $sellerOrder->id))
+            ->post(route('seller.orders.packing.store', $sellerOrder->id), ['parcels' => $foreignItemPlan])
+            ->assertRedirect()
+            ->assertSessionHasErrors();
+        $this->assertDatabaseCount('shipments', 0);
+
+        $packingPlan = [
+            [
+                'items' => [$item->id => 2],
+                'weight_kg' => '0.500',
+                'length_cm' => '20.00',
+                'width_cm' => '15.00',
+                'height_cm' => '10.00',
+            ],
+            [
+                'items' => [$item->id => 2],
+                'weight_kg' => '0.500',
+                'length_cm' => '20.00',
+                'width_cm' => '15.00',
+                'height_cm' => '10.00',
+            ],
+            [
+                'items' => [$item->id => 1],
+                'weight_kg' => '0.250',
+                'length_cm' => '10.00',
+                'width_cm' => '8.00',
+                'height_cm' => '5.00',
+            ],
+        ];
+
+        $this->actingAs($seller)
+            ->post(route('seller.orders.packing.store', $sellerOrder->id), ['parcels' => $packingPlan])
+            ->assertRedirect(route('seller.fulfillment.waybills', ['status' => 'ready']))
+            ->assertSessionHas('success');
+        $this->assertNotNull($sellerOrder->fresh()->preparing_at);
+        $this->assertDatabaseCount('shipments', 1);
+        $this->assertDatabaseCount('waybills', 1);
+        $this->assertDatabaseCount('parcels', 3);
+        $this->assertDatabaseCount('parcel_items', 3);
+
+        $shipment = $sellerOrder->fresh()->shipments()->sole();
+        $this->assertSame(3, (int) $shipment->waybill->piece_count);
+        $parcels = $shipment->parcels()->orderBy('piece_sequence')->get();
+        $this->assertSame([1, 2, 3], $parcels->pluck('piece_sequence')->map(fn ($sequence): int => (int) $sequence)->all());
+        $this->assertSame([0.5, 0.5, 0.25], $parcels->pluck('weight_kg')->map(fn ($weight): float => (float) $weight)->all());
+        $this->assertSame([2, 2, 1], $parcels->map(fn ($parcel): int => (int) $parcel->contents()->sum('quantity'))->all());
+        $this->assertSame(3, $parcels->pluck('parcel_no')->unique()->count());
+
+        $this->actingAs($seller)
+            ->post(route('seller.orders.packing.store', $sellerOrder->id), ['parcels' => $packingPlan])
+            ->assertConflict();
+
+        $this->assertDatabaseCount('shipments', 1);
+        $this->assertDatabaseCount('waybills', 1);
+        $this->assertDatabaseCount('parcels', 3);
+
+        $this->assertSame($provider->id, $shipment->logistics_profile_id);
+        $this->assertSame($provider->id, $shipment->origin_logistics_profile_id);
+        $this->assertSame('pending', $shipment->status);
+        $this->assertSame('generated', $shipment->waybill->status);
+        $this->assertNull($shipment->waybill->printed_at);
+        $this->assertDatabaseHas('shipment_events', [
+            'shipment_id' => $shipment->id,
+            'event_type' => 'waybill_generated',
+            'to_status' => 'pending',
+            'actor_user_id' => $seller->id,
+            'source' => 'seller',
+        ]);
+
+        $this->actingAs($seller)->patchJson($endpoint, ['action' => 'mark_ready'])
+            ->assertConflict();
+
+        $shipment->waybill->update(['printed_at' => now(), 'piece_count' => 2]);
+
+        $this->actingAs($seller)->patchJson($endpoint, ['action' => 'mark_ready'])
+            ->assertConflict();
+        $this->assertSame('packing', $sellerOrder->fresh()->status);
+        $this->assertSame('pending', $shipment->fresh()->status);
+
+        $shipment->waybill->update(['piece_count' => 3]);
+
+        $this->actingAs($seller)->patchJson($endpoint, ['action' => 'mark_ready'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'ready_for_pickup')
+            ->assertJsonPath('data.redirect_to', route('seller.orders', ['status' => 'ready-pickup']));
+        $this->assertNotNull($sellerOrder->fresh()->ready_at);
+        $this->assertSame('ready_for_pickup', $shipment->fresh()->status);
+        $this->assertDatabaseHas('shipment_events', [
+            'shipment_id' => $shipment->id,
+            'event_type' => 'shipment_ready_for_pickup',
+            'to_status' => 'ready_for_pickup',
+        ]);
+
+        $this->assertDatabaseCount('seller_order_status_histories', 3);
+        $this->assertDatabaseHas('seller_order_status_histories', [
+            'seller_order_id' => $sellerOrder->id,
+            'from_status' => 'pending',
+            'to_status' => 'accepted',
+            'actor_user_id' => $seller->id,
+            'reason' => 'Seller confirmed that this order can be fulfilled.',
+        ]);
+        $this->assertDatabaseHas('seller_order_status_histories', [
+            'seller_order_id' => $sellerOrder->id,
+            'from_status' => 'packing',
+            'to_status' => 'ready_for_pickup',
+            'actor_user_id' => $seller->id,
+            'reason' => 'Seller completed the packing checklist and marked the order ready for pickup.',
+        ]);
+    }
+
+    public function test_seller_consolidates_same_product_orders_into_one_shipment_and_pickup(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'consolidated-orders');
+        $this->logisticsProviderFor((string) $seller->sellerProfile->pickupAddress->psgc_city_code);
+        $product = $this->product($store, $category, 'Consolidated Product');
+        $firstVariant = $this->variant($product, 'CONSOLIDATE-001', 2500, 8);
+        $secondVariant = $this->variant($product, 'CONSOLIDATE-002', 3000, 8);
+
+        $createSellerOrder = function (ProductVariant $variant) use ($buyer, $destination, $store, $seller): SellerOrder {
+            $cartItem = $this->cartItem($buyer, $variant, 1);
+            $requestKey = (string) Str::uuid();
+            $quoteToken = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+
+            $this->actingAs($buyer)->post(route('checkout.place'), [
+                'checkout_request_key' => $requestKey,
+                'address_id' => $destination->id,
+                'cart_item_ids' => [$cartItem->id],
+                'quote_token' => $quoteToken,
+                'payment_method' => 'cod',
+            ])->assertRedirect();
+
+            $order = Order::query()->where('checkout_request_key', $requestKey)->firstOrFail();
+            $sellerOrder = $order->sellerOrders()->where('store_id', $store->id)->sole();
+            $this->actingAs($seller)->patchJson(route('seller.orders.status', $sellerOrder->id), [
+                'action' => 'confirm',
+            ])->assertOk();
+
+            return $sellerOrder->fresh();
+        };
+
+        $first = $createSellerOrder($firstVariant);
+        $second = $createSellerOrder($secondVariant);
+        $firstItem = $first->items()->sole();
+        $secondItem = $second->items()->sole();
+
+        $this->actingAs($seller)
+            ->get(route('seller.orders.packing', $first->id))
+            ->assertOk()
+            ->assertSee($second->seller_order_no)
+            ->assertSee('additional_seller_order_ids[]', false);
+
+        $packingPlan = [[
+            'items' => [$firstItem->id => 1, $secondItem->id => 1],
+            'weight_kg' => '0.500',
+            'length_cm' => '20.00',
+            'width_cm' => '15.00',
+            'height_cm' => '10.00',
+        ]];
+
+        $quote = (array) $second->shipping_quote;
+        $incompatibleQuote = $quote;
+        $incompatibleQuote['origin']['city_municipality'] = 'Different origin';
+        $second->update(['shipping_quote' => $incompatibleQuote]);
+        $this->actingAs($seller)
+            ->from(route('seller.orders.packing', $first->id))
+            ->post(route('seller.orders.packing.store', $first->id), [
+                'additional_seller_order_ids' => [$second->id],
+                'parcels' => $packingPlan,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('additional_seller_order_ids');
+        $this->assertDatabaseCount('shipments', 0);
+        $second->update(['shipping_quote' => $quote]);
+
+        $this->actingAs($seller)
+            ->post(route('seller.orders.packing.store', $first->id), [
+                'additional_seller_order_ids' => [$second->id],
+                'parcels' => $packingPlan,
+            ])
+            ->assertRedirect(route('seller.fulfillment.waybills', ['status' => 'ready']));
+
+        $shipment = $first->fresh()->shipments()->sole();
+        $this->assertEqualsCanonicalizing(
+            [$first->id, $second->id],
+            $shipment->includedSellerOrders()->pluck('id')->map(fn ($id): int => (int) $id)->all(),
+        );
+        $this->assertSame('packing', $first->fresh()->status);
+        $this->assertSame('packing', $second->fresh()->status);
+        $this->assertSame(
+            (int) $first->shipping_fee_minor + (int) $second->shipping_fee_minor,
+            (int) $shipment->shipping_fee_minor,
+        );
+        $this->assertSame(
+            (int) $first->total_minor + (int) $second->total_minor,
+            (int) $shipment->cod_amount_minor,
+        );
+        $this->assertDatabaseCount('shipments', 1);
+        $this->assertDatabaseCount('waybills', 1);
+        $this->assertDatabaseCount('parcels', 1);
+        $parcel = $shipment->parcels()->sole();
+        $this->assertEqualsCanonicalizing(
+            [$firstItem->id, $secondItem->id],
+            $parcel->contents()->pluck('order_item_id')->all(),
+        );
+        $this->assertSame(2, (int) $parcel->contents()->sum('quantity'));
+
+        $uncombined = $createSellerOrder($firstVariant);
+        $this->assertCount(0, $uncombined->shipments);
+
+        $ordersPage = $this->actingAs($seller)
+            ->get(route('seller.orders'))
+            ->assertOk()
+            ->assertSee('Combined shipment', false)
+            ->assertSee('Mark all 2 Seller Orders ready for pickup')
+            ->assertSee($first->seller_order_no)
+            ->assertSee($second->seller_order_no)
+            ->assertSee($uncombined->seller_order_no);
+        $ordersHtml = $ordersPage->getContent();
+        $this->assertSame(1, substr_count($ordersHtml, 'class="shipment-group-row"'));
+        $this->assertSame(2, substr_count($ordersHtml, 'data-order-shipment-group-member='));
+        preg_match_all('/data-order-row(?=\s)/', $ordersHtml, $orderRowMatches);
+        $this->assertCount(3, $orderRowMatches[0]);
+        $this->assertStringContainsString('data-order-group-member-id="'.$first->id.'"', $ordersHtml);
+        $this->assertStringContainsString('data-order-group-member-id="'.$second->id.'"', $ordersHtml);
+        $this->assertStringNotContainsString('data-order-group-member-id="'.$uncombined->id.'"', $ordersHtml);
+        $this->assertStringContainsString('aria-expanded="false"', $ordersHtml);
+        $this->assertStringContainsString('data-order-seller-status="packing"', $ordersHtml);
+        $this->assertStringContainsString('data-order-total="₱75.00"', $ordersHtml);
+        $this->assertStringContainsString('data-order-total="₱80.00"', $ordersHtml);
+        $this->assertStringContainsString('Cash on Delivery · Unpaid', $ordersHtml);
+
+        $shipment->waybill->update(['printed_at' => now()]);
+        $this->actingAs($seller)
+            ->patchJson(route('seller.orders.status', $second->id), ['action' => 'mark_ready'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'ready_for_pickup');
+        $this->assertSame('ready_for_pickup', $first->fresh()->status);
+        $this->assertSame('ready_for_pickup', $second->fresh()->status);
+        $this->assertSame('ready_for_pickup', $shipment->fresh()->status);
+        $this->assertDatabaseCount('seller_order_status_histories', 7);
+        $this->actingAs($seller)
+            ->get(route('seller.orders'))
+            ->assertOk()
+            ->assertSee('Ready for Pickup · 2 of 2 Seller Orders', false)
+            ->assertDontSee('Ready for Pickup becomes available when every Seller Order is preparing.');
+
+        $this->actingAs($seller)
+            ->get(route('seller.fulfillment.pickups'))
+            ->assertOk()
+            ->assertSee($first->seller_order_no)
+            ->assertSee($second->seller_order_no);
+
+        $this->actingAs($seller)
+            ->post(route('seller.fulfillment.pickups.store'), [
+                'order_ids' => [$first->id],
+                'logistics_profile_id' => $shipment->logistics_profile_id,
+                'requested_date' => today()->addDay()->toDateString(),
+                'pickup_window' => '13:00-15:00',
+            ])
+            ->assertRedirect(route('seller.fulfillment.pickups'));
+        $this->assertDatabaseCount('pickup_requests', 1);
+        $this->assertDatabaseCount('pickup_request_parcels', 1);
+    }
+
+    public function test_consolidation_candidates_reject_different_products_and_payment_methods(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'incompatible-consolidation');
+        $this->logisticsProviderFor((string) $seller->sellerProfile->pickupAddress->psgc_city_code);
+        $firstProduct = $this->product($store, $category, 'First Consolidation Product');
+        $secondProduct = $this->product($store, $category, 'Second Consolidation Product');
+        $first = $this->variant($firstProduct, 'INCOMPATIBLE-001', 2000, 8);
+        $sameProduct = $this->variant($firstProduct, 'INCOMPATIBLE-002', 2500, 8);
+        $differentProduct = $this->variant($secondProduct, 'INCOMPATIBLE-003', 3000, 8);
+
+        $createSellerOrder = function (ProductVariant $variant, string $suffix) use ($buyer, $destination, $store, $seller): SellerOrder {
+            $cartItem = $this->cartItem($buyer, $variant, 1);
+            $requestKey = (string) Str::uuid();
+            $quoteToken = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+            $this->actingAs($buyer)->post(route('checkout.place'), [
+                'checkout_request_key' => $requestKey,
+                'address_id' => $destination->id,
+                'cart_item_ids' => [$cartItem->id],
+                'quote_token' => $quoteToken,
+                'payment_method' => 'cod',
+            ])->assertRedirect();
+            $sellerOrder = Order::query()->where('checkout_request_key', $requestKey)->firstOrFail()
+                ->sellerOrders()->where('store_id', $store->id)->sole();
+            $this->actingAs($seller)->patchJson(route('seller.orders.status', $sellerOrder->id), [
+                'action' => 'confirm',
+            ])->assertOk();
+
+            return $sellerOrder->fresh();
+        };
+
+        $base = $createSellerOrder($first, 'base');
+        $compatible = $createSellerOrder($sameProduct, 'same-product');
+        $wrongProduct = $createSellerOrder($differentProduct, 'different-product');
+        $consolidation = app(\App\Services\SellerOrderPackingConsolidationService::class);
+
+        $this->assertSame(
+            [$compatible->id],
+            $consolidation->candidates($seller, $base)->pluck('id')->all(),
+        );
+
+        $compatible->order->payments()->sole()->update(['method' => 'online']);
+        $this->assertCount(0, $consolidation->candidates($seller, $base));
+
+        $compatible->order->payments()->sole()->update(['method' => 'cod']);
+        $this->assertSame(
+            [$compatible->id],
+            $consolidation->candidates($seller, $base)->pluck('id')->all(),
+        );
+        $wrongProduct->refresh();
+        $this->assertNotContains($wrongProduct->id, $consolidation->candidates($seller, $base)->pluck('id')->all());
+    }
+
+    public function test_seller_status_actions_are_store_scoped_and_reject_invalid_or_replayed_transitions(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$firstSeller, $firstStore] = $this->sellerAndStore($category, 'orders-transition-first');
+        [, $secondStore] = $this->sellerAndStore($category, 'orders-transition-second');
+        $firstVariant = $this->variant($this->product($firstStore, $category, 'First Transition Item'), 'TRANSITION-FIRST-001', 1000, 4);
+        $secondVariant = $this->variant($this->product($secondStore, $category, 'Second Transition Item'), 'TRANSITION-SECOND-001', 1500, 4);
+        $firstCartItem = $this->cartItem($buyer, $firstVariant, 1);
+        $secondCartItem = $this->cartItem($buyer, $secondVariant, 1);
+        $quoteToken = $this->quoteToken($buyer, [$firstCartItem->id, $secondCartItem->id], $destination->id);
+
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$firstCartItem->id, $secondCartItem->id],
+            'quote_token' => $quoteToken,
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+
+        $sellerOrders = Order::query()->firstOrFail()->sellerOrders()->orderBy('store_id')->get();
+        $ownedOrder = $sellerOrders->firstWhere('store_id', $firstStore->id);
+        $foreignOrder = $sellerOrders->firstWhere('store_id', $secondStore->id);
+
+        $this->actingAs($buyer)->patchJson(route('seller.orders.status', $ownedOrder->id), [
+            'action' => 'confirm',
+        ])->assertForbidden();
+
+        $this->actingAs($firstSeller)->patchJson(route('seller.orders.status', $foreignOrder->id), [
+            'action' => 'confirm',
+        ])->assertNotFound();
+        $this->actingAs($firstSeller)
+            ->get(route('seller.orders.packing', $foreignOrder->id))
+            ->assertNotFound();
+
+        $this->actingAs($firstSeller)->patchJson(route('seller.orders.status', $ownedOrder->id), [
+            'action' => 'cancel',
+        ])->assertUnprocessable()->assertJsonValidationErrors('reason');
+
+        $this->actingAs($firstSeller)->patchJson(route('seller.orders.status', $ownedOrder->id), [
+            'action' => 'start_preparing',
+        ])->assertUnprocessable();
+        $this->assertSame('pending', $ownedOrder->fresh()->status);
+        $this->assertDatabaseCount('seller_order_status_histories', 0);
+
+        $this->actingAs($firstSeller)->patchJson(route('seller.orders.status', $ownedOrder->id), [
+            'action' => 'confirm',
+        ])->assertOk();
+        $this->actingAs($firstSeller)->patchJson(route('seller.orders.status', $ownedOrder->id), [
+            'action' => 'cancel',
+            'reason' => 'Changed fulfillment decision',
+        ])->assertConflict();
+        $this->actingAs($firstSeller)->patchJson(route('seller.orders.status', $ownedOrder->id), [
+            'action' => 'confirm',
+        ])->assertConflict();
+
+        $this->assertSame('accepted', $ownedOrder->fresh()->status);
+        $this->assertDatabaseCount('seller_order_status_histories', 1);
+    }
+
+    public function test_seller_cancellation_releases_only_its_stock_and_reprices_pending_multi_store_cod(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$firstSeller, $firstStore] = $this->sellerAndStore($category, 'orders-cancel-first');
+        [, $secondStore] = $this->sellerAndStore($category, 'orders-cancel-second');
+        $firstVariant = $this->variant($this->product($firstStore, $category, 'First Cancel Item'), 'CANCEL-FIRST-001', 1200, 5);
+        $secondVariant = $this->variant($this->product($secondStore, $category, 'Second Cancel Item'), 'CANCEL-SECOND-001', 1800, 5);
+        $firstCartItem = $this->cartItem($buyer, $firstVariant, 2);
+        $secondCartItem = $this->cartItem($buyer, $secondVariant, 1);
+        $quoteToken = $this->quoteToken($buyer, [$firstCartItem->id, $secondCartItem->id], $destination->id);
+
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$firstCartItem->id, $secondCartItem->id],
+            'quote_token' => $quoteToken,
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+
+        $order = Order::query()->with('payments')->firstOrFail();
+        $sellerOrders = $order->sellerOrders()->orderBy('store_id')->get();
+        $cancelledSellerOrder = $sellerOrders->firstWhere('store_id', $firstStore->id);
+        $remainingSellerOrder = $sellerOrders->firstWhere('store_id', $secondStore->id);
+        $reason = 'Unable to fulfill this item';
+
+        $this->actingAs($firstSeller)->patchJson(route('seller.orders.status', $cancelledSellerOrder->id), [
+            'action' => 'cancel',
+            'reason' => $reason,
+        ])->assertOk()
+            ->assertJsonPath('data.status', 'cancelled')
+            ->assertJsonPath('message', 'Seller Order cancelled and its reserved stock released.');
+
+        $order->refresh();
+        $payment = $order->payments()->sole();
+        $this->assertSame('processing', $order->status);
+        $this->assertSame((int) $remainingSellerOrder->total_minor, (int) $order->total_minor);
+        $this->assertSame((int) $remainingSellerOrder->total_minor, (int) $payment->amount_minor);
+        $this->assertSame('pending', $payment->status);
+        $this->assertSame(0, (int) $firstVariant->fresh()->stock_reserved);
+        $this->assertSame(1, (int) $secondVariant->fresh()->stock_reserved);
+        $this->assertDatabaseHas('inventory_movements', [
+            'variant_id' => $firstVariant->id,
+            'type' => 'order_reservation_released',
+            'reserved_delta' => -2,
+            'reserved_balance_after' => 0,
+            'reference_type' => SellerOrder::class,
+            'reference_id' => $cancelledSellerOrder->id,
+            'created_by' => $firstSeller->id,
+        ]);
+        $this->assertDatabaseHas('seller_order_status_histories', [
+            'seller_order_id' => $cancelledSellerOrder->id,
+            'from_status' => 'pending',
+            'to_status' => 'cancelled',
+            'actor_user_id' => $firstSeller->id,
+            'reason' => $reason,
+        ]);
+
+        $this->actingAs($buyer)->post(route('checkout.cancel', $order->id), [
+            'reason' => 'Please cancel the remaining items',
+        ])->assertRedirect(route('checkout.confirmation', $order->order_no));
+
+        $this->assertSame('cancelled', $order->fresh()->status);
+        $this->assertSame('cancelled', $order->fresh()->payment_status);
+        $this->assertSame('cancelled', $remainingSellerOrder->fresh()->status);
+        $this->assertSame('cancelled', $payment->fresh()->status);
+        $this->assertSame(0, (int) $secondVariant->fresh()->stock_reserved);
+        $this->assertDatabaseHas('seller_order_status_histories', [
+            'seller_order_id' => $remainingSellerOrder->id,
+            'from_status' => 'pending',
+            'to_status' => 'cancelled',
+            'actor_user_id' => $buyer->id,
+            'reason' => 'Please cancel the remaining items',
+        ]);
+        $this->assertSame(2, InventoryMovement::query()->where('type', 'order_reservation_released')->count());
+    }
+
+    public function test_seller_cancellation_rolls_back_if_any_reserved_sku_cannot_be_released(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'orders-cancel-reservation-check');
+        $product = $this->product($store, $category, 'Reservation Check Item');
+        $firstVariant = $this->variant($product, 'CANCEL-SAFE-001', 1000, 5);
+        $secondVariant = $this->variant($product, 'CANCEL-SAFE-002', 1500, 5);
+        $firstCartItem = $this->cartItem($buyer, $firstVariant, 1);
+        $secondCartItem = $this->cartItem($buyer, $secondVariant, 1);
+        $quoteToken = $this->quoteToken($buyer, [$firstCartItem->id, $secondCartItem->id], $destination->id);
+
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$firstCartItem->id, $secondCartItem->id],
+            'quote_token' => $quoteToken,
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+
+        $sellerOrder = Order::query()->firstOrFail()->sellerOrders()->sole();
+        ProductVariant::query()->whereKey($secondVariant->id)->update(['stock_reserved' => 0]);
+        $this->assertCount(2, $sellerOrder->items()->get());
+        $this->assertSame(0, (int) $secondVariant->fresh()->stock_reserved);
+
+        $this->actingAs($seller)->patchJson(route('seller.orders.status', $sellerOrder->id), [
+            'action' => 'cancel',
+            'reason' => 'Unable to fulfill this item',
+        ])->assertConflict();
+
+        $this->assertSame('pending', $sellerOrder->fresh()->status);
+        $this->assertSame(1, (int) $firstVariant->fresh()->stock_reserved);
+        $this->assertSame(0, (int) $secondVariant->fresh()->stock_reserved);
+        $this->assertSame(0, InventoryMovement::query()->where('type', 'order_reservation_released')->count());
+        $this->assertDatabaseCount('seller_order_status_histories', 0);
+        $this->assertSame('pending', Order::query()->firstOrFail()->payments()->sole()->status);
+    }
+
+    public function test_seller_cancellation_of_the_only_seller_order_cancels_the_marketplace_payment(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'orders-cancel-only');
+        $variant = $this->variant($this->product($store, $category, 'Only Cancel Item'), 'CANCEL-ONLY-001', 900, 3);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+        $quoteToken = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $quoteToken,
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+
+        $order = Order::query()->with('payments')->firstOrFail();
+        $sellerOrder = $order->sellerOrders()->sole();
+        $endpoint = route('seller.orders.status', $sellerOrder->id);
+
+        $this->actingAs($seller)->patchJson($endpoint, [
+            'action' => 'cancel',
+            'reason' => 'Seller cannot fulfill',
+        ])->assertOk();
+
+        $this->assertSame('cancelled', $order->fresh()->status);
+        $this->assertSame('cancelled', $order->fresh()->payment_status);
+        $this->assertSame(0, (int) $order->fresh()->total_minor);
+        $this->assertSame('cancelled', $order->payments()->sole()->status);
+        $this->assertSame(0, (int) $variant->fresh()->stock_reserved);
+
+        $this->actingAs($seller)->patchJson($endpoint, [
+            'action' => 'cancel',
+            'reason' => 'Retry cancellation',
+        ])->assertConflict();
+        $this->assertDatabaseCount('seller_order_status_histories', 1);
+    }
+
+    public function test_checkout_snapshots_variation_and_fallback_images_for_seller_orders(): void
+    {
+        Storage::fake('public');
+
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'orders-image-snapshots');
+
+        $exactProduct = $this->product($store, $category, 'Exact SKU Image Item');
+        $exactVariant = $this->variant($exactProduct, 'IMAGE-EXACT-001', 1000, 5);
+        $exactVariant->update(['name' => 'Small / Black', 'options' => ['Size' => 'Small', 'Color' => 'Black']]);
+        $this->productImage($exactProduct, null, 'seller-products/exact-primary.jpg', 'product_image', true);
+        $exactSkuImage = $this->productImage($exactProduct, $exactVariant, 'seller-products/exact-sku.jpg', 'variant_sku');
+
+        $legacyProduct = $this->product($store, $category, 'Legacy Color Image Item');
+        $legacyVariant = $this->variant($legacyProduct, 'IMAGE-LEGACY-001', 1200, 5);
+        $legacyVariant->update(['name' => 'Small / Navy', 'options' => ['Size' => 'Small', 'Color' => 'Navy']]);
+        $legacySibling = $this->variant($legacyProduct, 'IMAGE-LEGACY-002', 1200, 5);
+        $legacySibling->update(['name' => 'Large / Navy', 'options' => ['Size' => 'Large', 'Color' => 'Navy']]);
+        $this->productImage($legacyProduct, null, 'seller-products/legacy-primary.jpg', 'product_image', true);
+        $this->productImage($legacyProduct, $legacySibling, 'seller-products/legacy-navy.jpg', 'variant');
+
+        $primaryProduct = $this->product($store, $category, 'Primary Image Fallback Item');
+        $primaryVariant = $this->variant($primaryProduct, 'IMAGE-PRIMARY-001', 1400, 5);
+        $primaryVariant->update(['name' => 'One Size / Red', 'options' => ['Size' => 'One Size', 'Color' => 'Red']]);
+        $this->productImage($primaryProduct, null, 'seller-products/primary-fallback.jpg', 'product_image', true);
+
+        $cartItems = [
+            $this->cartItem($buyer, $exactVariant, 2),
+            $this->cartItem($buyer, $legacyVariant, 1),
+            $this->cartItem($buyer, $primaryVariant, 1),
+        ];
+        $cartItemIds = collect($cartItems)->pluck('id')->all();
+        $quoteToken = $this->quoteToken($buyer, $cartItemIds, $destination->id);
+
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => $cartItemIds,
+            'quote_token' => $quoteToken,
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+
+        $sellerOrder = Order::query()->firstOrFail()->sellerOrders()->sole();
+        $itemsByProduct = $sellerOrder->items()->get()->keyBy('product_id');
+        $this->assertSame('seller-products/exact-sku.jpg', $itemsByProduct->get($exactProduct->id)->product_image_path);
+        $this->assertSame('seller-products/legacy-navy.jpg', $itemsByProduct->get($legacyProduct->id)->product_image_path);
+        $this->assertSame('seller-products/primary-fallback.jpg', $itemsByProduct->get($primaryProduct->id)->product_image_path);
+
+        $response = $this->actingAs($seller)->get(route('seller.orders'))
+            ->assertOk()
+            ->assertSee('exact-sku.jpg')
+            ->assertSee('legacy-navy.jpg')
+            ->assertSee('primary-fallback.jpg');
+
+        preg_match('/data-order-items-json="([^"]*)"/', $response->getContent(), $itemAttribute);
+        $this->assertNotEmpty($itemAttribute);
+        // The browser decodes attributes once. Double-escaped JSON must fail this check.
+        $modalItems = json_decode(html_entity_decode($itemAttribute[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'), true, 512, JSON_THROW_ON_ERROR);
+        $exactModalItem = collect($modalItems)->firstWhere('sku', 'IMAGE-EXACT-001');
+        $this->assertSame('Exact SKU Image Item', $exactModalItem['name']);
+        $this->assertSame('Small / Black', $exactModalItem['variant']);
+        $this->assertSame(2, $exactModalItem['quantity']);
+        $this->assertSame(1000, $exactModalItem['unit_price_minor']);
+        $this->assertSame(2000, $exactModalItem['subtotal_minor']);
+        $this->assertStringContainsString('exact-sku.jpg', $exactModalItem['image']);
+
+        $this->actingAs($seller)->put(route('seller.products.update', $exactProduct), [
+            'product_mode' => 'with_variants',
+            'name' => $exactProduct->name,
+            'category' => $category->name,
+            'price' => '10.00',
+            'stock' => 5,
+            'option_one_name' => 'Size',
+            'option_one_values' => 'Small',
+            'option_two_name' => 'Color',
+            'option_two_values' => 'Black',
+            'variants' => [[
+                'label' => 'Small / Black',
+                'sku' => $exactVariant->sku,
+                'price' => '10.00',
+                'stock' => 5,
+                'package_weight_kg' => '0.250',
+                'package_length_cm' => '10',
+                'package_width_cm' => '10',
+                'package_height_cm' => '10',
+            ]],
+            'remove_product_images' => [$exactSkuImage->id],
+            'intent' => 'draft',
+        ])->assertRedirect(route('seller.products'));
+
+        $this->assertDatabaseMissing('product_images', ['id' => $exactSkuImage->id]);
+        Storage::disk('public')->assertExists('seller-products/exact-sku.jpg');
+        $this->actingAs($seller)->get(route('seller.orders'))
+            ->assertOk()
+            ->assertSee('exact-sku.jpg');
+
+        // Orders created before the snapshot fields existed still resolve their current catalog image.
+        $itemsByProduct->get($primaryProduct->id)->update([
+            'product_image_disk' => null,
+            'product_image_path' => null,
+        ]);
+
+        $this->actingAs($seller)->get(route('seller.orders'))
+            ->assertOk()
+            ->assertSee('primary-fallback.jpg');
+    }
+
+    public function test_checkout_rejects_a_quote_after_its_price_or_shipping_terms_change(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'checkout-stale-quote');
+        $variant = $this->variant($this->product($store, $category, 'Fresh Quote Item'), 'FRESH-001', 5000, 5);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+
+        $oldRateQuote = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+        SystemSetting::query()->updateOrCreate(
+            ['key' => 'shipping.base_fee_minor'],
+            ['value' => 6000, 'value_type' => 'integer', 'is_public' => false],
+        );
+
+        $this->actingAs($buyer)->postJson(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $oldRateQuote,
+            'payment_method' => 'cod',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('quote_token');
+
+        $freshRateQuote = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+        $variant->update(['price_minor' => 5200]);
+
+        $this->actingAs($buyer)->postJson(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $freshRateQuote,
+            'payment_method' => 'cod',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('quote_token');
+
+        $this->assertSame(0, Order::query()->count());
+        $this->assertSame(0, (int) $variant->fresh()->stock_reserved);
+        $this->assertDatabaseHas('cart_items', ['id' => $cartItem->id]);
+    }
+
+    public function test_admin_rate_changes_never_rewrite_confirmed_shipping_snapshots(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'San Pablo City');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'checkout-historical-shipping');
+        $variant = $this->variant($this->product($store, $category, 'Saved Shipping Item'), 'SAVED-SHIP-001', 5000, 5);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+        $token = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $token,
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+
+        $sellerOrder = SellerOrder::query()->firstOrFail();
+        $savedQuote = $sellerOrder->shipping_quote;
+        $this->assertSame(5500, (int) $sellerOrder->shipping_fee_minor);
+
+        SystemSetting::query()->updateOrCreate(
+            ['key' => 'shipping.base_fee_minor'],
+            ['value' => 9000, 'value_type' => 'integer', 'is_public' => false],
+        );
+        SystemSetting::query()->updateOrCreate(
+            ['key' => 'shipping.zone_surcharge_per_level_minor'],
+            ['value' => 1200, 'value_type' => 'integer', 'is_public' => false],
+        );
+
+        $sellerOrder->refresh();
+        $this->assertSame(5500, (int) $sellerOrder->shipping_fee_minor);
+        $this->assertSame($savedQuote, $sellerOrder->shipping_quote);
+        $this->assertSame(5000, (int) $sellerOrder->shipping_quote['base_fee_minor']);
+        $this->assertSame(500, (int) $sellerOrder->shipping_quote['zone_surcharge_minor']);
+    }
+
+    public function test_checkout_requotes_and_uses_new_zone_after_saved_address_location_changes(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'checkout-address-zone-change');
+        $variant = $this->variant($this->product($store, $category, 'Address Zone Item'), 'ADDRESS-ZONE-001', 5000, 5);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+        $oldQuote = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+
+        $destination->update([
+            'city_municipality' => 'Cebu City',
+            'province' => 'Cebu',
+            'psgc_city_code' => app(PostalCodeLookup::class)->canonicalCityCode(null, 'Cebu', 'Cebu City'),
+            'psgc_province_code' => null,
+        ]);
+
+        $this->actingAs($buyer)->postJson(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $oldQuote,
+            'payment_method' => 'cod',
+        ])->assertUnprocessable()->assertJsonValidationErrors('quote_token');
+
+        $freshQuote = $this->actingAs($buyer)->postJson(route('checkout.quote'), [
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+        ])->assertOk()
+            ->assertJsonPath('data.seller_orders.0.quote.zone_level', 4)
+            ->assertJsonPath('data.seller_orders.0.shipping_fee_minor', 7000);
+
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $freshQuote->json('data.quote_token'),
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+        $order = Order::query()->with('sellerOrders')->where('buyer_id', $buyer->id)->latest('id')->firstOrFail();
+        $sellerOrder = $order->sellerOrders->sole();
+        $this->assertSame(7000, (int) $sellerOrder->shipping_fee_minor);
+        $this->assertSame(7000, (int) $sellerOrder->shipping_quote['original_shipping_fee_minor']);
+        $this->assertSame(4, (int) $sellerOrder->shipping_quote['zone_level']);
+    }
+
+    public function test_checkout_revalidates_stock_visibility_and_legacy_package_data(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'checkout-revalidation');
+        $product = $this->product($store, $category, 'Revalidated Item');
+        $variant = $this->variant($product, 'REVALIDATE-001', 5000, 5);
+        $cartItem = $this->cartItem($buyer, $variant, 2);
+
+        $stockQuote = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+        $variant->update(['stock_reserved' => 4]);
+        $this->actingAs($buyer)->postJson(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $stockQuote,
+            'payment_method' => 'cod',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('cart_item_ids');
+
+        $variant->update(['stock_reserved' => 0]);
+        $visibilityQuote = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+        $product->update(['product_status' => 'draft']);
+        $this->actingAs($buyer)->postJson(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $visibilityQuote,
+            'payment_method' => 'cod',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('cart_item_ids');
+
+        $product->update(['product_status' => 'active']);
+        $variant->update(['package_weight_kg' => null]);
+        $this->actingAs($buyer)->postJson(route('checkout.quote'), [
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('shipping');
+
+        $this->assertSame(0, Order::query()->count());
+        $this->assertDatabaseHas('cart_items', ['id' => $cartItem->id]);
+    }
+
+    public function test_shipping_zone_classification_uses_canonical_psgc_codes_for_all_five_levels(): void
+    {
+        $seller = $this->user('seller');
+        $buyer = $this->user('buyer');
+        $origin = $this->address($seller, 'Santa Rosa');
+        $destinations = [
+            [0, $this->address($buyer, 'Santa Rosa')],
+            [1, $this->address($buyer, 'San Pablo City', 'Laguna')],
+            [2, $this->address($buyer, 'Batangas City', 'Batangas')],
+            [3, $this->address($buyer, 'Cabanatuan City', 'Nueva Ecija')],
+            [4, $this->address($buyer, 'Cebu City', 'Cebu')],
+        ];
+        $classifier = app(ShippingZoneClassifier::class);
+
+        foreach ($destinations as [$expectedLevel, $destination]) {
+            $this->assertSame($expectedLevel, $classifier->classify($origin, $destination)['level']);
+        }
+    }
+
+    public function test_zone_fee_is_once_per_combined_seller_order_and_independent_of_weight(): void
+    {
+        $buyer = $this->user('buyer');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'checkout-zone-route');
+        $variant = $this->variant(
+            $this->product($store, $category, 'Heavy Zone Fee Item'),
+            'ZONE-001',
+            5000,
+            5,
+            [20, 20, 20],
+        );
+        $variant->update(['package_weight_kg' => 2.0]);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+        $destinations = [
+            [0, 5000, $this->address($buyer, 'Santa Rosa')],
+            [1, 5500, $this->address($buyer, 'San Pablo City', 'Laguna')],
+            [2, 6000, $this->address($buyer, 'Batangas City', 'Batangas')],
+            [3, 6500, $this->address($buyer, 'Cabanatuan City', 'Nueva Ecija')],
+            [4, 7000, $this->address($buyer, 'Cebu City', 'Cebu')],
+        ];
+
+        foreach ($destinations as [$zoneLevel, $expectedFee, $destination]) {
+            $this->actingAs($buyer)->postJson(route('checkout.quote'), [
+                'address_id' => $destination->id,
+                'cart_item_ids' => [$cartItem->id],
+            ])->assertOk()
+                ->assertJsonPath('data.shipping_fee_minor', $expectedFee)
+                ->assertJsonPath('data.seller_orders.0.shipping_fee_minor', $expectedFee)
+                ->assertJsonPath('data.seller_orders.0.quote.zone_level', $zoneLevel)
+                ->assertJsonPath('data.seller_orders.0.quote.base_fee_minor', 5000)
+                ->assertJsonPath('data.seller_orders.0.quote.zone_surcharge_minor', $zoneLevel * 500)
+                ->assertJsonPath('data.seller_orders.0.quote.billable_weight_kg', 2);
+        }
+    }
+
+    public function test_same_display_name_with_different_canonical_city_codes_is_not_same_municipality(): void
+    {
+        $seller = $this->user('seller');
+        $buyer = $this->user('buyer');
+        $origin = $this->address($seller, 'Santa Rosa');
+        $differentCityCode = app(PostalCodeLookup::class)->canonicalCityCode(null, 'Laguna', 'San Pablo City');
+        $destination = $this->address($buyer, 'Santa Rosa', 'Laguna', $differentCityCode);
+
+        $classification = app(ShippingZoneClassifier::class)->classify($origin, $destination);
+
+        $this->assertNotSame((string) $origin->psgc_city_code, (string) $destination->psgc_city_code);
+        $this->assertSame(1, $classification['level']);
+        $this->assertSame('same_province', $classification['classification']);
+    }
+
+    public function test_shipping_quote_rejects_missing_unknown_and_inconsistent_psgc_identifiers(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'checkout-missing-psgc');
+        $variant = $this->variant($this->product($store, $category, 'Verified Address Item'), 'PSGC-001', 5000, 5);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+
+        foreach ([null, '0000000000'] as $cityCode) {
+            $destination->update(['psgc_city_code' => $cityCode]);
+            $this->actingAs($buyer)->postJson(route('checkout.quote'), [
+                'address_id' => $destination->id,
+                'cart_item_ids' => [$cartItem->id],
+            ])->assertUnprocessable()->assertJsonValidationErrors('address_id');
+        }
+
+        $destination->update([
+            'psgc_city_code' => app(PostalCodeLookup::class)->canonicalCityCode(null, 'Laguna', 'Santa Rosa'),
+            'psgc_province_code' => '0300800000',
+        ]);
+        $this->actingAs($buyer)->postJson(route('checkout.quote'), [
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+        ])->assertUnprocessable()->assertJsonValidationErrors('shipping');
+
+        $pickup = Address::query()->where('user_id', $seller->id)->firstOrFail();
+        $pickup->update(['psgc_city_code' => null]);
+        $destination->update([
+            'psgc_city_code' => app(PostalCodeLookup::class)->canonicalCityCode(null, 'Laguna', 'Santa Rosa'),
+            'psgc_province_code' => '0434',
+        ]);
+        $this->actingAs($buyer)->postJson(route('checkout.quote'), [
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+        ])->assertUnprocessable()->assertJsonValidationErrors('shipping');
+    }
+
+    public function test_same_region_locations_without_a_verified_province_parent_fail_instead_of_guessing(): void
+    {
+        $firstCode = '0330100000';
+        $secondCode = '0331400000';
+        $postalCodes = app(PostalCodeLookup::class);
+        $firstPlace = $postalCodes->findByCanonicalCityCode($firstCode);
+        $secondPlace = $postalCodes->findByCanonicalCityCode($secondCode);
+        $this->assertNotNull($firstPlace);
+        $this->assertNotNull($secondPlace);
+
+        $seller = $this->user('seller');
+        $buyer = $this->user('buyer');
+        $origin = $this->address($seller, $firstPlace['city'], $firstPlace['province'], $firstCode);
+        $destination = $this->address($buyer, $secondPlace['city'], $secondPlace['province'], $secondCode);
+
+        try {
+            app(ShippingZoneClassifier::class)->classify($origin, $destination);
+            $this->fail('A same-region route without a verified province parent must not be priced by guesswork.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('shipping', $exception->errors());
+        }
+    }
+
+    public function test_admin_can_update_zone_base_and_surcharge_with_audit_attribution(): void
+    {
+        $buyer = $this->user('buyer');
+        $this->actingAs($buyer)->get(route('admin.shipping-rates'))->assertForbidden();
+
+        $admin = $this->user('admin');
+        $this->actingAs($admin)
+            ->get(route('admin.shipping-rates'))
+            ->assertOk()
+            ->assertSee('Zone-based fee per Seller Order')
+            ->assertSee('value="50.00"', false)
+            ->assertSee('value="5.00"', false)
+            ->assertSee('value="15.00"', false)
+            ->assertSee('value="30.00"', false)
+            ->assertSee('exactly <code>bulky</code>', false)
+            ->assertDontSee('additional_kg_surcharge', false);
+
+        $this->actingAs($admin)
+            ->followingRedirects()
+            ->put(route('admin.shipping-rates.update'), [
+                'base_fee' => '60.00',
+                'zone_surcharge_per_level' => '10.00',
+                'volumetric_divisor' => 4500,
+                'pickup_regular_rate' => '16.50',
+                'pickup_bulky_rate' => '33.00',
+                'pickup_regular_classes' => 'small, regular',
+                'reason' => 'Set zone shipping base and surcharge',
+            ])
+            ->assertOk()
+            ->assertSee('data-admin-server-toast', false)
+            ->assertSee('Saved successfully')
+            ->assertSee('Bearly shipping settings were saved.');
+
+        $this->assertSame(6000, (int) SystemSetting::query()->where('key', 'shipping.base_fee_minor')->value('value'));
+        $this->assertSame(1000, (int) SystemSetting::query()->where('key', 'shipping.zone_surcharge_per_level_minor')->value('value'));
+        $this->assertSame(4500, (int) SystemSetting::query()->where('key', 'shipping.volumetric_divisor')->value('value'));
+        $this->assertSame(1650, (int) SystemSetting::query()->where('key', 'rider.pickup_rate_regular_minor')->value('value'));
+        $this->assertSame(3300, (int) SystemSetting::query()->where('key', 'rider.pickup_rate_bulky_minor')->value('value'));
+        $this->assertSame(['small', 'regular'], SystemSetting::query()->where('key', 'rider.pickup_regular_size_classes')->value('value'));
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_user_id' => $admin->id,
+            'action' => 'shipping_rates.updated',
+            'module' => 'shipping',
+            'description' => 'Admin updated Bearly shipping configuration: Set zone shipping base and surcharge',
+        ]);
+    }
+
+    private function user(string $role): User
+    {
+        $sequence = ++$this->sequence;
+
+        return User::query()->create([
+            'name' => Str::headline($role).' '.$sequence,
+            'first_name' => ucfirst($role),
+            'last_name' => 'Orders '.$sequence,
+            'email' => "{$role}-{$sequence}@example.test",
+            'role' => $role,
+            'status' => 'active',
+            'password' => Hash::make('Password123'),
+        ]);
+    }
+
+    private function category(): Category
+    {
+        $slug = 'orders-category-'.(++$this->sequence);
+
+        return Category::query()->create(['name' => Str::headline($slug), 'slug' => $slug]);
+    }
+
+    /** @return array{0: User, 1: Store} */
+    private function logisticsProviderFor(string $cityCode): LogisticsProfile
+    {
+        $user = $this->user('logistics');
+
+        return LogisticsProfile::query()->create([
+            'user_id' => $user->id,
+            'legal_name' => 'Bearly Test Logistics Inc.',
+            'display_name' => 'Bearly Test Logistics',
+            'contact_phone' => '+639171234567',
+            'psgc_city_code' => $cityCode,
+            'status' => 'active',
+        ]);
+    }
+
+    private function sellerAndStore(Category $category, string $slug): array
+    {
+        $seller = $this->user('seller');
+        $pickup = $this->address($seller, 'Santa Rosa');
+        $profile = SellerProfile::query()->create([
+            'user_id' => $seller->id,
+            'legal_business_name' => 'Orders Seller '.$this->sequence,
+            'approved_category_id' => $category->id,
+            'pickup_address_id' => $pickup->id,
+            'approved_at' => now(),
+        ]);
+        $store = Store::query()->create([
+            'seller_profile_id' => $profile->id,
+            'name' => Str::headline($slug),
+            'slug' => $slug.'-'.$this->sequence,
+            'publication_status' => 'published',
+        ]);
+
+        return [$seller->fresh('sellerProfile.store'), $store];
+    }
+
+    private function address(
+        User $user,
+        string $city,
+        string $province = 'Laguna',
+        ?string $cityCode = null,
+        ?string $provinceCode = null,
+    ): Address {
+        return Address::query()->create([
+            'user_id' => $user->id,
+            'label' => 'Home',
+            'recipient_name' => $user->name,
+            'phone' => '+639171234567',
+            'street' => '10 Market Street',
+            'barangay' => 'Balibago',
+            'city_municipality' => $city,
+            'province' => $province,
+            'postal_code' => '4026',
+            'psgc_province_code' => $provinceCode ?? '0434',
+            'psgc_city_code' => $cityCode ?? app(PostalCodeLookup::class)
+                ->canonicalCityCode(null, $province, $city),
+            'is_default_shipping' => true,
+        ]);
+    }
+
+    private function product(Store $store, Category $category, string $name): Product
+    {
+        $slug = Str::slug($name).'-'.(++$this->sequence);
+
+        return Product::query()->create([
+            'store_id' => $store->id,
+            'category_id' => $category->id,
+            'name' => $name,
+            'slug' => $slug,
+            'product_status' => 'active',
+            'compliance_status' => 'clear',
+            'payment_methods' => ['cod', 'online'],
+        ]);
+    }
+
+    private function variant(Product $product, string $sku, int $priceMinor, int $stock, array $dimensions = [10, 10, 10]): ProductVariant
+    {
+        return ProductVariant::query()->create([
+            'product_id' => $product->id,
+            'sku' => $sku,
+            'name' => 'Default',
+            'price_minor' => $priceMinor,
+            'stock_on_hand' => $stock,
+            'stock_reserved' => 0,
+            'low_stock_threshold' => 5,
+            'package_weight_kg' => 0.25,
+            'package_length_cm' => $dimensions[0],
+            'package_width_cm' => $dimensions[1],
+            'package_height_cm' => $dimensions[2],
+            'is_active' => true,
+        ]);
+    }
+
+    private function productImage(
+        Product $product,
+        ?ProductVariant $variant,
+        string $path,
+        string $purpose,
+        bool $primary = false,
+    ): ProductImage {
+        Storage::disk('public')->put($path, 'image fixture');
+
+        return ProductImage::query()->create([
+            'product_id' => $product->id,
+            'variant_id' => $variant?->id,
+            'path' => $path,
+            'disk' => 'public',
+            'purpose' => $purpose,
+            'is_primary' => $primary,
+            'position' => 0,
+        ]);
+    }
+
+    private function cartItem(User $buyer, ProductVariant $variant, int $quantity): CartItem
+    {
+        $cart = Cart::query()->firstOrCreate(['user_id' => $buyer->id, 'status' => 'active']);
+
+        return CartItem::query()->create([
+            'cart_id' => $cart->id,
+            'product_variant_id' => $variant->id,
+            'quantity' => $quantity,
+            'selected' => true,
+        ]);
+    }
+
+    private function quoteToken(User $buyer, array $cartItemIds, int $addressId): string
+    {
+        $response = $this->actingAs($buyer)->postJson(route('checkout.quote'), [
+            'address_id' => $addressId,
+            'cart_item_ids' => $cartItemIds,
+        ])->assertOk();
+
+        return (string) $response->json('data.quote_token');
+    }
+
+    private function pisoSaleCampaign(User $seller, Store $store, Product $product, ProductVariant $variant): PlatformPromotion
+    {
+        $manila = now('Asia/Manila');
+        $campaign = PlatformPromotion::query()->create([
+            'name' => 'Piso Sale Checkout Test',
+            'kind' => PlatformPromotion::KIND_SELLER_CAMPAIGN,
+            'campaign_type' => PlatformPromotion::CAMPAIGN_PISO_SALE,
+            'funding_type' => PlatformPromotion::FUNDING_PLATFORM,
+            'discount_type' => PlatformPromotion::DISCOUNT_FIXED,
+            'status' => PlatformPromotion::STATUS_ACTIVE,
+            'value_minor' => 0,
+            'minimum_spend_minor' => 0,
+            'budget_minor' => 50000,
+            'starts_on' => $manila->copy()->subDay()->toDateString(),
+            'ends_on' => $manila->copy()->addDays(2)->toDateString(),
+            'is_public' => true,
+            'is_featured' => true,
+        ]);
+        $participation = PlatformCampaignParticipation::query()->create([
+            'platform_promotion_id' => $campaign->id,
+            'store_id' => $store->id,
+            'submitted_by' => $seller->id,
+            'status' => PlatformCampaignParticipation::STATUS_APPROVED,
+            'terms_accepted_at' => now(),
+            'submitted_at' => now(),
+            'reviewed_at' => now(),
+        ]);
+        PlatformCampaignParticipationItem::query()->create([
+            'platform_campaign_participation_id' => $participation->id,
+            'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
+            'regular_price_minor' => $variant->price_minor,
+            'campaign_price_minor' => 7000,
+        ]);
+
+        return $campaign;
+    }
+}

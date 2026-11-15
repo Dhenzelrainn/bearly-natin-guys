@@ -1,0 +1,262 @@
+@php
+    $catalog = [];
+    $taxonomy = json_decode(
+        file_get_contents(resource_path('data/buyer-categories.json')),
+        true,
+        512,
+        JSON_THROW_ON_ERROR
+    );
+
+    $womensCategory = collect($taxonomy)->firstWhere('slug', 'women-s-apparel');
+    $subcategories = $womensCategory['subcategories'];
+    $liveCatalog = $liveCatalog ?? [];
+    $canonicalMarketplaceTaxonomy = (bool) ($canonicalMarketplaceTaxonomy ?? false);
+    $usingLiveCatalog = true;
+    if ($canonicalMarketplaceTaxonomy) {
+        $catalog = $liveCatalog ?? [];
+        $subcategories = collect($marketplaceSubcategories ?? [])->pluck('name')->all();
+    }
+    if ($usingLiveCatalog) {
+        $catalog = $liveCatalog;
+    }
+@endphp
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Women's Apparel | Bearly</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
+
+    @vite(['resources/css/buyer.css', 'resources/js/buyer.js'])
+    @include('buyer.partials.account-context-script')
+
+<style>
+/* Bearly header Wishlist icon: matches the existing brown/gold navigation */
+.header-actions a[href$="/wishlist"],
+.bc-header a[href$="/wishlist"]{
+    color:inherit;
+    text-decoration:none;
+}
+.header-actions a[href$="/wishlist"] .material-symbols-outlined,
+.bc-header a[href$="/wishlist"] .mi{
+    color:#fff;
+    transition:color .18s ease, transform .18s ease;
+}
+.header-actions a[href$="/wishlist"]:hover .material-symbols-outlined,
+.bc-header a[href$="/wishlist"]:hover .mi,
+.header-actions a[href$="/wishlist"][aria-current="page"] .material-symbols-outlined,
+.bc-header a[href$="/wishlist"][aria-current="page"] .mi{
+    color:#f3ad24;
+    transform:scale(1.06);
+}
+</style>
+
+</head>
+
+<body class="bc" data-category="women-s-apparel" style="--catalog-image:url('{{ asset('images/womens-catalog-atlas.png') }}')" data-live-catalog="{{ $usingLiveCatalog ? 'true' : 'false' }}" data-canonical-marketplace-taxonomy="{{ $canonicalMarketplaceTaxonomy ? 'true' : 'false' }}" data-next-page="{{ isset($categoryPagination) && $categoryPagination->hasMorePages() ? $categoryPagination->currentPage() + 1 : '' }}">
+    <a href="#bc-main" class="skip">Skip to products</a>
+
+    @include('buyer.partials.buyer-header', [
+        'headerClass' => 'bc-header',
+        'headerSearchMode' => 'plain',
+        'headerSearchFormId' => 'bc-search-form',
+        'headerSearchInputId' => 'bc-search',
+        'headerSearchLabel' => 'Search products, brands or sellers',
+        'headerSearchPlaceholder' => 'Search for products, brands or sellers...',
+    ])
+
+    <div class="bc-shell">
+        <aside class="bc-sidebar" id="bc-sidebar" aria-label="Categories and filters">
+            <a class="back" href="{{ route('home') }}">
+                <i class="mi" aria-hidden="true">arrow_back</i>
+                All categories
+            </a>
+
+            <div class="active-category">
+                <i class="mi" aria-hidden="true">checkroom</i>
+                <strong>Women's Apparel</strong>
+            </div>
+
+            <details open class="subcategories">
+                <summary>Subcategories</summary>
+
+                <nav aria-label="Subcategories">
+                    <button data-sub="" aria-pressed="true">
+                        <i class="mi" aria-hidden="true">grid_view</i>
+                        All items
+                    </button>
+
+                    @foreach($subcategories as $i => $sub)
+                        <button data-sub="{{ $canonicalMarketplaceTaxonomy ? ($marketplaceSubcategorySlugs[$sub] ?? '') : $sub }}" data-sub-label="{{ $sub }}" data-subcategory-id="{{ $canonicalMarketplaceTaxonomy ? ($marketplaceSubcategoryIds[$sub] ?? '') : '' }}" aria-pressed="false">
+                            <i class="mi" aria-hidden="true">
+                                {{ ['styler','checkroom','fitness_center','bedtime','apparel','steps'][$i] }}
+                            </i>
+                            {{ $sub }}
+                        </button>
+                    @endforeach
+                </nav>
+            </details>
+
+            @include('buyer.Category.WomenApparel.components.womens-apparel-filter')
+        </aside>
+
+        <main id="bc-main" tabindex="-1">
+            <nav class="breadcrumb" aria-label="Breadcrumb">
+                <a href="{{ route('home') }}">Home</a>
+                <span>/</span>
+                <strong>Women's Apparel</strong>
+            </nav>
+
+            <h1>Women’s Apparel</h1>
+
+            <p class="subtitle">
+                Fresh looks, everyday comfort, your style.
+            </p>
+
+            <p class="preview">
+                {{ $usingLiveCatalog ? 'Live products and prices from Bearly sellers' : 'Frontend catalog · Sample products, prices and ratings' }}
+            </p>
+
+            <div class="toolbar">
+                <strong id="bc-count">{{ count($catalog) }} {{ $usingLiveCatalog ? Str::plural('product', count($catalog)) : Str::plural('sample product', count($catalog)) }}</strong>
+
+                <button class="mobile-filter button outline" id="bc-open-filters">
+                    <i class="mi" aria-hidden="true">tune</i>
+                    Filters
+                    <span id="bc-mobile-count"></span>
+                </button>
+
+                <div class="sorts" aria-label="Sort products">
+                    <button data-sort="featured" aria-pressed="true">All items</button>
+                    <button data-sort="newest" aria-pressed="false">New arrivals</button>
+                    <button data-sort="price-low" aria-pressed="false">Price: low to high</button>
+                    <button data-sort="price-high" aria-pressed="false">Price: high to low</button>
+                </div>
+
+                <div class="views">
+                    <button data-view="grid" aria-label="Grid view" aria-pressed="true">
+                        <i class="mi" aria-hidden="true">grid_view</i>
+                    </button>
+                    <button data-view="list" aria-label="List view" aria-pressed="false">
+                        <i class="mi" aria-hidden="true">view_list</i>
+                    </button>
+                </div>
+
+                <button class="saved-filter" id="bc-saved-filter" aria-pressed="false">
+                    <i class="mi" aria-hidden="true">favorite</i>
+                    <span id="bc-saved-count">0</span>
+                    <span class="sr">Show saved items</span>
+                </button>
+            </div>
+
+            <div class="shortcuts" aria-label="Explore subcategories">
+                @php
+                    $shortcutPhotos = [0, 5, 10, 15, 20, 25];
+                @endphp
+
+                @foreach($subcategories as $i => $sub)
+                    <button data-sub="{{ $canonicalMarketplaceTaxonomy ? ($marketplaceSubcategorySlugs[$sub] ?? '') : $sub }}" data-sub-label="{{ $sub }}" data-subcategory-id="{{ $canonicalMarketplaceTaxonomy ? ($marketplaceSubcategoryIds[$sub] ?? '') : '' }}">
+                        <span
+                            class="photo"
+                            style="--x:{{ ($shortcutPhotos[$i] % 5) * 25 }}%;--y:{{ floor($shortcutPhotos[$i] / 5) * 20 }}%"
+                            aria-hidden="true"
+                        ></span>
+
+                        <span>
+                            {{ $sub }}
+                            <b aria-hidden="true">›</b>
+                        </span>
+                    </button>
+                @endforeach
+            </div>
+
+            <div id="bc-chips" class="chips"></div>
+
+            <div class="catalog-grid" id="bc-grid"></div>
+
+            <noscript>
+                <p>{{ $usingLiveCatalog ? 'Enable JavaScript to browse live products and filters.' : 'Enable JavaScript to explore the sample catalog and filters.' }}</p>
+            </noscript>
+
+            <section id="bc-empty" class="empty" hidden>
+                <i class="mi" aria-hidden="true">search_off</i>
+                <h2>No matching finds</h2>
+                <p>Try removing a filter or searching for something else.</p>
+                <button class="button" data-reset>Clear all filters</button>
+            </section>
+
+            <div class="load">
+                <p id="bc-status" role="status" aria-live="polite"></p>
+                <button class="button outline" id="bc-more">Load more products</button>
+            </div>
+        </main>
+    </div>
+
+    <footer>
+        <img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly" width="110" height="37">
+        <span>Good finds. Happy spaces.</span>
+
+        <nav>
+            <button data-info="help">Help centre</button>
+            <button data-info="about">About Bearly</button>
+        </nav>
+
+        <small>Frontend preview</small>
+    </footer>
+
+    <button class="chat" data-info="chat">
+        <i class="mi" aria-hidden="true">chat_bubble</i>
+        Chat
+    </button>
+
+    <dialog id="bc-mobile-dialog" aria-labelledby="bc-mobile-title">
+        <div class="mobile-heading">
+            <div>
+                <h2 id="bc-mobile-title">Filters</h2>
+                <p>Women's Apparel</p>
+            </div>
+
+            <button data-close aria-label="Close filters">
+                <i class="mi" aria-hidden="true">close</i>
+            </button>
+        </div>
+
+        <div id="bc-mobile-content"></div>
+
+        <div class="mobile-actions">
+            <button class="button outline" data-reset>Reset</button>
+            <button class="button gold" id="bc-show-results">Show results</button>
+        </div>
+    </dialog>
+
+    <dialog id="bc-product-dialog" aria-labelledby="bc-product-title">
+        <button class="close" data-close aria-label="Close product">
+            <i class="mi" aria-hidden="true">close</i>
+        </button>
+
+        <div id="bc-product-detail"></div>
+    </dialog>
+
+    <dialog id="bc-info-dialog" aria-labelledby="bc-info-title">
+        <button class="close" data-close aria-label="Close">
+            <i class="mi" aria-hidden="true">close</i>
+        </button>
+
+        <h2 id="bc-info-title"></h2>
+        <p id="bc-info-copy"></p>
+
+        <a class="button gold" href="{{ route('home') }}">Back to home</a>
+    </dialog>
+
+    @include('buyer.Category.WomenApparel.components.womens-apparel-product-card')
+
+    <script type="application/json" id="bc-data">
+        {!! json_encode($catalog, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}
+    </script>
+</body>
+</html>

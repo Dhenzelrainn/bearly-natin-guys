@@ -1,0 +1,77 @@
+/*
+ * Conversation-scoped online presence.
+ *
+ * The dot is purely presentational; access is authorized by the presence
+ * channel and the member payload contains only id, name, and avatar_url.
+ */
+
+.chat-presence-target {
+    position: relative;
+}
+
+.bearly-chat-avatar.chat-presence-target,
+.avatar.chat-presence-target,
+.conversation-avatar.chat-presence-target {
+    overflow: visible;
+}
+
+.chat-presence-target.is-online::after {
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
+    z-index: 2;
+    width: 9px;
+    height: 9px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    background: #1db954;
+    box-shadow: 0 0 0 1px rgba(29, 185, 84, .22);
+    content: "";
+    pointer-events: none;
+}
+
+.chat-presence-indicator {
+    display: none;
+    width: 8px;
+    height: 8px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: #1db954;
+    box-shadow: 0 0 0 1px rgba(29, 185, 84, .22);
+}
+
+.chat-presence-indicator.is-online {
+    display: inline-block;
+}
+
+.chat-presence-indicator[hidden] {
+    display: none !important;
+}
+
+.chat-person-name {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+}
+
+.chat-person-name > strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+    .chat-presence-target.is-online::after {
+        width: 8px;
+        height: 8px;
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .chat-presence-target.is-online::after,
+    .chat-presence-indicator.is-online {
+        transition: background-color .15s ease, opacity .15s ease;
+    }
+}

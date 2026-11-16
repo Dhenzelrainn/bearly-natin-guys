@@ -479,7 +479,6 @@ class ProductCategoryReviewService
 
         $imageCheck = $this->imageChecks->currentCheckForProduct($product);
         $imageCheckEnabled = (bool) config('services.gemini.product_image_check.enabled', false);
-        $enforced = (bool) config('services.gemini.product_image_check.enforce_on_publish', false);
         $imageCheckCode = $imageCheck?->status ?? ($imageCheckEnabled ? 'not_checked' : 'disabled');
         $imageReviews = $this->imageChecks->imageReviewPayload($product);
         $awaitingManualImageReview = $product->product_status === 'pending_review'
@@ -519,19 +518,7 @@ class ProductCategoryReviewService
             },
             'image_category_description' => $imageCheck?->visible_item_description,
             'image_category_reason' => $imageCheck?->reason,
-            'image_category_helper' => match ($imageCheckCode) {
-                'possible_mismatch', 'uncertain' => $enforced
-                    ? 'The listing stays hidden while an Admin reviews this image finding.'
-                    : 'AI advisory only; Admin review is still required.',
-                'pending' => $enforced
-                    ? 'Buyer visibility is paused until every current image has a review result.'
-                    : 'Awaiting an advisory check; this does not affect publishing or visibility.',
-                'not_checked' => 'No image check is recorded for this listing yet.',
-                'disabled' => $enforced
-                    ? 'Image checks are unavailable; the listing stays hidden for Admin review. No product photo was sent to Google.'
-                    : 'Image checks are disabled; no product photo is sent to Google.',
-                default => null,
-            },
+            'image_category_helper' => $this->imageChecks->categoryCheckHelper($product, $imageCheckCode),
             'image_category_checked_at' => $imageCheck?->completed_at
                 ? Carbon::parse($imageCheck->completed_at)->format('M j, Y g:i A')
                 : null,

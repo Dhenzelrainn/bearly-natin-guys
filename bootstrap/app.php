@@ -4,6 +4,7 @@ use App\Http\Middleware\EnsureLocalRiderWorkType;
 use App\Http\Middleware\EnforceAuthSessionVersion;
 use App\Http\Middleware\EnsureUserHasRole;
 use App\Http\Middleware\PreventBackCache;
+use App\Http\Middleware\StartWebSession;
 use App\Models\RememberedAccount;
 use App\Services\AnnouncementPublishingService;
 use Illuminate\Console\Scheduling\Schedule;
@@ -11,6 +12,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Session\Middleware\StartSession;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -44,7 +46,7 @@ return Application::configure(basePath: dirname(__DIR__))
             ->withoutOverlapping();
     })
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->web(append: [
+        $middleware->web(replace: [StartSession::class => StartWebSession::class], append: [
             PreventBackCache::class,
             EnforceAuthSessionVersion::class,
         ]);

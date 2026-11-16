@@ -932,6 +932,11 @@ class AdminController extends Controller
                     default => 'badge-neutral',
                 };
                 $product = $violation->product;
+                $images = $product?->images ?? collect();
+                $productImage = $images->whereNull('variant_id')->firstWhere('is_primary', true)
+                    ?? $images->whereNull('variant_id')->first()
+                    ?? $images->first();
+                $productImageDisk = $productImage?->disk ?: 'public';
                 $sellerProfile = $violation->sellerProfile;
                 $imageCheck = $product ? $imageChecks->currentCheckForProduct($product) : null;
                 $imageFinding = $violation->imageCheck;
@@ -952,6 +957,10 @@ class AdminController extends Controller
                     'product_record_id' => (int) $violation->product_id,
                     'product_id' => 'PRD-'.str_pad((string) $violation->product_id, 6, '0', STR_PAD_LEFT),
                     'product' => $product?->name ?? $violation->check?->name_snapshot ?? 'Product record unavailable',
+                    'image_url' => $productImage && filled($productImage->path) && config("filesystems.disks.{$productImageDisk}")
+                        ? Storage::disk($productImageDisk)->url($productImage->path)
+                        : null,
+                    'image_alt' => $productImage?->alt_text ?: ($product?->name ?? 'Product image'),
                     'product_status' => $product?->product_status ?? 'unavailable',
                     'compliance_status' => $product?->compliance_status ?? 'unavailable',
                     'seller' => $product?->store?->name ?? $sellerProfile?->legal_business_name ?? 'Seller record unavailable',

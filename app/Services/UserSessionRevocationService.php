@@ -2,10 +2,13 @@
 
 namespace App\Services;
 
+use App\Events\UserSessionsRevoked;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 class UserSessionRevocationService
 {
@@ -86,6 +89,21 @@ class UserSessionRevocationService
                 request: $request,
                 actor: $actor,
             );
+
+            $event = new UserSessionsRevoked((int) $user->getKey());
+
+            DB::afterCommit(function () use ($event): void {
+                try {
+                    event($event);
+                } catch (Throwable $exception) {
+                    // Revocation is already committed. Browser session checks
+                    // remain the fallback if realtime delivery is unavailable.
+                    Log::notice('Bearly realtime session revocation broadcast failed.', [
+                        'user_id' => $event->userId,
+                        'exception' => $exception::class,
+                    ]);
+                }
+            });
 
             return [
                 'auth_session_version' => $newVersion,

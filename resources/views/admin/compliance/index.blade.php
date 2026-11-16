@@ -21,12 +21,28 @@
     <section class="dashboard-grid dashboard-grid-main compliance-grid">
         <article class="panel panel-large">
             <div class="panel-heading panel-heading-wrap">
-                <div><span class="eyebrow">Rule-based scan history</span><h2>Recent product checks</h2></div>
+                <div>
+                    <span class="eyebrow">Text/rule-based scan history</span>
+                    <h2>Recent product checks</h2>
+                    <p class="table-subtext">A clear text scan is not image approval. See <a href="{{ route('admin.compliance.category-reviews') }}">Category Reviews</a> for image results and the current listing status.</p>
+                    <p class="table-subtext">
+                        @if ($imageSafetyEnforced)
+                            Image publish gate enabled. New publish requests stay hidden until every image passes or an Admin approves them.
+                            @if (! $imageCheckEnabled)
+                                Automated image checks are disabled; held listings require manual Admin review.
+                            @endif
+                        @elseif ($imageCheckEnabled)
+                            Image checks are advisory; publishing is not held for image review.
+                        @else
+                            Automated image checks and the image publish gate are disabled.
+                        @endif
+                    </p>
+                </div>
                 <label class="field-with-icon compact-field"><i data-lucide="search"></i><input type="search" placeholder="Search products..." data-table-search="compliance-table"></label>
             </div>
             <div class="table-wrap">
                 <table class="admin-table" id="compliance-table">
-                    <thead><tr><th>Product</th><th>Seller</th><th>Registered category</th><th>Listed category</th><th>Risk</th><th>Status</th></tr></thead>
+                    <thead><tr><th>Product</th><th>Seller</th><th>Registered category</th><th>Listed category</th><th>Text risk</th><th>Text scan result</th></tr></thead>
                     <tbody>
                     @foreach ($audits as $audit)
                         <tr
@@ -35,9 +51,15 @@
                         >
 
                             <td>
-                                <div class="table-primary-secondary">
-                                    <strong>{{ $audit['product'] }}</strong>
-                                    <small>{{ $audit['id'] }}</small>
+                                <div class="identity-cell">
+                                    @include('admin.compliance.partials.product-image', [
+                                        'imageUrl' => $audit['image_url'],
+                                        'imageAlt' => $audit['image_alt'],
+                                    ])
+                                    <div class="table-primary-secondary">
+                                        <strong>{{ $audit['product'] }}</strong>
+                                        <small>Product #{{ $audit['product_id'] }} · {{ $audit['id'] }}</small>
+                                    </div>
                                 </div>
                             </td>
 

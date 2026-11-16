@@ -36,7 +36,7 @@
                 @if ($imageSafetyEnforced)
                     Listings held for scanning stay hidden from Buyers. Review every image before approval; a possible finding is handled in Product Violations, and uncertain or unavailable results require a documented Admin decision.
                 @elseif ($imageCheckEnabled)
-                    Gemini checks the primary image as an advisory only. It cannot change listing status or create violations; Admins remain the decision-makers.
+                    Image checks are advisory; publishing is not held for image review. Gemini checks only the primary image; Admins decide whether to flag and hide the listing.
                 @else
                     Gemini image checks are disabled. No product photos are sent to Google. Listings held for review remain hidden until an Admin decision.
                 @endif

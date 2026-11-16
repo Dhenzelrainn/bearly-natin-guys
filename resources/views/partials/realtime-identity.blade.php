@@ -22,13 +22,17 @@
             ->unique()
             ->values();
     }
+
+    $realtimeIdentity = [
+        'user_id' => (int) auth()->id(),
+        'roles' => $realtimeRoles,
+        'session_status_url' => route('auth.session.status', absolute: false),
+        'sign_in_url' => route('login', ['session' => 'ended'], absolute: false),
+    ];
 @endphp
 
 @auth
     <script>
-        window.bearlyRealtimeIdentity = @json([
-            'user_id' => (int) auth()->id(),
-            'roles' => $realtimeRoles,
-        ]);
+        window.bearlyRealtimeIdentity = @json($realtimeIdentity);
     </script>
 @endauth

@@ -48,7 +48,11 @@
                 <p>Sign in to continue shopping or managing your account.</p>
             </div>
 
-            @if (session('status'))
+            @if (request()->query('session') === 'ended')
+                <div class="auth-feedback" role="status">
+                    Your session has ended. Please sign in again.
+                </div>
+            @elseif (session('status'))
                 <div class="auth-feedback is-success" role="status">
                     {{ session('status') }}
                 </div>

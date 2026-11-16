@@ -579,6 +579,230 @@ class ProductImageCategoryCheckTest extends TestCase
         Notification::assertNothingSent();
     }
 
+    public function test_phone_publish_is_held_then_flagged_when_the_image_result_identifies_a_shirt(): void
+    {
+        config(['services.gemini.product_image_check.enforce_on_publish' => true]);
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::response($this->interactionResponse([
+            'category_verdict' => ProductImageCategoryCheck::STATUS_POSSIBLE_MISMATCH,
+            'safety_verdict' => ProductImageCategoryCheck::SAFETY_CLEAR,
+            'matched_rule_codes' => [],
+            'visible_item_description' => 'A red T-shirt.',
+            'category_reason' => 'The visible clothing does not match a Phone listing in Electronics and Gadgets.',
+            'safety_reason' => 'No configured prohibited item is visible.',
+        ]))]);
+
+        $this->actingAs($this->seller)
+            ->post('/seller/products', $this->publishPayload('Phone'))
+            ->assertRedirect(route('seller.products', ['status' => 'Pending Review']))
+            ->assertSessionHas('success', 'Product saved for image review and hidden from Buyers until every image passes or an Admin approves it.')
+            ->assertSessionMissing('compliance_warning');
+
+        $product = Product::query()->where('store_id', $this->store->id)->where('name', 'Phone')->sole();
+        $check = $product->currentImageCategoryChecks()->sole();
+        $this->assertSame('pending_review', $product->product_status);
+        $this->assertSame('pending_scan', $product->compliance_status);
+        $this->assertNull($product->published_at);
+        $this->assertSame('clear', $product->latestComplianceCheck()->sole()->result);
+        $this->assertFalse(Product::visibleToBuyers()->whereKey($product->id)->exists());
+        Queue::assertPushedOn('product-image-checks', AnalyzeProductImageCategoryCheck::class);
+
+        (new AnalyzeProductImageCategoryCheck((int) $check->id))->handle(app(ProductImageCategoryCheckService::class));
+
+        $this->assertSame('flagged', $product->fresh()->product_status);
+        $this->assertNull($product->fresh()->published_at);
+        $this->assertFalse(Product::visibleToBuyers()->whereKey($product->id)->exists());
+        $violation = $product->violations()->sole();
+        $this->assertSame('image_category_mismatch', $violation->violation_type);
+        $this->assertSame($check->id, $violation->product_image_category_check_id);
+        $this->assertSame(0, $violation->warnings()->count());
+        Http::assertSentCount(1);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.compliance'))
+            ->assertOk()
+            ->assertSee('Text rules clear')
+            ->assertSee('Text scan result')
+            ->assertSee('A clear text scan is not image approval.')
+            ->assertSee(route('admin.compliance.category-reviews'), false)
+            ->assertDontSee('Clear · no open violation');
+    }
+
+    public function test_republishing_an_existing_active_product_reports_the_pending_image_review(): void
+    {
+        config(['services.gemini.product_image_check.enforce_on_publish' => true]);
+        $product = $this->product('Phone');
+        $this->addPrimaryImage($product);
+
+        $payload = $this->publishPayload('Phone');
+        unset($payload['image']);
+
+        $this->actingAs($this->seller)
+            ->put(route('seller.products.update', $product), $payload)
+            ->assertRedirect(route('seller.products', ['status' => 'Pending Review']))
+            ->assertSessionHas('success', 'Product changes saved for image review and hidden from Buyers until every image passes or an Admin approves it.');
+
+        $this->assertSame('pending_review', $product->fresh()->product_status);
+        $this->assertNull($product->fresh()->published_at);
+        $this->assertFalse(Product::visibleToBuyers()->whereKey($product->id)->exists());
+        Queue::assertPushed(AnalyzeProductImageCategoryCheck::class, 1);
+        Http::assertNothingSent();
+    }
+
+    public function test_unavailable_scan_can_retry_after_configuration_is_fixed_without_erasing_history(): void
+    {
+        config([
+            'services.gemini.product_image_check.enforce_on_publish' => true,
+            'services.gemini.api_key' => null,
+        ]);
+        $product = $this->product('Retry image review');
+        $this->holdForImageReview($product);
+        $this->addPrimaryImage($product);
+        $unavailable = $this->queueCheck($product);
+        (new AnalyzeProductImageCategoryCheck((int) $unavailable->id))->handle(app(ProductImageCategoryCheckService::class));
+        $this->assertSame('missing_api_key', $unavailable->fresh()->failure_code);
+
+        config(['services.gemini.api_key' => 'fake-test-credential-not-a-real-key']);
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::response($this->interactionResponse($this->clearImageOutput()))]);
+
+        $retry = $this->queueCheck($product);
+
+        $this->assertNotSame($unavailable->id, $retry->id);
+        $this->assertSame('pending', $retry->status);
+        $this->assertSame('pending', $retry->safety_status);
+        $this->assertFalse($unavailable->fresh()->is_current);
+        $this->assertSame('unavailable', $unavailable->fresh()->status);
+        $this->assertSame('missing_api_key', $unavailable->fresh()->failure_code);
+        $this->assertSame('pending_review', $product->fresh()->product_status);
+
+        (new AnalyzeProductImageCategoryCheck((int) $retry->id))->handle(app(ProductImageCategoryCheckService::class));
+
+        $this->assertSame('active', $product->fresh()->product_status);
+        Queue::assertPushed(AnalyzeProductImageCategoryCheck::class, 2);
+        Http::assertSentCount(1);
+    }
+
+    public function test_republishing_with_a_current_advisory_mismatch_reports_the_finalized_hold(): void
+    {
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::response($this->interactionResponse([
+            'category_verdict' => ProductImageCategoryCheck::STATUS_POSSIBLE_MISMATCH,
+            'safety_verdict' => ProductImageCategoryCheck::SAFETY_CLEAR,
+            'matched_rule_codes' => [],
+            'visible_item_description' => 'A red T-shirt.',
+            'category_reason' => 'The visible clothing does not match the electronics category.',
+            'safety_reason' => 'No configured prohibited item is visible.',
+        ]))]);
+        $payload = $this->publishPayload('Phone');
+        $this->actingAs($this->seller)
+            ->post('/seller/products', $payload)
+            ->assertRedirect(route('seller.products'));
+
+        $product = Product::query()->where('store_id', $this->store->id)->where('name', 'Phone')->sole();
+        $check = $product->currentImageCategoryChecks()->sole();
+        (new AnalyzeProductImageCategoryCheck((int) $check->id))->handle(app(ProductImageCategoryCheckService::class));
+        $this->assertSame('active', $product->fresh()->product_status);
+        $this->assertSame(0, $product->violations()->count());
+
+        config(['services.gemini.product_image_check.enforce_on_publish' => true]);
+        unset($payload['image']);
+
+        $this->put(route('seller.products.update', $product), $payload)
+            ->assertRedirect(route('seller.products', ['status' => 'Needs Review']))
+            ->assertSessionHas('compliance_warning')
+            ->assertSessionMissing('success');
+
+        $this->assertSame('flagged', $product->fresh()->product_status);
+        $this->assertNull($product->fresh()->published_at);
+        $this->assertFalse(Product::visibleToBuyers()->whereKey($product->id)->exists());
+        $this->assertSame($check->id, $product->violations()->sole()->product_image_category_check_id);
+        Queue::assertPushed(AnalyzeProductImageCategoryCheck::class, 1);
+        Http::assertSentCount(1);
+    }
+
+    public function test_disabled_scan_can_be_queued_when_image_transfer_is_later_enabled(): void
+    {
+        config([
+            'services.gemini.product_image_check.enforce_on_publish' => true,
+            'services.gemini.product_image_check.enabled' => false,
+        ]);
+        $product = $this->product('Enable image review');
+        $this->holdForImageReview($product);
+        $this->addPrimaryImage($product);
+        $disabled = $this->queueCheck($product);
+        $this->assertSame('disabled', $disabled->failure_code);
+
+        // Re-saving while transfer is disabled must not enqueue a remote call.
+        $this->queueCheck($product);
+        Queue::assertNothingPushed();
+
+        config(['services.gemini.product_image_check.enabled' => true]);
+        $retry = $this->queueCheck($product);
+
+        $this->assertNotSame($disabled->id, $retry->id);
+        $this->assertSame('pending', $retry->status);
+        $this->assertSame('pending', $retry->safety_status);
+        $this->assertFalse($disabled->fresh()->is_current);
+        $this->assertSame('disabled', $disabled->fresh()->failure_code);
+        $this->assertSame('pending_review', $product->fresh()->product_status);
+        Queue::assertPushed(AnalyzeProductImageCategoryCheck::class, 1);
+        Http::assertNothingSent();
+    }
+
+    public function test_admin_pages_explain_when_images_are_only_advisory(): void
+    {
+        $product = $this->product('Advisory phone');
+        $this->addPrimaryImage($product);
+
+        foreach (['admin.compliance', 'admin.compliance.category-reviews'] as $route) {
+            $this->actingAs($this->admin)
+                ->get(route($route))
+                ->assertOk()
+                ->assertSee('Image checks are advisory; publishing is not held for image review.');
+        }
+
+        $this->assertSame('active', $product->fresh()->product_status);
+        Http::assertNothingSent();
+    }
+
+    public function test_polling_uses_the_same_hidden_listing_guidance_as_the_rendered_review_queue(): void
+    {
+        config(['services.gemini.product_image_check.enforce_on_publish' => true]);
+        $held = $this->product('Held image scan');
+        $this->holdForImageReview($held);
+        $this->addPrimaryImage($held);
+        $this->queueCheck($held);
+        $helper = 'Buyer visibility is paused until every current image has a review result.';
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.compliance.category-reviews', ['search' => $held->name]))
+            ->assertOk()
+            ->assertSee($helper);
+
+        $this->get(route('admin.compliance.image-advisories', ['product_ids' => [$held->id]]))
+            ->assertOk()
+            ->assertJsonPath('data.advisories.0.image_category_helper', $helper);
+        Http::assertNothingSent();
+    }
+
+    public function test_enabling_the_gate_does_not_describe_existing_active_advisories_as_hidden(): void
+    {
+        $product = $this->product('Existing active advisory');
+        $this->addPrimaryImage($product);
+        $check = $this->queueCheck($product);
+        $check->update(['status' => 'possible_mismatch', 'safety_status' => 'clear']);
+        config(['services.gemini.product_image_check.enforce_on_publish' => true]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.compliance.category-reviews', ['search' => $product->name]))
+            ->assertOk()
+            ->assertSee('AI advisory only; Admin review is still required.')
+            ->assertDontSee('The listing stays hidden while an Admin reviews this image finding.');
+
+        $this->get(route('admin.compliance.image-advisories', ['product_ids' => [$product->id]]))
+            ->assertOk()
+            ->assertJsonPath('data.advisories.0.image_category_helper', 'AI advisory only; Admin review is still required.');
+        $this->assertTrue(Product::visibleToBuyers()->whereKey($product->id)->exists());
+    }
+
     public function test_uncertain_image_stays_hidden_until_an_admin_audits_manual_approval(): void
     {
         config(['services.gemini.product_image_check.enforce_on_publish' => true]);
@@ -845,6 +1069,29 @@ class ProductImageCategoryCheckTest extends TestCase
             ->where('is_current', true)
             ->latest('id')
             ->firstOrFail();
+    }
+
+    /** @return array<string, mixed> */
+    private function publishPayload(string $name): array
+    {
+        return [
+            'product_mode' => 'single',
+            'name' => $name,
+            'category' => $this->businessCategory->name,
+            'marketplace_subcategory_id' => $this->marketplaceSubcategory->id,
+            'description' => 'An item listed in the approved electronics category.',
+            'sku' => 'IMAGE-GATE-'.Str::upper(Str::random(8)),
+            'price' => '300.00',
+            'stock' => 6,
+            'low_stock_threshold' => 1,
+            'package_weight_kg' => '0.250',
+            'package_length_cm' => '24',
+            'package_width_cm' => '18',
+            'package_height_cm' => '8',
+            'payment_methods' => ['cod'],
+            'intent' => 'publish',
+            'image' => UploadedFile::fake()->createWithContent('product.png', $this->pngBytes()),
+        ];
     }
 
     private function holdForImageReview(Product $product): void

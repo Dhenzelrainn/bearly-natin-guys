@@ -87,8 +87,8 @@ export function syncNotificationBadges(count) {
     document.querySelectorAll('[data-notification-badge]').forEach(element => {
         const dot = element.dataset.notificationBadge === 'dot';
 
+        element.textContent = dot ? '' : String(unread);
         if (!dot) {
-            element.textContent = String(unread);
             element.setAttribute('aria-label', `${unread} unread notification${unread === 1 ? '' : 's'}`);
         }
 

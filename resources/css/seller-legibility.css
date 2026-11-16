@@ -2460,7 +2460,7 @@
 :root[data-theme="dark"] body.seller-body .seller-popover .popover-footer :is(
     .notification-mark-all, .seller-notification-view-all
 ),
-:root[data-theme="dark"] body.seller-body .profile-popover a {
+:root[data-theme="dark"] body.seller-body .profile-popover :is(a, .seller-profile-logout) {
     color: #efbd71;
 }
 

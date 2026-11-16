@@ -29,6 +29,7 @@ use App\Http\Controllers\ApplicationDocumentController;
 use App\Http\Controllers\ApplicationStatusController;
 use App\Http\Controllers\Auth\BearlyAuthController;
 use App\Http\Controllers\Auth\EmailVerificationController;
+use App\Http\Controllers\AuthSessionStatusController;
 use App\Http\Controllers\BuyerCheckoutController;
 use App\Http\Controllers\BuyerController;
 use App\Http\Controllers\BuyerDisputeController;
@@ -180,6 +181,10 @@ Route::middleware('guest')->group(function () {
 Route::post('/logout', [BearlyAuthController::class, 'logout'])
     ->middleware('auth')
     ->name('logout');
+
+Route::get('/auth/session/status', AuthSessionStatusController::class)
+    ->middleware('throttle:120,1')
+    ->name('auth.session.status');
 
 Route::get('/application/pending', [ApplicationStatusController::class, 'pending'])
     ->middleware('throttle:60,1')

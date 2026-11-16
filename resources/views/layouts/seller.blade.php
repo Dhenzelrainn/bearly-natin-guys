@@ -187,7 +187,7 @@
                             @csrf
                             <button
                                 type="submit"
-                                style="width:100%; border:0; background:transparent; cursor:pointer;"
+                                class="seller-profile-logout"
                             >
                                 <i class="seller-ui-icon" data-lucide="log-out" aria-hidden="true"></i>
                                 Logout

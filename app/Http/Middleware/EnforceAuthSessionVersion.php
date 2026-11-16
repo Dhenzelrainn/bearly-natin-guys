@@ -27,6 +27,14 @@ class EnforceAuthSessionVersion
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
+            if ($request->expectsJson() || $request->routeIs('auth.session.status')) {
+                return response()->json([
+                    'data' => null,
+                    'message' => 'Your session was signed out. Please sign in again.',
+                    'code' => 'AUTH_SESSION_REVOKED',
+                ], 401)->header('Cache-Control', 'no-store, private');
+            }
+
             return redirect()
                 ->route('login')
                 ->with('status', 'Your session was signed out. Please sign in again.');

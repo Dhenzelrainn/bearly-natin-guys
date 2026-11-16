@@ -276,6 +276,10 @@ class SellerProductController extends Controller
             ? ''
             : ' Temporary product photos could not be fully deleted and will be retried.';
 
+        // Image finalization may run in an after-commit callback before save()
+        // returns. Report the persisted outcome, not its pre-commit snapshot.
+        $savedProduct->refresh();
+
         if (in_array($savedProduct->product_status, ['blocked', 'flagged'], true)) {
             $statusFilter = $savedProduct->product_status === 'blocked' ? 'Blocked' : 'Needs Review';
 
@@ -284,6 +288,13 @@ class SellerProductController extends Controller
                 $savedProduct->product_status === 'blocked'
                     ? 'Compliance warning: this product is blocked and hidden from Buyers. Review the reason beside the product before making changes.'.$draftCleanupNotice
                     : 'Compliance warning: this product is held for Admin review and hidden from Buyers. Review the reason beside the product before making changes.'.$draftCleanupNotice
+            );
+        }
+
+        if ($savedProduct->product_status === 'pending_review') {
+            return redirect()->route('seller.products', ['status' => 'Pending Review'])->with(
+                'success',
+                'Product saved for image review and hidden from Buyers until every image passes or an Admin approves it.'.$draftCleanupNotice
             );
         }
 
@@ -525,6 +536,8 @@ class SellerProductController extends Controller
             $validated['variant_image_colors'] ?? [],
         );
 
+        $savedProduct->refresh();
+
         if (in_array($savedProduct->product_status, ['blocked', 'flagged'], true)) {
             $statusFilter = $savedProduct->product_status === 'blocked' ? 'Blocked' : 'Needs Review';
 
@@ -533,6 +546,13 @@ class SellerProductController extends Controller
                 $savedProduct->product_status === 'blocked'
                     ? 'Compliance warning: this product is blocked and hidden from Buyers. Review the reason beside the product before making changes.'
                     : 'Compliance warning: this product is held for Admin review and hidden from Buyers. Review the reason beside the product before making changes.'
+            );
+        }
+
+        if ($savedProduct->product_status === 'pending_review') {
+            return redirect()->route('seller.products', ['status' => 'Pending Review'])->with(
+                'success',
+                'Product changes saved for image review and hidden from Buyers until every image passes or an Admin approves it.'
             );
         }
 

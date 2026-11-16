@@ -11,6 +11,7 @@ use App\Services\ProductImageCategoryCheckService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
 class AdminComplianceController extends Controller
@@ -18,7 +19,13 @@ class AdminComplianceController extends Controller
     public function index(Request $request): View
     {
         $checks = ProductComplianceCheck::query()
-            ->with(['product.store.sellerProfile.approvedCategory', 'product.category', 'matches'])
+            ->with([
+                'product' => fn ($query) => $query->withTrashed(),
+                'product.store' => fn ($query) => $query->withTrashed()->with('sellerProfile.approvedCategory'),
+                'product.images',
+                'product.category',
+                'matches',
+            ])
             ->latest()
             ->limit(100)
             ->get();
@@ -26,24 +33,38 @@ class AdminComplianceController extends Controller
             ->whereIn('status', ['flagged', 'under_review', 'correction_requested'])
             ->count();
         $admin = $request->user();
-        $audits = $checks->map(fn (ProductComplianceCheck $check): array => [
-            'id' => 'CHK-'.str_pad((string) $check->id, 6, '0', STR_PAD_LEFT),
-            'product' => $check->product->name,
-            'seller' => $check->product->store->name,
-            'registered' => $check->product->store->sellerProfile?->approvedCategory?->name ?? '—',
-            'listed' => $check->product->category?->name ?? '—',
-            'risk' => str($check->matches->max('severity') ?? 'low')->title(),
-            'status' => match ($check->result) {
-                'clear' => 'Clear · no open violation',
-                'blocked' => 'Blocked · hidden from Buyers',
-                default => 'Held for review · hidden from Buyers',
-            },
-            'status_class' => match ($check->result) {
-                'clear' => 'badge-neutral',
-                'blocked' => 'badge-danger',
-                default => 'badge-warning',
-            },
-        ])->all();
+        $audits = $checks->map(function (ProductComplianceCheck $check): array {
+            $product = $check->product;
+            $images = $product?->images ?? collect();
+            $image = $images->whereNull('variant_id')->firstWhere('is_primary', true)
+                ?? $images->whereNull('variant_id')->first()
+                ?? $images->first();
+            $imageDisk = $image?->disk ?: 'public';
+
+            return [
+                'id' => 'CHK-'.str_pad((string) $check->id, 6, '0', STR_PAD_LEFT),
+                'product_id' => (int) $check->product_id,
+                'product' => $product?->name ?? $check->name_snapshot ?? 'Product record unavailable',
+                'image_url' => $image && filled($image->path) && config("filesystems.disks.{$imageDisk}")
+                    ? Storage::disk($imageDisk)->url($image->path)
+                    : null,
+                'image_alt' => $image?->alt_text ?: ($product?->name ?? $check->name_snapshot ?? 'Product image'),
+                'seller' => $product?->store?->name ?? 'Seller record unavailable',
+                'registered' => $product?->store?->sellerProfile?->approvedCategory?->name ?? '—',
+                'listed' => $product?->category?->name ?? '—',
+                'risk' => str($check->matches->max('severity') ?? 'low')->title(),
+                'status' => match ($check->result) {
+                    'clear' => 'Text rules clear',
+                    'blocked' => 'Text rules blocked',
+                    default => 'Review required',
+                },
+                'status_class' => match ($check->result) {
+                    'clear' => 'badge-neutral',
+                    'blocked' => 'badge-danger',
+                    default => 'badge-warning',
+                },
+            ];
+        })->all();
 
         return view('admin.compliance.index', [
             'admin' => ['name'=>$admin->name,'role'=>'Admin','email'=>$admin->email,
@@ -51,6 +72,8 @@ class AdminComplianceController extends Controller
             'topNotifications' => [],
             'audits' => $audits,
             'openViolationCount' => $openViolationCount,
+            'imageCheckEnabled' => (bool) config('services.gemini.product_image_check.enabled', false),
+            'imageSafetyEnforced' => (bool) config('services.gemini.product_image_check.enforce_on_publish', false),
         ]);
     }
 
@@ -103,13 +126,7 @@ class AdminComplianceController extends Controller
                     },
                     'image_category_description' => $check?->visible_item_description,
                     'image_category_reason' => $check?->reason,
-                    'image_category_helper' => match ($statusCode) {
-                        'possible_mismatch', 'uncertain' => 'AI advisory only; Admin review is still required.',
-                        'pending' => 'Awaiting an advisory check; this does not affect publishing or visibility.',
-                        'not_checked' => 'No image check is recorded for this listing yet.',
-                        'disabled' => 'Image checks are disabled; no product photo is sent to Google.',
-                        default => null,
-                    },
+                    'image_category_helper' => $product ? $imageChecks->categoryCheckHelper($product, $statusCode) : null,
                     'image_category_checked_at' => $check?->completed_at?->toIso8601String(),
                     'image_reviews' => $product ? $imageChecks->imageReviewPayload($product) : [],
                 ];

@@ -67,6 +67,7 @@ class ProductImageCategoryCheckService
             ->get()
             ->groupBy('product_image_id');
         $queuedCheckIds = [];
+        $enabled = (bool) config('services.gemini.product_image_check.enabled', false);
 
         foreach ($currentChecks as $imageId => $checks) {
             if ($imageId === '' || $imageId === null || ! in_array((int) $imageId, $imageIds, true)) {
@@ -85,6 +86,15 @@ class ProductImageCategoryCheckService
                 && $check->model === $model
                 && $check->prompt_version === self::PROMPT_VERSION
             );
+
+            // A failed/disabled attempt is not a reusable review. A Seller
+            // re-save may retry it after configuration or provider recovery;
+            // keep the completed attempt as history rather than overwriting it.
+            if ($current && $enabled
+                && ($current->status === ProductImageCategoryCheck::STATUS_UNAVAILABLE
+                    || $current->safety_status === ProductImageCategoryCheck::SAFETY_UNAVAILABLE)) {
+                $current = null;
+            }
 
             if ($current) {
                 ProductImageCategoryCheck::query()
@@ -122,7 +132,6 @@ class ProductImageCategoryCheckService
                     ->where('is_current', true)
                     ->update(['is_current' => false, 'updated_at' => now()]);
 
-                $enabled = (bool) config('services.gemini.product_image_check.enabled', false);
                 $check = ProductImageCategoryCheck::query()->create([
                     'product_id' => $product->id,
                     'product_image_id' => $image->id,
@@ -421,6 +430,31 @@ class ProductImageCategoryCheckService
         return hash_equals($check->snapshot_hash, $this->fingerprint($this->sourceSnapshot($product, $image)))
             ? $check
             : null;
+    }
+
+    public function categoryCheckHelper(Product $product, string $statusCode): ?string
+    {
+        $awaitingImageReview = $product->product_status === 'pending_review'
+            && $product->compliance_status === 'pending_scan';
+        $hiddenForReview = $awaitingImageReview
+            || in_array($product->product_status, ['flagged', 'blocked'], true);
+
+        return match ($statusCode) {
+            'possible_mismatch', 'uncertain' => $hiddenForReview
+                ? 'The listing stays hidden while an Admin reviews this image finding.'
+                : 'AI advisory only; Admin review is still required.',
+            'pending' => $awaitingImageReview
+                ? 'Buyer visibility is paused until every current image has a review result.'
+                : 'Awaiting an advisory check; this does not affect publishing or visibility.',
+            'not_checked' => 'No image check is recorded for this listing yet.',
+            'disabled' => $awaitingImageReview
+                ? 'Image checks are unavailable; the listing stays hidden for Admin review. No product photo was sent to Google.'
+                : 'Image checks are disabled; no product photo is sent to Google.',
+            'unavailable' => $awaitingImageReview
+                ? 'Image check unavailable; the listing stays hidden for Admin review. Save the listing again to retry.'
+                : 'Image check unavailable; save the listing again to retry.',
+            default => null,
+        };
     }
 
     /** @return array<int, ProductImageCategoryCheck> */

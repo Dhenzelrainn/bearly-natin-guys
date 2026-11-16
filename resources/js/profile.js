@@ -373,38 +373,28 @@ if(document.readyState === 'loading'){
   initProfile();
 }
 
-/* Bearly global navbar state: keeps notification/cart badges in sync across buyer pages. */
+/* Bearly global navbar state: cart badges only; notification-center.js owns notification indicators. */
 (function initBearlyGlobalNavbarState(){
   if(window.BearlyNavbarState)return;
-  /* Notification badges mirror the real unread count synced by notification-center.js. */
   function cartCount(){
     return Math.max(0, Number(window.bearlyBuyerProfile?.cartCount || 0));
   }
-  function notificationCount(){
-    const existing=document.querySelector('[data-notification-badge]');
-    return Math.max(0,Number(existing?.textContent||0)||0);
-  }
-  function ensureBadge(link,type){
+  function ensureBadge(link){
     if(!link)return null;
-    const selector=type==='cart'?'[data-global-cart-badge]':'[data-notification-badge]';
-    let badge=link.querySelector(selector);
+    let badge=link.querySelector('[data-global-cart-badge]');
     /* Reuse older page-specific cart counters instead of creating a second badge. */
-    if(!badge && type==='cart') badge=link.querySelector('#cart-header-count,.cart-badge');
+    if(!badge) badge=link.querySelector('#cart-header-count,.cart-badge');
     if(!badge){
       badge=document.createElement('span');
-      badge.setAttribute(type==='cart'?'data-global-cart-badge':'data-notification-badge','');
       link.appendChild(badge);
-    } else if(type==='cart') {
-      badge.setAttribute('data-global-cart-badge','');
     }
+    badge.setAttribute('data-global-cart-badge','');
     Object.assign(badge.style,{position:'absolute',top:'-7px',right:'0',minWidth:'17px',height:'17px',padding:'0 4px',borderRadius:'999px',background:'#e9a321',color:'#432718',fontSize:'10px',fontWeight:'800',lineHeight:'17px',textAlign:'center',zIndex:'3'});
     link.style.position='relative';
     return badge;
   }
   function sync(){
-    document.querySelectorAll('a[href$="/cart"],a[href="/cart"]').forEach(link=>{const b=ensureBadge(link,'cart');const n=cartCount();b.textContent=n;b.hidden=n===0;b.style.display=n===0?'none':''});
-    document.querySelectorAll('a[href*="#notifications"]').forEach(link=>{const b=ensureBadge(link,'notification');const n=notificationCount();b.textContent=n;b.hidden=n===0;b.style.display=n===0?'none':''});
-    document.querySelectorAll('[data-notification-badge]').forEach(b=>{const n=notificationCount();b.textContent=n;b.hidden=n===0;if(b.style)b.style.display=n===0?'none':''});
+    document.querySelectorAll('a[href$="/cart"],a[href="/cart"]').forEach(link=>{const b=ensureBadge(link);const n=cartCount();b.textContent=n;b.hidden=n===0;b.style.display=n===0?'none':''});
     /* Profile header must follow Home: logo left, actions pushed to the far right. */
     document.querySelectorAll('.profile-top-actions').forEach(el=>{el.style.marginLeft='auto'});
   }

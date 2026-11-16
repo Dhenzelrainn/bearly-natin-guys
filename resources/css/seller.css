@@ -3374,24 +3374,48 @@ svg {
     font-size: 10px;
 }
 
-.profile-popover a {
+.profile-popover > a,
+.profile-popover .seller-profile-logout {
     display: flex;
     align-items: center;
+    justify-content: flex-start;
     gap: 8px;
 
+    width: 100%;
+    min-height: 40px;
     padding: 10px 8px;
 
+    border: 0;
     border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
     font-size: 11px;
+    line-height: 1.4;
+    text-align: left;
+    cursor: pointer;
 }
 
-.profile-popover a:hover {
+.profile-popover > form {
+    margin: 0;
+}
+
+.profile-popover > a:hover,
+.profile-popover .seller-profile-logout:hover {
     background: #fff8ee;
 }
 
-.profile-popover a .seller-ui-icon {
+.profile-popover > a:focus-visible,
+.profile-popover .seller-profile-logout:focus-visible {
+    outline: 2px solid var(--seller-gold-dark);
+    outline-offset: -2px;
+}
+
+.profile-popover > a .seller-ui-icon,
+.profile-popover .seller-profile-logout .seller-ui-icon {
     width: 16px;
     height: 16px;
+    flex: 0 0 16px;
 }
 
 /* Main container */

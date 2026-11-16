@@ -167,9 +167,10 @@
                         <td>
                             <div class="identity-cell">
 
-                                <span class="avatar avatar-soft">
-                                    <i data-lucide="package"></i>
-                                </span>
+                                @include('admin.compliance.partials.product-image', [
+                                    'imageUrl' => $violation['image_url'],
+                                    'imageAlt' => $violation['image_alt'],
+                                ])
 
                                 <div>
                                     <strong>{{ $violation['product'] }}</strong>
@@ -328,9 +329,11 @@
 
             <div class="review-profile">
 
-                <span class="avatar avatar-large avatar-warm">
-                    <i data-lucide="shield-alert"></i>
-                </span>
+                @include('admin.compliance.partials.product-image', [
+                    'imageUrl' => $violation['image_url'],
+                    'imageAlt' => $violation['image_alt'],
+                    'preview' => true,
+                ])
 
                 <h3>
                     {{ $violation['product'] }}

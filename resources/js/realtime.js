@@ -2,6 +2,7 @@ import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 import { acknowledgeDelivery } from './chat-receipts.js';
 import { initChatPresence } from './chat-presence.js';
+import { initAuthSessionMonitor } from './auth-session.js';
 
 window.Pusher = Pusher;
 
@@ -40,6 +41,12 @@ window.BearlyRealtime = {
     status: 'disabled',
 };
 
+const sessionMonitor = initAuthSessionMonitor({
+    userId,
+    statusUrl: identity.session_status_url,
+    signInUrl: identity.sign_in_url,
+});
+
 if (userId > 0 && key) {
     try {
         const echo = new Echo({
@@ -75,6 +82,9 @@ if (userId > 0 && key) {
         window.BearlyPresence = initChatPresence({ echo, userId });
 
         echo.private(`users.${userId}`)
+            .listen('.auth.sessions-revoked', () => {
+                void sessionMonitor?.check({ force: true });
+            })
             .listen('.notification.created', (payload) => {
                 window.BearlyNotifications?.refresh?.();
                 window.dispatchEvent(new CustomEvent('bearly:notification-created', { detail: payload }));

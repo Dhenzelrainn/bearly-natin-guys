@@ -952,35 +952,25 @@ import {
     };
 })();
 
-/* Bearly global navbar state: keeps notification/cart badges in sync across buyer pages. */
+/* Bearly global navbar state: cart badges only; notification-center.js owns notification indicators. */
 (function initBearlyGlobalNavbarState() {
     if (window.BearlyNavbarState) return;
-
-    /* Notification badges mirror the real unread count synced by notification-center.js. */
 
     function cartCount() {
         return Math.max(0, Number(window.bearlyBuyerProfile?.cartCount || 0));
     }
 
-    function notificationCount() {
-        const existing = document.querySelector('[data-notification-badge]');
-        return Math.max(0, Number(existing?.textContent || 0) || 0);
-    }
-
-    function ensureBadge(link, type) {
+    function ensureBadge(link) {
         if (!link) return null;
-        const selector = type === 'cart' ? '[data-global-cart-badge]' : '[data-notification-badge]';
-        let badge = link.querySelector(selector);
+        let badge = link.querySelector('[data-global-cart-badge]');
 
         /* Reuse older page-specific cart counters instead of creating a second badge. */
-        if (!badge && type === 'cart') badge = link.querySelector('#cart-header-count,.cart-badge');
+        if (!badge) badge = link.querySelector('#cart-header-count,.cart-badge');
         if (!badge) {
             badge = document.createElement('span');
-            badge.setAttribute(type === 'cart' ? 'data-global-cart-badge' : 'data-notification-badge', '');
             link.appendChild(badge);
-        } else if (type === 'cart') {
-            badge.setAttribute('data-global-cart-badge', '');
         }
+        badge.setAttribute('data-global-cart-badge', '');
 
         Object.assign(badge.style, {
             position: 'absolute',
@@ -1004,26 +994,11 @@ import {
 
     function sync() {
         document.querySelectorAll('a[href$="/cart"],a[href="/cart"]').forEach(link => {
-            const badge = ensureBadge(link, 'cart');
+            const badge = ensureBadge(link);
             const count = cartCount();
             badge.textContent = count;
             badge.hidden = count === 0;
             badge.style.display = count === 0 ? 'none' : '';
-        });
-
-        document.querySelectorAll('a[href*="#notifications"]').forEach(link => {
-            const badge = ensureBadge(link, 'notification');
-            const count = notificationCount();
-            badge.textContent = count;
-            badge.hidden = count === 0;
-            badge.style.display = count === 0 ? 'none' : '';
-        });
-
-        document.querySelectorAll('[data-notification-badge]').forEach(badge => {
-            const count = notificationCount();
-            badge.textContent = count;
-            badge.hidden = count === 0;
-            if (badge.style) badge.style.display = count === 0 ? 'none' : '';
         });
 
         /* Profile header must follow Home: logo left, actions pushed to the far right. */

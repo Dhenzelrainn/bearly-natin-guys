@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\RememberedAccount;
 use App\Models\User;
 use App\Services\UserSessionRevocationService;
+use Illuminate\Auth\SessionGuard;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -264,8 +265,10 @@ class RealtimeSessionRevocationTest extends TestCase
             $table->integer('last_activity');
         });
         $sessionId = Str::random(40);
+        /** @var SessionGuard $guard */
+        $guard = Auth::guard('web');
         $attributes = [
-            Auth::guard('web')->getName() => $user->id,
+            $guard->getName() => $user->id,
             UserSessionRevocationService::SESSION_VERSION_KEY => 0,
             '_token' => Str::random(40),
             '_previous' => ['url' => url('/cart')],
@@ -312,8 +315,10 @@ class RealtimeSessionRevocationTest extends TestCase
         $user = $this->user();
         config(['session.driver' => 'cookie', 'session.encrypt' => false]);
         $sessionId = Str::random(40);
+        /** @var SessionGuard $guard */
+        $guard = Auth::guard('web');
         $data = serialize([
-            Auth::guard('web')->getName() => $user->id,
+            $guard->getName() => $user->id,
             UserSessionRevocationService::SESSION_VERSION_KEY => 0,
             '_token' => Str::random(40),
         ]);
